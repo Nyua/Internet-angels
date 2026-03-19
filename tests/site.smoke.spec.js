@@ -54,6 +54,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
+  await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
+  await page.locator(".steam-sidebar-row--discord").evaluate((node) => node.click());
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",
@@ -71,4 +74,31 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(10 * 60 * 1000);
   expect(intervalCalls).not.toContain(15 * 60 * 1000);
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
+});
+
+test("josie mobile uses the docked desktop player shell", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+
+  const apiRequests = [];
+  page.on("request", (outboundRequest) => {
+    const url = new URL(outboundRequest.url());
+    if (url.origin === "http://127.0.0.1:8788" && url.pathname.startsWith("/api/")) {
+      apiRequests.push(url.pathname);
+    }
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
+    timeout: 30_000
+  });
+
+  await expect(page.locator(".josie-mobile-audio-player .josie-audio-player")).toHaveCount(1);
+  await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
+  await expect(page.locator(".steam-sidebar-list")).toBeVisible();
+
+  expect(apiRequests).toEqual(expect.arrayContaining([
+    "/api/steam-recent-activity",
+    "/api/discord"
+  ]));
+  expect(apiRequests).not.toContain("/api/lastfm");
 });

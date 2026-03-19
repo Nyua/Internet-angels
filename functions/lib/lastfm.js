@@ -141,16 +141,47 @@ async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
     }
   };
   const extractArtistPhotoUrl = (markup, pageUrl) => {
-    const galleryImageMatch = /<a[^>]+href="[^"]*\/\+images\/[a-f0-9]{32}[^"]*"[^>]*>\s*<img[^>]+src="([^"]+)"/i.exec(String(markup || ""));
-    if (!galleryImageMatch?.[1]) {
+    const source = String(markup || "");
+    if (!source) {
       return "";
     }
-    const rawImageUrl = decodeHtmlAttribute(galleryImageMatch[1]);
-    try {
-      return new URL(rawImageUrl, pageUrl).toString();
-    } catch {
-      return "";
+    const resolvePhotoUrl = (rawImageUrl) => {
+      const candidate = decodeHtmlAttribute(rawImageUrl);
+      if (!candidate) {
+        return "";
+      }
+      try {
+        return new URL(candidate, pageUrl).toString();
+      } catch {
+        return "";
+      }
+    };
+    const itemPattern = /<li[^>]*class="[^"]*image-list-item-wrapper[^"]*"[\s\S]*?<\/li>/gi;
+    let firstPhotoUrl = "";
+    let match;
+    while ((match = itemPattern.exec(source))) {
+      const itemMarkup = match[0];
+      const imageMatch = itemMarkup.match(/<img[^>]+src="([^"]+)"/i);
+      const resolvedPhotoUrl = resolvePhotoUrl(imageMatch?.[1] || "");
+      if (!resolvedPhotoUrl) {
+        continue;
+      }
+      if (!firstPhotoUrl) {
+        firstPhotoUrl = resolvedPhotoUrl;
+      }
+      if (/image-list-item-preferred-icon/i.test(itemMarkup)) {
+        return resolvedPhotoUrl;
+      }
     }
+    if (firstPhotoUrl) {
+      return firstPhotoUrl;
+    }
+    const galleryAnchorMatch = source.match(/<a[^>]+href="[^"]*\/\+images\/[a-f0-9]{8,}[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"/i);
+    if (galleryAnchorMatch?.[1]) {
+      return resolvePhotoUrl(galleryAnchorMatch[1]);
+    }
+    const ogImageMatch = source.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+    return resolvePhotoUrl(ogImageMatch?.[1] || "");
   };
   const artistPhotoResults = await Promise.allSettled(
     artists.map(async (artistEntry) => {

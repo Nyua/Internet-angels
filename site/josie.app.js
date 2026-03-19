@@ -13,6 +13,7 @@
     "a[href]",
     "button:not([disabled])",
     "[role='button']",
+    "[data-open-url]",
     "summary",
     "input:not([type='hidden']):not([disabled])",
     "select:not([disabled])",
@@ -146,6 +147,7 @@
     bio: "",
     decorationUrl: ""
   };
+  var HERO_DESCRIPTION_TEXT = "The Internet Angel";
   var BASE_SEED_AT = Date.parse("2026-02-24T00:00:00.000Z");
   function buildTwitterSeed() {
     return {
@@ -2081,11 +2083,7 @@
     `;
   }
   function renderHeroDescriptionMarkup(bioText) {
-    const safeBio = String(bioText || "").trim();
-    if (!safeBio) {
-      return "";
-    }
-    return escapeHtml(safeBio);
+    return escapeHtml(HERO_DESCRIPTION_TEXT);
   }
   function renderHero(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
@@ -2287,21 +2285,28 @@
     </article>
   `;
   }
+  function renderShufflePlayerMarkup(options = {}) {
+    const playerClassName = firstNonEmpty(options.playerClassName, "josie-audio-player");
+    const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
+    return `
+    <div class="${escapeHtml(playerClassName)}" data-shuffle-player>
+      <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface aria-label="Audio visualizer">
+        <div class="josie-audio-player-overlay">
+          <div class="josie-audio-player-copy">
+            <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
+            <p class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  }
   function renderJosieDescriptionShowcase() {
     return `
     <article class="steam-showcase steam-showcase--josie-intro steam-showcase--shuffle-player" data-site-id="josie" data-showcase-variant="josie-description">
       <div class="steam-showcase-body steam-showcase-body--single">
         <section class="steam-showcase-content steam-showcase-content--full josie-intro-content">
-          <div class="josie-audio-player" data-shuffle-player>
-            <div class="josie-audio-player-wave-shell" data-shuffle-surface aria-label="Audio visualizer">
-              <div class="josie-audio-player-overlay">
-                <div class="josie-audio-player-copy">
-                  <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
-                  <p class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          ${renderShufflePlayerMarkup()}
         </section>
       </div>
     </article>
@@ -2310,32 +2315,10 @@
   function renderCompactMobileAudioPlayer() {
     return `
     <div class="josie-mobile-audio-player">
-      <button class="josie-mobile-audio-chip" type="button" data-shuffle-player data-shuffle-mode="compact" data-shuffle-surface aria-label="Site music player">
-        <span class="josie-mobile-audio-chip-icon" aria-hidden="true">
-          <span class="josie-mobile-audio-chip-icon-symbol">&#9835;</span>
-        </span>
-        <span class="josie-mobile-audio-chip-copy">
-          <span class="josie-mobile-audio-chip-kicker">Now Playing</span>
-          <span class="josie-mobile-audio-chip-title-row">
-            <span class="josie-mobile-audio-chip-title" data-shuffle-title>Loading Shuffle...</span>
-            <span class="josie-mobile-audio-chip-time" data-shuffle-time>--:--</span>
-          </span>
-          <span class="josie-mobile-audio-chip-artist-row">
-            <span class="josie-mobile-audio-chip-artist" data-shuffle-artist>Unknown Artist</span>
-            <span class="josie-mobile-audio-chip-meter" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-          </span>
-          <span class="josie-mobile-audio-chip-progress">
-            <span class="josie-mobile-audio-chip-progress-track">
-              <span class="josie-mobile-audio-chip-progress-fill" data-shuffle-progress-fill></span>
-            </span>
-          </span>
-        </span>
-      </button>
+      ${renderShufflePlayerMarkup({
+        playerClassName: "josie-audio-player josie-audio-player--mobile-dock",
+        surfaceClassName: "josie-audio-player-wave-shell josie-audio-player-wave-shell--mobile-dock"
+      })}
     </div>
   `;
   }
@@ -2368,7 +2351,7 @@
       const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
       const linkMarkup = openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${siteLabel}</a>` : `<span class="steam-sidebar-link">${siteLabel}</span>`;
       return `
-      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}">
+      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}"${openUrl ? ` data-open-url="${escapeHtml(openUrl)}"` : ""}>
         <div class="steam-sidebar-row-main">
           <p class="steam-sidebar-row-title">
             <span class="steam-sidebar-row-title-wrap">
@@ -3398,7 +3381,8 @@
         <span class="site-pointer-ring"></span>
         <span class="site-pointer-hand" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path d="M8.9 2.3c-.71 0-1.28.57-1.28 1.28v8.98l-1.24-2.08a1.28 1.28 0 0 0-2.21 1.3l2.9 4.98A3.73 3.73 0 0 0 10.3 18.9h4.02A3.69 3.69 0 0 0 18 15.22V8.9c0-.71-.57-1.28-1.28-1.28-.48 0-.91.26-1.13.65V5.64c0-.71-.57-1.28-1.28-1.28-.51 0-.96.3-1.16.74v-.42c0-.71-.57-1.28-1.28-1.28-.47 0-.89.25-1.12.63v-.45c0-.7-.56-1.26-1.25-1.26Z"></path>
+            <path class="site-pointer-hand-outline" d="M3.4 1.2v18.6l4.9-4.52 2.94 7.06 4.05-1.7-2.93-7.01h5.46Z"></path>
+            <path class="site-pointer-hand-fill" d="M5.2 5.1v10.53l3.16-2.9 2.76 6.61 1.05-.44-2.76-6.61h3.9Z"></path>
           </svg>
         </span>
         <span class="site-pointer-core"></span>
