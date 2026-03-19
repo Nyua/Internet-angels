@@ -1,0 +1,3 @@
+name = "internet-angel"
+compatibility_date = "2025-03-19"
+pages_build_output_dir = "dist"

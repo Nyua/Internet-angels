@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BloomToDeath ASCII Timelapse</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050505;
+      --fg: #f5f5f5;
+      --muted: rgba(245, 245, 245, 0.58);
+      --panel: rgba(245, 245, 245, 0.08);
+      --border: rgba(245, 245, 245, 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
+      letter-spacing: 0.01em;
+    }
+
+    body {
+      position: relative;
+      min-width: 100vw;
+      min-height: 100vh;
+      transition: background-color 260ms ease, color 260ms ease;
+    }
+
+    .source-video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      opacity: 0;
+      filter: grayscale(1) contrast(1.15);
+      transform: scale(1.02);
+    }
+
+    .source-video.active {
+      opacity: 0.08;
+    }
+
+    .ascii-layer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 14px;
+      left: 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .start-wrap {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .start-wrap.visible {
+      display: flex;
+    }
+
+    .start-btn {
+      pointer-events: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 16px;
+      background: var(--bg);
+      color: var(--fg);
+      font: 700 12px/1 "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 120ms ease, background-color 150ms ease;
+    }
+
+    .start-btn:hover {
+      transform: translateY(-1px);
+      background: color-mix(in srgb, var(--bg) 90%, var(--fg));
+    }
+
+    .start-btn:active {
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <video id="sourceVideoA" class="source-video active" playsinline preload="auto"></video>
+  <video id="sourceVideoB" class="source-video" playsinline preload="auto" aria-hidden="true"></video>
+  <canvas id="asciiCanvas" class="ascii-layer" aria-label="ASCII-rendered timelapse"></canvas>
+
+  <div class="hud">
+    <span id="videoLabel"></span>
+  </div>
+
+  <div id="startWrap" class="start-wrap" aria-live="polite">
+    <button id="startBtn" class="start-btn" type="button">Start</button>
+  </div>
+
+  <script>
+    (() => {
+      const bloomVideos = [
+        "Timelapse/BloomToDeath-1.mov",
+        "Timelapse/BloomToDeath-2.mov",
+        "Timelapse/BloomToDeath-3.mov"
+      ];
+      const introVideoPath = "Timelapse/Egrets-Intro.mov";
+      const nextPageUrl = "next.html";
+      const chars = " .:-=+*#%@";
+      const bayer4 = [
+        [0, 8, 2, 10],
+        [12, 4, 14, 6],
+        [3, 11, 1, 9],
+        [15, 7, 13, 5]
+      ];
+
+      const asciiCanvas = document.getElementById("asciiCanvas");
+      const ctx = asciiCanvas.getContext("2d", { alpha: false });
+      const sourceVideoA = document.getElementById("sourceVideoA");
+      const sourceVideoB = document.getElementById("sourceVideoB");
+      const videoLabel = document.getElementById("videoLabel");
+      const startWrap = document.getElementById("startWrap");
+      const startBtn = document.getElementById("startBtn");
+
+      const sampleCanvas = document.createElement("canvas");
+      const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+      const glyphFillCache = new Map();
+
+      let dpr = Math.max(1, window.devicePixelRatio || 1);
+      let viewportW = 0;
+      let viewportH = 0;
+      let cols = 0;
+      let rows = 0;
+      const cellSize = 6;
+      let cellW = cellSize;
+      let cellH = Math.round(cellSize * 1.32);
+      let lastFrame = 0;
+      const targetFrameMs = 1000 / 24;
+      let glyphColor = "#f5f5f5";
+      let bgColor = "#050505";
+      let fgIsDark = false;
+      let activeVideo = sourceVideoA;
+      let hasStartedIntro = false;
+      let introPrimed = false;
+      const introSwitchLeadSeconds = 0.08;
+
+      sourceVideoA.loop = false;
+      sourceVideoB.loop = false;
+
+      function setActiveVideo(videoEl) {
+        activeVideo = videoEl;
+        sourceVideoA.classList.toggle("active", videoEl === sourceVideoA);
+        sourceVideoB.classList.toggle("active", videoEl === sourceVideoB);
+      }
+
+      function clamp01(value) {
+        if (value < 0) return 0;
+        if (value > 1) return 1;
+        return value;
+      }
+
+      function getGlyphFillStyle(r, g, b) {
+        const rq = r & 0xf8;
+        const gq = g & 0xf8;
+        const bq = b & 0xf8;
+        const key = (rq << 16) | (gq << 8) | bq;
+        let style = glyphFillCache.get(key);
+        if (!style) {
+          style = `rgb(${rq} ${gq} ${bq})`;
+          glyphFillCache.set(key, style);
+        }
+        return style;
+      }
+
+      function applyNightTheme() {
+        bgColor = "#050505";
+        glyphColor = "#f5f5f5";
+        fgIsDark = false;
+
+        const muted = "rgba(245, 245, 245, 0.58)";
+        const panel = "rgba(245, 245, 245, 0.08)";
+        const border = "rgba(245, 245, 245, 0.24)";
+
+        document.documentElement.style.setProperty("--bg", bgColor);
+        document.documentElement.style.setProperty("--fg", glyphColor);
+        document.documentElement.style.setProperty("--muted", muted);
+        document.documentElement.style.setProperty("--panel", panel);
+        document.documentElement.style.setProperty("--border", border);
+      }
+
+      function pickRandomVideo() {
+        const index = Math.floor(Math.random() * bloomVideos.length);
+        return bloomVideos[index];
+      }
+
+      function bloomDebugLabel(path) {
+        const file = path.split("/").pop() || "";
+        const match = file.match(/BloomToDeath-(\d+)\.mov/i);
+        if (match) {
+          return `BloomToDeath(${match[1]}).MOV`;
+        }
+        return file;
+      }
+
+      function getViewportSize() {
+        if (window.visualViewport) {
+          return {
+            width: Math.max(1, Math.round(window.visualViewport.width)),
+            height: Math.max(1, Math.round(window.visualViewport.height))
+          };
+        }
+        return {
+          width: Math.max(1, window.innerWidth),
+          height: Math.max(1, window.innerHeight)
+        };
+      }
+
+      function configureCanvasSize() {
+        const viewport = getViewportSize();
+        viewportW = viewport.width;
+        viewportH = viewport.height;
+        dpr = Math.max(1, window.devicePixelRatio || 1);
+
+        asciiCanvas.width = Math.max(1, Math.floor(viewportW * dpr));
+        asciiCanvas.height = Math.max(1, Math.floor(viewportH * dpr));
+        asciiCanvas.style.width = viewportW + "px";
+        asciiCanvas.style.height = viewportH + "px";
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.textBaseline = "top";
+        ctx.textAlign = "left";
+        ctx.imageSmoothingEnabled = false;
+
+        cellW = cellSize;
+        cellH = Math.round(cellSize * 1.32);
+        cols = Math.max(2, Math.floor(viewportW / cellW));
+        rows = Math.max(2, Math.floor(viewportH / cellH));
+
+        sampleCanvas.width = cols;
+        sampleCanvas.height = rows;
+      }
+
+      function luminanceFromImageData(imageData) {
+        const data = imageData.data;
+        const size = cols * rows;
+        const lum = new Float32Array(size);
+        for (let i = 0, p = 0; i < size; i += 1, p += 4) {
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          let y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          y = clamp01((y - 0.5) * 1.45 + 0.5);
+          y = Math.pow(y, 0.92);
+          lum[i] = y;
+        }
+        return lum;
+      }
+
+      function drawAsciiFrame() {
+        if (activeVideo.readyState < 2) return;
+        sampleCtx.drawImage(activeVideo, 0, 0, cols, rows);
+        const frame = sampleCtx.getImageData(0, 0, cols, rows);
+        const data = frame.data;
+        const lum = luminanceFromImageData(frame);
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, viewportW, viewportH);
+        ctx.font = `${Math.round(cellSize * 1.2)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+
+        const densityMax = chars.length - 1;
+        const edgeStrength = 0.68;
+        const ditherStrength = 0.15;
+        let lastFillStyle = "";
+
+        for (let y = 0; y < rows; y += 1) {
+          const yBase = y * cols;
+          const py = y * cellH;
+          for (let x = 0; x < cols; x += 1) {
+            const idx = yBase + x;
+            const pixelIndex = idx * 4;
+            const l = lum[idx];
+            const left = x > 0 ? lum[idx - 1] : l;
+            const right = x < cols - 1 ? lum[idx + 1] : l;
+            const up = y > 0 ? lum[idx - cols] : l;
+            const down = y < rows - 1 ? lum[idx + cols] : l;
+
+            const edge = Math.hypot(right - left, down - up);
+            const dither = (bayer4[y & 3][x & 3] / 15 - 0.5) * ditherStrength;
+            let signal = clamp01(l * 0.78 + edge * edgeStrength + dither);
+
+            if (fgIsDark) {
+              signal = clamp01(signal * 0.95);
+            }
+
+            const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
+            const ch = chars[charIndex];
+            if (ch !== " ") {
+              const fillStyle = getGlyphFillStyle(data[pixelIndex], data[pixelIndex + 1], data[pixelIndex + 2]);
+              if (fillStyle !== lastFillStyle) {
+                ctx.fillStyle = fillStyle;
+                lastFillStyle = fillStyle;
+              }
+              ctx.fillText(ch, x * cellW, py);
+            }
+          }
+        }
+      }
+
+      function renderLoop(ts) {
+        if (!activeVideo.paused && !activeVideo.ended && activeVideo.readyState >= 2) {
+          if (ts - lastFrame >= targetFrameMs) {
+            lastFrame = ts;
+            drawAsciiFrame();
+          }
+        }
+        requestAnimationFrame(renderLoop);
+      }
+
+      async function startPlayback() {
+        try {
+          await activeVideo.play();
+          startWrap.classList.remove("visible");
+        } catch (err) {
+          startWrap.classList.add("visible");
+        }
+      }
+
+      async function switchToIntro() {
+        if (hasStartedIntro) return;
+        hasStartedIntro = true;
+
+        const playIntro = async () => {
+          setActiveVideo(sourceVideoB);
+          sourceVideoB.currentTime = 0;
+          sourceVideoB.muted = sourceVideoA.muted;
+          sourceVideoA.pause();
+          try {
+            await sourceVideoB.play();
+            startWrap.classList.remove("visible");
+          } catch (err) {
+            startWrap.classList.add("visible");
+          }
+        };
+
+        if (sourceVideoB.readyState >= 2) {
+          await playIntro();
+          return;
+        }
+
+        sourceVideoB.addEventListener("loadeddata", () => {
+          void playIntro();
+        }, { once: true });
+      }
+
+      async function primeIntroPlayback() {
+        if (introPrimed || sourceVideoB.readyState < 2) return;
+        introPrimed = true;
+        try {
+          sourceVideoB.muted = true;
+          sourceVideoB.currentTime = 0;
+          await sourceVideoB.play();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          sourceVideoB.pause();
+          sourceVideoB.currentTime = 0;
+        } catch (err) {
+          sourceVideoB.pause();
+          sourceVideoB.currentTime = 0;
+        }
+      }
+
+      startBtn.addEventListener("click", async () => {
+        activeVideo.muted = false;
+        try {
+          await activeVideo.play();
+          startWrap.classList.remove("visible");
+        } catch (err) {
+          activeVideo.muted = true;
+          await startPlayback();
+        }
+        void primeIntroPlayback();
+      });
+
+      window.addEventListener("resize", configureCanvasSize);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", configureCanvasSize);
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && activeVideo.paused) {
+          startPlayback();
+        }
+      });
+
+      applyNightTheme();
+      configureCanvasSize();
+
+      const selectedBloom = pickRandomVideo();
+      setActiveVideo(sourceVideoA);
+      sourceVideoA.src = selectedBloom;
+      sourceVideoB.src = introVideoPath;
+      sourceVideoB.load();
+      videoLabel.textContent = bloomDebugLabel(selectedBloom);
+
+      sourceVideoA.addEventListener("loadeddata", () => {
+        startPlayback();
+        void primeIntroPlayback();
+      }, { once: true });
+      sourceVideoA.addEventListener("timeupdate", () => {
+        if (hasStartedIntro) return;
+        if (!sourceVideoA.duration || sourceVideoA.duration === Infinity) return;
+        if (sourceVideoA.duration - sourceVideoA.currentTime <= introSwitchLeadSeconds) {
+          void switchToIntro();
+        }
+      });
+      sourceVideoA.addEventListener("ended", () => {
+        void switchToIntro();
+      });
+      sourceVideoB.addEventListener("ended", () => {
+        window.location.href = nextPageUrl;
+      });
+
+      requestAnimationFrame(renderLoop);
+    })();
+  </script>
+</body>
+</html>

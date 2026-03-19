@@ -1,0 +1,52 @@
+{
+    "tracks":  [
+                   {
+                       "title":  "BEGGING THE WITNESS",
+                       "path":  "/Shuffle/BEGGING%20THE%20WITNESS.flac",
+                       "addedAt":  "2026-03-03T14:43:20+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "WIND CATCHER",
+                       "path":  "/Shuffle/WIND%20CATCHER.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "Touch The Sky",
+                       "path":  "/Shuffle/Touch%20The%20Sky.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "SUNDOWN",
+                       "path":  "/Shuffle/SUNDOWN.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "NOT ENOUGH",
+                       "path":  "/Shuffle/NOT%20ENOUGH.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "HORIZON SCRAPER",
+                       "path":  "/Shuffle/HORIZON%20SCRAPER.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "BURNS DOWN",
+                       "path":  "/Shuffle/BURNS%20DOWN.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   },
+                   {
+                       "title":  "BEFORE YOU GO",
+                       "path":  "/Shuffle/BEFORE%20YOU%20GO.mp3",
+                       "addedAt":  "2026-03-03T14:29:36+11:00",
+                       "artist":  "Quadeca"
+                   }
+               ]
+}

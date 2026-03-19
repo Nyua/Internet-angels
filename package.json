@@ -1,0 +1,20 @@
+{
+  "name": "internet-angel",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "scripts": {
+    "build": "node ./scripts/build-site.js",
+    "dev": "npm run build && wrangler pages dev dist --port 8788",
+    "dev:serve": "wrangler pages dev dist --port 8788",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test tests/*.test.js",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0",
+    "wrangler": "^4.18.0"
+  }
+}

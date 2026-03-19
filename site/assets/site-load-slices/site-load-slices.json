@@ -1,0 +1,62 @@
+{
+    "source_gif":  "Timelapse/Site-Load-Gif.gif",
+    "source_resolution":  {
+                              "height":  1080,
+                              "width":  1920
+                          },
+    "reference_resolution":  {
+                                 "height":  945,
+                                 "width":  1920
+                             },
+    "displayed_image":  {
+                            "scale":  0.875,
+                            "offset_y":  0,
+                            "offset_x":  120,
+                            "displayed_width":  1680,
+                            "displayed_height":  945
+                        },
+    "boxes":  [
+                  {
+                      "name":  "profile-picture",
+                      "x":  458,
+                      "y":  24,
+                      "width":  272,
+                      "height":  317
+                  },
+                  {
+                      "name":  "profile-links",
+                      "x":  463,
+                      "y":  338,
+                      "width":  263,
+                      "height":  235
+                  },
+                  {
+                      "name":  "titlebar",
+                      "x":  723,
+                      "y":  22,
+                      "width":  735,
+                      "height":  75
+                  },
+                  {
+                      "name":  "recent-activity",
+                      "x":  727,
+                      "y":  95,
+                      "width":  733,
+                      "height":  200
+                  },
+                  {
+                      "name":  "lastfm-showcase",
+                      "x":  725,
+                      "y":  293,
+                      "width":  735,
+                      "height":  650
+                  },
+                  {
+                      "name":  "loading-icon",
+                      "x":  554,
+                      "y":  417,
+                      "width":  78,
+                      "height":  71
+                  }
+              ]
+}
