@@ -93,7 +93,10 @@ test("josie mobile uses the docked desktop player shell", async ({ page }) => {
   });
 
   await expect(page.locator(".josie-mobile-audio-player .josie-audio-player")).toHaveCount(1);
+  await expect(page.locator(".josie-mobile-audio-player .josie-audio-player-wave-shell--mobile-dock")).toHaveCount(0);
   await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
+  await expect(page.locator(".josie-mobile-audio-player [data-shuffle-title]")).toBeVisible();
+  await expect(page.locator(".josie-mobile-audio-player [data-shuffle-artist]")).toBeVisible();
   await expect(page.locator(".steam-sidebar-list")).toBeVisible();
   await page.locator(".steam-sidebar-row--discord .steam-sidebar-site-icon svg").evaluate((node) => node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);

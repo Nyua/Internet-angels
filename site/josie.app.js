@@ -2316,8 +2316,7 @@
     return `
     <div class="josie-mobile-audio-player">
       ${renderShufflePlayerMarkup({
-        playerClassName: "josie-audio-player josie-audio-player--mobile-dock",
-        surfaceClassName: "josie-audio-player-wave-shell josie-audio-player-wave-shell--mobile-dock"
+        playerClassName: "josie-audio-player josie-audio-player--mobile-dock"
       })}
     </div>
   `;
@@ -3364,8 +3363,8 @@
     if (!(document.body instanceof HTMLElement)) return null;
     const tailPointCount = 10;
     const tailLifetimeMs = 148;
-    const trailCanvasSize = 220;
-    const trailSegmentSizePx = 22;
+    const trailCanvasSize = 110;
+    const trailSegmentSizePx = 11;
     const maxTrailSegmentsPerMove = 4;
     const trailSubdivisionCount = 1;
     const scrollMorphHoldMs = 170;
@@ -3381,7 +3380,6 @@
         <span class="site-pointer-ring"></span>
         <span class="site-pointer-hand" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path class="site-pointer-hand-outline" d="M3.4 1.2v18.6l4.9-4.52 2.94 7.06 4.05-1.7-2.93-7.01h5.46Z"></path>
             <path class="site-pointer-hand-fill" d="M5.2 5.1v10.53l3.16-2.9 2.76 6.61 1.05-.44-2.76-6.61h3.9Z"></path>
           </svg>
         </span>
