@@ -122,7 +122,7 @@
       const chars = " .:-=+*#%@";
       const baseCellSize = 6;
       const bloomPlaybackFraction = 0.5;
-      const egretsDenseGridStartFraction = 0.5;
+      const egretsDenseGridStartSeconds = 3;
       const egretsDenseGridScale = 1 / Math.SQRT2;
       const asciiColorLevels = 3;
       const bassBoostFrequencyHz = 180;
@@ -182,19 +182,17 @@
         return value;
       }
 
-      function getGlyphFillStyle(r, g, b) {
+      function getGlyphFillStyle(luminance) {
         const maxBucket = Math.max(1, asciiColorLevels - 1);
-        const quantize = (channel) => {
-          const bucket = Math.round((channel / 255) * maxBucket);
+        const quantize = (value) => {
+          const bucket = Math.round(clamp01(value) * maxBucket);
           return Math.round((bucket / maxBucket) * 255);
         };
-        const rq = quantize(r);
-        const gq = quantize(g);
-        const bq = quantize(b);
-        const key = (rq << 16) | (gq << 8) | bq;
+        const grayscale = quantize(luminance);
+        const key = grayscale;
         let style = glyphFillCache.get(key);
         if (!style) {
-          style = `rgb(${rq} ${gq} ${bq})`;
+          style = `rgb(${grayscale} ${grayscale} ${grayscale})`;
           glyphFillCache.set(key, style);
         }
         return style;
@@ -255,13 +253,37 @@
       function resolveCellScale() {
         if (
           activeVideo === sourceVideoB
-          && Number.isFinite(sourceVideoB.duration)
-          && sourceVideoB.duration > 0
-          && sourceVideoB.currentTime >= sourceVideoB.duration * egretsDenseGridStartFraction
+          && sourceVideoB.currentTime >= egretsDenseGridStartSeconds
         ) {
           return egretsDenseGridScale;
         }
         return 1;
+      }
+
+      function drawVideoCover(videoEl, targetCtx, targetWidth, targetHeight) {
+        const videoWidth = Number(videoEl.videoWidth) || 0;
+        const videoHeight = Number(videoEl.videoHeight) || 0;
+        if (!videoWidth || !videoHeight) {
+          targetCtx.drawImage(videoEl, 0, 0, targetWidth, targetHeight);
+          return;
+        }
+
+        const targetAspect = targetWidth / targetHeight;
+        const videoAspect = videoWidth / videoHeight;
+        let sx = 0;
+        let sy = 0;
+        let sw = videoWidth;
+        let sh = videoHeight;
+
+        if (videoAspect > targetAspect) {
+          sw = videoHeight * targetAspect;
+          sx = (videoWidth - sw) / 2;
+        } else if (videoAspect < targetAspect) {
+          sh = videoWidth / targetAspect;
+          sy = (videoHeight - sh) / 2;
+        }
+
+        targetCtx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
       }
 
       async function ensureAudioGraph() {
@@ -334,7 +356,8 @@
       function drawAsciiFrame() {
         if (activeVideo.readyState < 2) return;
         syncAsciiGrid();
-        sampleCtx.drawImage(activeVideo, 0, 0, cols, rows);
+        sampleCtx.clearRect(0, 0, cols, rows);
+        drawVideoCover(activeVideo, sampleCtx, cols, rows);
         const frame = sampleCtx.getImageData(0, 0, cols, rows);
         const data = frame.data;
         const lum = luminanceFromImageData(frame);
@@ -371,7 +394,7 @@
             const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
             const ch = chars[charIndex];
             if (ch !== " ") {
-              const fillStyle = getGlyphFillStyle(data[pixelIndex], data[pixelIndex + 1], data[pixelIndex + 2]);
+              const fillStyle = getGlyphFillStyle(l);
               if (fillStyle !== lastFillStyle) {
                 ctx.fillStyle = fillStyle;
                 lastFillStyle = fillStyle;
