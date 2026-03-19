@@ -1280,6 +1280,7 @@
     let waveformTracks = [];
     let currentTrack = null;
     let traceValues = new Float32Array(0);
+    let traceSmoothingValues = new Float32Array(0);
     let rafId = 0;
     let loadState = "loading";
     let playbackUnlocked = !document.body?.classList.contains("site-load-playing");
@@ -1617,6 +1618,9 @@
       if (!(traceValues instanceof Float32Array) || traceValues.length !== width) {
         traceValues = new Float32Array(width);
       }
+      if (!(traceSmoothingValues instanceof Float32Array) || traceSmoothingValues.length !== width) {
+        traceSmoothingValues = new Float32Array(width);
+      }
       const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode);
       let peak = 0;
       let transientPeak = 0;
@@ -1649,6 +1653,26 @@
           }
           traceValues[x] = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * 2.35), -1, 1);
         }
+      }
+      const structureHold = clamp2(
+        Math.max(0, peak - 0.46) * 1.08 +
+        Math.max(0, transientPeak - 0.24) * 1.42,
+        0,
+        1
+      );
+      if (structureHold > 0.01 && width > 4) {
+        const blend = structureHold * 0.76;
+        for (let x = 0; x < width; x += 1) {
+          const center = traceValues[x] || 0;
+          const left = traceValues[Math.max(0, x - 1)] || center;
+          const right = traceValues[Math.min(width - 1, x + 1)] || center;
+          const farLeft = traceValues[Math.max(0, x - 3)] || left;
+          const farRight = traceValues[Math.min(width - 1, x + 3)] || right;
+          const spine = (left + center + right) / 3;
+          const structure = (farLeft * 0.8 + left * 1.15 + center * 1.5 + right * 1.15 + farRight * 0.8) / 5.4;
+          traceSmoothingValues[x] = center * (1 - blend) + (spine * 0.42 + structure * 0.58) * blend;
+        }
+        traceValues.set(traceSmoothingValues);
       }
       let rms = 0;
       for (let x = 0; x < width; x += 1) {
@@ -1684,8 +1708,17 @@
         0,
         1
       );
-      let baselineY = Math.round(height * (0.49 + loudnessBoost * 0.03)) + 0.5;
-      const desiredAmplitude = Math.max(16, height * (0.31 + loudnessBoost * 0.1 + peakSurge * 0.14 + absolutePeakSurge * 0.18));
+      const structureDamping = 1 - structureHold * 0.42;
+      let baselineY = Math.round(height * (0.49 + loudnessBoost * 0.02 + structureHold * 0.008)) + 0.5;
+      const desiredAmplitude = Math.max(
+        16,
+        height * (
+          0.31 +
+          loudnessBoost * (0.095 - structureHold * 0.02) +
+          peakSurge * (0.12 * structureDamping) +
+          absolutePeakSurge * (0.13 * structureDamping)
+        )
+      );
       const overscanPad = Math.max(14, height * 0.08);
       const maxAmplitude = Math.max(
         14,
@@ -1711,11 +1744,11 @@
       waveCtx.stroke();
       waveCtx.save();
       waveCtx.shadowColor = "rgba(228, 248, 255, 0.95)";
-      waveCtx.shadowBlur = 16 + impact * 24 + peakSurge * 12 + absolutePeakSurge * 10;
-      waveCtx.lineWidth = 2.1 + impact * 2.4 + peakSurge * 0.9 + absolutePeakSurge * 0.85;
+      waveCtx.shadowBlur = 16 + impact * 18 + peakSurge * (8 * structureDamping) + absolutePeakSurge * (6 * structureDamping);
+      waveCtx.lineWidth = 2.1 + impact * 1.9 + peakSurge * (0.7 * structureDamping) + absolutePeakSurge * (0.58 * structureDamping);
       waveCtx.lineCap = "round";
       waveCtx.lineJoin = "round";
-      waveCtx.strokeStyle = `rgba(229, 248, 255, ${Math.min(0.44 + impact * 0.62 + peakSurge * 0.06 + absolutePeakSurge * 0.04, 0.98)})`;
+      waveCtx.strokeStyle = `rgba(229, 248, 255, ${Math.min(0.44 + impact * 0.56 + peakSurge * 0.04 + absolutePeakSurge * 0.03, 0.98)})`;
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       for (let x = 0; x < width; x += 1) {
@@ -1769,6 +1802,7 @@
       currentTrack = track;
       loadState = "loading";
       traceValues = new Float32Array(0);
+      traceSmoothingValues = new Float32Array(0);
       audioEl.pause();
       audioEl.src = resolveTrackUrl(track);
       audioEl.load();
@@ -1848,6 +1882,8 @@
       playerRoot = null;
       waveSurface = null;
       hideWavePortal();
+      traceValues = new Float32Array(0);
+      traceSmoothingValues = new Float32Array(0);
       titleEl = null;
       artistEl = null;
       progressFillEl = null;
@@ -1882,6 +1918,7 @@
       mediaSourceNode = null;
       analyserNode = null;
       analyserSamples = new Float32Array(0);
+      traceSmoothingValues = new Float32Array(0);
       unbindRoot();
       if (wavePortal instanceof HTMLElement) {
         wavePortal.remove();
