@@ -3380,6 +3380,7 @@
         <span class="site-pointer-ring"></span>
         <span class="site-pointer-hand" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path class="site-pointer-hand-outline" d="M3.4 1.2v18.6l4.9-4.52 2.94 7.06 4.05-1.7-2.93-7.01h5.46Z"></path>
             <path class="site-pointer-hand-fill" d="M5.2 5.1v10.53l3.16-2.9 2.76 6.61 1.05-.44-2.76-6.61h3.9Z"></path>
           </svg>
         </span>
@@ -3557,6 +3558,7 @@
       if (nextTarget === currentInteractiveTarget) return;
       currentInteractiveTarget = nextTarget;
       cursorEl.classList.toggle("is-interactive", Boolean(currentInteractiveTarget));
+      document.body.classList.toggle("has-system-pointer", Boolean(currentInteractiveTarget));
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
       if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
@@ -3648,6 +3650,7 @@
       currentInteractiveTarget = null;
       pointerEnergy = 0;
       cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down");
+      document.body.classList.remove("has-system-pointer");
     }
     function onPointerMove(event) {
       if (!(event instanceof PointerEvent)) return;
@@ -3720,6 +3723,7 @@
         window.removeEventListener("blur", hideCursor);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         document.body.classList.remove("has-custom-cursor");
+        document.body.classList.remove("has-system-pointer");
         cursorEl.remove();
       }
     };
