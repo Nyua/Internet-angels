@@ -5,6 +5,8 @@ export const STEAM_PROFILE_URL = "https://steamcommunity.com/id/foundlifeless/";
 
 export const LASTFM_FRESH_TTL_SEC = 15 * 60;
 export const LASTFM_RETAIN_TTL_SEC = 24 * 60 * 60;
+export const LASTFM_NOW_PLAYING_FRESH_TTL_SEC = 60;
+export const LASTFM_NOW_PLAYING_RETAIN_TTL_SEC = 15 * 60;
 export const DISCORD_FRESH_TTL_SEC = 10 * 60;
 export const DISCORD_RETAIN_TTL_SEC = 6 * 60 * 60;
 export const STEAM_FRESH_TTL_SEC = 12 * 60 * 60;
@@ -14,4 +16,3 @@ export const LASTFM_TIMEOUT_MS = 10_000;
 export const DISCORD_TIMEOUT_MS = 8_500;
 export const STEAM_TIMEOUT_MS = 12_000;
 export const STEAM_APP_TITLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
-

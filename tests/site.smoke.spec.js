@@ -15,6 +15,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   const lastfmResponse = await request.get("/api/lastfm");
   expect(lastfmResponse.status()).toBe(200);
 
+  const nowPlayingResponse = await request.get("/api/lastfm-now-playing");
+  expect(nowPlayingResponse.status()).toBe(200);
+
   const discordResponse = await request.get("/api/discord");
   expect(discordResponse.status()).toBe(200);
 

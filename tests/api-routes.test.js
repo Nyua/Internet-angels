@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { onRequest as onDiscordRequest } from "../functions/api/discord.js";
 import { onRequest as onLastFmRequest } from "../functions/api/lastfm.js";
+import { onRequest as onLastFmNowPlayingRequest } from "../functions/api/lastfm-now-playing.js";
 import { onRequest as onSteamRequest } from "../functions/api/steam-recent-activity.js";
 import { writeCachedPayload } from "../functions/lib/cache.js";
 import { normalizeDiscordPayload } from "../functions/lib/discord.js";
@@ -88,6 +89,48 @@ test("lastfm route returns retained stale payload when upstream fails", async ()
     assert.equal(payload.stale, true);
     assert.equal(payload.sourceStatus, "PARTIAL");
     assert.equal(payload.user.playcount, "65111");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm-now-playing route returns retained stale payload when upstream fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-now-playing");
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async () => {
+      throw new Error("boom");
+    };
+
+    await primeCache(cache, request, {
+      sourceStatus: "OK",
+      stale: false,
+      fetchedAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+      nowPlaying: true,
+      track: {
+        title: "WIND CATCHER",
+        artist: "Quadeca",
+        album: "Vanisher",
+        artworkUrl: "https://example.com/art.jpg",
+        url: "https://www.last.fm/music/Quadeca/_/WIND+CATCHER"
+      }
+    }, 15 * 60);
+
+    const response = await onLastFmNowPlayingRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, true);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.track.title, "WIND CATCHER");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

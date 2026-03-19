@@ -74,6 +74,16 @@ export function normalizeLastFmNowPlayingPayload(upstreamPayload, nowMs = Date.n
   };
 }
 
+export function buildEmptyLastFmNowPlayingPayload(nowMs = Date.now(), sourceStatus = "ERROR") {
+  return {
+    sourceStatus,
+    stale: false,
+    fetchedAt: new Date(nowMs).toISOString(),
+    nowPlaying: false,
+    track: null
+  };
+}
+
 export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERROR") {
   return {
     sourceStatus,
@@ -90,6 +100,17 @@ export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERRO
       fetchedAt: new Date(nowMs).toISOString(),
       track: null
     }
+  };
+}
+
+export async function fetchLastFmNowPlayingPayload(apiKey, nowMs = Date.now()) {
+  const recentTracksPayload = await fetchLastFmJson("user.getrecenttracks", apiKey, {
+    limit: 1,
+    extended: 1
+  });
+  return {
+    sourceStatus: "OK",
+    ...normalizeLastFmNowPlayingPayload(recentTracksPayload, nowMs)
   };
 }
 
@@ -136,4 +157,3 @@ export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
         }
   };
 }
-

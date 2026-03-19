@@ -747,6 +747,7 @@
   var PROXY_ENDPOINTS = {
     discord: "/api/discord",
     lastfm: "/api/lastfm",
+    lastfmNowPlaying: "/api/lastfm-now-playing",
     steam: "/api/steam-recent-activity"
   };
   function buildProxyEndpoint(pathname) {
@@ -936,8 +937,12 @@
       lovedTracks: ""
     };
     const proxyEndpoint = buildProxyEndpoint(PROXY_ENDPOINTS.lastfm);
+    const nowPlayingEndpoint = buildProxyEndpoint(PROXY_ENDPOINTS.lastfmNowPlaying);
     try {
-      const proxyPayload = await fetchJsonWithTimeout(proxyEndpoint, 1e4, signal, { cacheMode: "default" });
+      const [proxyPayload, nowPlayingPayload] = await Promise.all([
+        fetchJsonWithTimeout(proxyEndpoint, 1e4, signal, { cacheMode: "default" }),
+        fetchJsonWithTimeout(nowPlayingEndpoint, 2500, signal, { cacheMode: "default" }).catch(() => null)
+      ]);
       const mappedRecent = mapLastFmRecentTracksFromApi({ recenttracks: proxyPayload?.recenttracks }, now);
       if (mappedRecent.length) {
         recentTracks = mappedRecent;
@@ -950,7 +955,7 @@
       if (mappedAlbums.length) {
         topAlbums = mappedAlbums;
       }
-      const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(proxyPayload?.nowPlaying);
+      const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(nowPlayingPayload || proxyPayload?.nowPlaying);
       const listeningState = extractLastFmCurrentlyListeningItem(recentTracks);
       currentlyListening = mappedNowPlaying || listeningState.currentlyListening;
       recentTracks = listeningState.recentTracks;
@@ -986,7 +991,12 @@
           )
         },
         stats: [
-          { label: "Feed", value: resolveProxyFreshnessLabel(proxyPayload?.stale) },
+          {
+            label: "Feed",
+            value: nowPlayingPayload
+              ? `Now Playing: ${resolveProxyFreshnessLabel(nowPlayingPayload?.stale)}`
+              : resolveProxyFreshnessLabel(proxyPayload?.stale)
+          },
           { label: "Scrobbles", value: profileTotals.scrobbles || "--" },
           { label: "Artists", value: profileTotals.artists || "--" },
           { label: "Loved Tracks", value: profileTotals.lovedTracks || "--" },
