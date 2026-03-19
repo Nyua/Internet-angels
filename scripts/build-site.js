@@ -8,6 +8,10 @@ const appSourcePath = path.join(siteDir, "ames-corner.app.js");
 const clientOutputPath = path.join(distDir, "ames-corner.client.js");
 const appOutputPath = path.join(distDir, "ames-corner.app.js");
 const headersPath = path.join(distDir, "_headers");
+const maxPagesAssetBytes = 25 * 1024 * 1024;
+const excludedDeployPaths = /* @__PURE__ */ new Set([
+  "Shuffle/BEGGING THE WITNESS.flac"
+]);
 
 const headersFile = `/*.html
   Cache-Control: no-cache, max-age=0, must-revalidate
@@ -41,9 +45,38 @@ if (!fs.existsSync(appSourcePath)) {
   throw new Error(`Missing app source file: ${appSourcePath}`);
 }
 
+function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = []) {
+  const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(currentPath, entry.name);
+    if (entry.isDirectory()) {
+      collectOversizedFiles(rootPath, entryPath, oversized);
+      continue;
+    }
+    const stats = fs.statSync(entryPath);
+    if (stats.size > maxPagesAssetBytes) {
+      oversized.push({
+        path: path.relative(rootPath, entryPath).replaceAll("\\", "/"),
+        size: stats.size
+      });
+    }
+  }
+  return oversized;
+}
+
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
-fs.cpSync(siteDir, distDir, { recursive: true, force: true });
+fs.cpSync(siteDir, distDir, {
+  recursive: true,
+  force: true,
+  filter(sourcePath) {
+    const relativePath = path.relative(siteDir, sourcePath).replaceAll("\\", "/");
+    if (!relativePath || relativePath === ".") {
+      return true;
+    }
+    return !excludedDeployPaths.has(relativePath);
+  }
+});
 
 const appSource = fs.readFileSync(appSourcePath, "utf8");
 fs.writeFileSync(clientOutputPath, appSource, "utf8");
@@ -51,5 +84,15 @@ if (fs.existsSync(appOutputPath)) {
   fs.rmSync(appOutputPath, { force: true });
 }
 fs.writeFileSync(headersPath, headersFile, "utf8");
+
+const oversizedFiles = collectOversizedFiles(distDir);
+if (oversizedFiles.length) {
+  const details = oversizedFiles
+    .map((file) => `- ${file.path} (${file.size} bytes)`)
+    .join("\n");
+  throw new Error(
+    `Cloudflare Pages only allows static assets up to ${maxPagesAssetBytes} bytes (25 MiB).\n${details}`
+  );
+}
 
 console.log(`Built site into ${distDir}`);

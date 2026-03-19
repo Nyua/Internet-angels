@@ -107,6 +107,7 @@ Cloudflare dashboard path:
 - No client bundle contains API keys.
 - Last.fm, Discord, and Steam requests are proxied through first-party endpoints and cached at the edge.
 - The site is intended for the Cloudflare Pages custom domain `internet-angel.net`.
+- Cloudflare Pages has a 25 MiB limit per static asset, so oversized media must be compressed, moved off Pages, or excluded from the build.
 
 ## Migration Notes
 

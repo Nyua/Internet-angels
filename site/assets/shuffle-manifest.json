@@ -1,12 +1,6 @@
 {
     "tracks":  [
                    {
-                       "title":  "BEGGING THE WITNESS",
-                       "path":  "/Shuffle/BEGGING%20THE%20WITNESS.flac",
-                       "addedAt":  "2026-03-03T14:43:20+11:00",
-                       "artist":  "Quadeca"
-                   },
-                   {
                        "title":  "WIND CATCHER",
                        "path":  "/Shuffle/WIND%20CATCHER.mp3",
                        "addedAt":  "2026-03-03T14:29:36+11:00",
