@@ -5,6 +5,13 @@ test("root loads the intro page", async ({ page }) => {
   await expect(page).toHaveTitle(/BloomToDeath/);
 });
 
+test("mobile root skips the intro and redirects to josie", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveTitle(/Josie/);
+});
+
 test("next page redirects to josie", async ({ page }) => {
   await page.goto("/next.html");
   await expect(page).toHaveURL(/\/josie(?:\.html)?$/);

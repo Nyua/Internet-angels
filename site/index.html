@@ -112,6 +112,26 @@
 
   <script>
     (() => {
+      const mobileIntroBypassMaxWidthPx = 820;
+      function shouldSkipIntroOnMobile() {
+        if (typeof window === "undefined") return false;
+        const mobileMatch = window.matchMedia?.(`(max-width: ${mobileIntroBypassMaxWidthPx}px)`)?.
+          matches;
+        const coarsePointerMatch = window.matchMedia?.("(pointer: coarse)")?.matches;
+        return Boolean(mobileMatch || coarsePointerMatch || window.innerWidth <= mobileIntroBypassMaxWidthPx);
+      }
+      function resolveMobileJosieUrl() {
+        const isProductionDomain = /(^|\.)internet-angel\.net$/i.test(window.location.hostname);
+        if (isProductionDomain) {
+          return "https://internet-angel.net/josie";
+        }
+        return "/josie.html";
+      }
+      if (shouldSkipIntroOnMobile()) {
+        window.location.replace(resolveMobileJosieUrl());
+        return;
+      }
+
       const bloomVideos = [
         "Timelapse/BloomToDeath-1.mov",
         "Timelapse/BloomToDeath-2.mov",
