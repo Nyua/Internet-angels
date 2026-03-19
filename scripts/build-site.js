@@ -4,9 +4,9 @@ import path from "node:path";
 const rootDir = path.resolve(import.meta.dirname, "..");
 const siteDir = path.join(rootDir, "site");
 const distDir = path.join(rootDir, "dist");
-const appSourcePath = path.join(siteDir, "ames-corner.app.js");
-const clientOutputPath = path.join(distDir, "ames-corner.client.js");
-const appOutputPath = path.join(distDir, "ames-corner.app.js");
+const appSourcePath = path.join(siteDir, "josie.app.js");
+const clientOutputPath = path.join(distDir, "josie.client.js");
+const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const excludedDeployPaths = /* @__PURE__ */ new Set([

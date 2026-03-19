@@ -5,13 +5,13 @@ test("root loads the intro page", async ({ page }) => {
   await expect(page).toHaveTitle(/BloomToDeath ASCII Timelapse/);
 });
 
-test("next page redirects to ames-corner", async ({ page }) => {
+test("next page redirects to josie", async ({ page }) => {
   await page.goto("/next.html");
-  await expect(page).toHaveURL(/\/ames-corner(?:\.html)?$/);
-  await expect(page).toHaveTitle(/Ame's Corner/);
+  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveTitle(/Josie/);
 });
 
-test("ames-corner renders and dynamic endpoints respond", async ({ page, request }) => {
+test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
   const lastfmResponse = await request.get("/api/lastfm");
   expect(lastfmResponse.status()).toBe(200);
 
@@ -21,7 +21,7 @@ test("ames-corner renders and dynamic endpoints respond", async ({ page, request
   const steamResponse = await request.get("/api/steam-recent-activity");
   expect(steamResponse.status()).toBe(200);
 
-  await page.goto("/ames-corner.html");
+  await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
     timeout: 30_000
   });

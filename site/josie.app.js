@@ -1,4 +1,4 @@
-// Editable live client source. This is the file the build now promotes to ames-corner.client.js.
+// Editable live client source. This is the file the build now promotes to josie.client.js.
 (() => {
   var define_import_meta_env_default = {};
   var root = document.querySelector(".corner-shell");
@@ -27,7 +27,7 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
-  // src/ames-corner/social-hub/config.js
+  // src/josie/social-hub/config.js
   var SOCIAL_HUB_SITES = [
     {
       id: "twitter",
@@ -138,7 +138,7 @@
         handle: "@ProbablyLaced",
         url: "https://x.com/ProbablyLaced",
         avatarUrl: "",
-        bio: "Operator feed mirror for Ame's Corner social array."
+        bio: "Operator feed mirror for Josie social array."
       },
       stats: [
         { label: "Followers", value: "Live" },
@@ -396,7 +396,7 @@
     }
     return await response.json();
   }
-  // src/ames-corner/social-hub/data-sources.js
+  // src/josie/social-hub/data-sources.js
   var LASTFM_RECENT_TRACK_LIMIT = 10;
   var LASTFM_GRID_LIMIT = 8;
   function firstNonEmpty(...values) {
@@ -1013,7 +1013,7 @@
     };
   }
 
-  // src/ames-corner/social-hub/render.js
+  // src/josie/social-hub/render.js
   function escapeHtml(value) {
     return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
   }
@@ -1158,7 +1158,7 @@
     return reversed;
   }
   function createShufflePlayerController() {
-    const SITE_LOAD_COMPLETE_EVENT = "ames:site-load-complete";
+    const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
     let disposed = false;
     let playerRoot = null;
     let waveSurface = null;
@@ -2276,7 +2276,7 @@
     };
   }
 
-  // src/ames-corner/social-hub/state.js
+  // src/josie/social-hub/state.js
   function clamp2(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }

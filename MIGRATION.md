@@ -6,9 +6,9 @@ Static frontend moved into `site/`:
 
 - `index.html`
 - `next.html`
-- `ames-corner.html`
-- `ames-corner.css`
-- `ames-corner.app.js`
+- `josie.html`
+- `josie.css`
+- `josie.app.js`
 - `assets/`
 - `avatars/`
 - `fonts/`
@@ -46,9 +46,9 @@ internet-angel-site/
   site/
     index.html
     next.html
-    ames-corner.html
-    ames-corner.css
-    ames-corner.app.js
+    josie.html
+    josie.css
+    josie.app.js
     assets/
     avatars/
     fonts/
