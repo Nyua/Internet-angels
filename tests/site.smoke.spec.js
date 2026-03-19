@@ -30,6 +30,12 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
 
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true");
+  await expect(page.locator(".steam-hero-name")).toHaveText("Josie");
+  await expect(page.locator(".steam-hero-ornament")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-ornament .steam-hero-bio-heart")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   await expect(page.locator(".lastfm-profile-total-value").first()).not.toHaveText("--");
 });

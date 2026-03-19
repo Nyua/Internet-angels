@@ -688,20 +688,22 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
 }
 
-.steam-hero-bio {
+.steam-hero-ornament {
   margin: 2px 0 0;
-  font-size: clamp(20px, 1.55vw, 24px);
-  line-height: 1.35;
-  color: #d8ecfa;
-  width: 100%;
-}
-
-.steam-hero-bio--animated {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.22em;
   white-space: nowrap;
+  width: 100%;
+}
+
+.steam-hero-description {
+  margin: 1px 0 0;
+  font-size: clamp(20px, 1.55vw, 24px);
+  line-height: 1.35;
+  color: #d8ecfa;
+  width: 100%;
 }
 
 .steam-hero-bio-sparkle,

@@ -1823,19 +1823,21 @@
   function pickHeroPayload(payloadById, sites) {
     return payloadById.get("steam") || payloadById.get("twitter") || payloadById.get("discord") || payloadById.get(sites?.[0]?.id || "") || null;
   }
-  function renderHeroBioMarkup(bioText) {
-    const safeBio = String(bioText || "").trim() || DEFAULT_HERO_BIO;
-    if (safeBio !== DEFAULT_HERO_BIO) {
-      return escapeHtml(safeBio);
-    }
+  function renderHeroOrnamentMarkup() {
     return `
       <span class="steam-hero-bio-sparkle steam-hero-bio-sparkle--left" aria-hidden="true">˚₊‧</span>
       <span class="steam-hero-bio-wing steam-hero-bio-wing--left" aria-hidden="true">꒰ა</span>
       <span class="steam-hero-bio-heart" aria-hidden="true">♡</span>
       <span class="steam-hero-bio-wing steam-hero-bio-wing--right" aria-hidden="true">໒꒱</span>
       <span class="steam-hero-bio-sparkle steam-hero-bio-sparkle--right" aria-hidden="true">‧₊˚</span>
-      <span class="sr-only">${escapeHtml(safeBio)}</span>
     `;
+  }
+  function renderHeroDescriptionMarkup(bioText) {
+    const safeBio = String(bioText || "").trim();
+    if (!safeBio) {
+      return "";
+    }
+    return escapeHtml(safeBio);
   }
   function renderHero(payloadById, sites) {
     const hero = pickHeroPayload(payloadById, sites);
@@ -1844,7 +1846,8 @@
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
     );
     const heroName = escapeHtml(hero?.profile?.name || "FoundLifeless");
-    const heroBio = renderHeroBioMarkup(hero?.profile?.bio || DEFAULT_HERO_BIO);
+    const heroOrnament = renderHeroOrnamentMarkup();
+    const heroDescription = renderHeroDescriptionMarkup(hero?.profile?.bio);
     return `
     <section class="steam-hero-shell" aria-label="Profile hero">
       <div class="steam-hero-content">
@@ -1854,7 +1857,8 @@
         </div>
         <div class="steam-hero-copy">
           <h2 class="steam-hero-name">${heroName}</h2>
-          <p class="steam-hero-bio${String(hero?.profile?.bio || "").trim() === DEFAULT_HERO_BIO || !String(hero?.profile?.bio || "").trim() ? " steam-hero-bio--animated" : ""}">${heroBio}</p>
+          <div class="steam-hero-ornament" aria-hidden="true">${heroOrnament}</div>
+          ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
     </section>
