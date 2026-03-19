@@ -2501,7 +2501,7 @@
     function onRootClick(event) {
       if (disposed) return;
       const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
+      if (!(target instanceof Element)) return;
       const anchor = target.closest("a[href]");
       if (anchor instanceof HTMLAnchorElement) {
         const anchorUrl = sanitizeUrl(anchor.href);
