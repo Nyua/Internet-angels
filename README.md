@@ -67,7 +67,6 @@ Production secret to add in Cloudflare Pages:
 
 - `GET /api/discord`
 - `GET /api/lastfm`
-- `GET /api/lastfm-now-playing`
 - `GET /api/steam-recent-activity`
 
 These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard.
@@ -75,7 +74,6 @@ These are the only dynamic browser-facing endpoints. The client only talks to th
 ## Caching
 
 - `GET /api/lastfm`: fresh for 15 minutes, retained for 24 hours
-- `GET /api/lastfm-now-playing`: fresh for 60 seconds, retained for 15 minutes
 - `GET /api/discord`: fresh for 10 minutes, retained for 6 hours
 - `GET /api/steam-recent-activity`: fresh for 12 hours, retained for 7 days
 

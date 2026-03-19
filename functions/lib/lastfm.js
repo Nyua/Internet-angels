@@ -74,16 +74,6 @@ export function normalizeLastFmNowPlayingPayload(upstreamPayload, nowMs = Date.n
   };
 }
 
-export function buildEmptyLastFmNowPlayingPayload(nowMs = Date.now(), sourceStatus = "ERROR") {
-  return {
-    sourceStatus,
-    stale: false,
-    fetchedAt: new Date(nowMs).toISOString(),
-    nowPlaying: false,
-    track: null
-  };
-}
-
 export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERROR") {
   return {
     sourceStatus,
@@ -103,25 +93,13 @@ export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERRO
   };
 }
 
-export async function fetchLastFmNowPlayingPayload(apiKey, nowMs = Date.now()) {
-  const recentTracksPayload = await fetchLastFmJson("user.getrecenttracks", apiKey, {
-    limit: 1,
-    extended: 1
-  });
-  return {
-    sourceStatus: "OK",
-    ...normalizeLastFmNowPlayingPayload(recentTracksPayload, nowMs)
-  };
-}
-
 export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
   const settled = await Promise.allSettled([
     fetchLastFmJson("user.getrecenttracks", apiKey, { limit: 10, extended: 1 }),
     fetchLastFmJson("user.gettopartists", apiKey, { period: "1month", limit: 8 }),
     fetchLastFmJson("user.gettopalbums", apiKey, { period: "1month", limit: 8 }),
     fetchLastFmJson("user.getinfo", apiKey),
-    fetchLastFmJson("user.getlovedtracks", apiKey, { limit: 1 }),
-    fetchLastFmJson("user.getrecenttracks", apiKey, { limit: 1, extended: 1 })
+    fetchLastFmJson("user.getlovedtracks", apiKey, { limit: 1 })
   ]);
 
   const fulfilledCount = settled.filter((entry) => entry.status === "fulfilled").length;
@@ -134,21 +112,22 @@ export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
     topartistsResult,
     topalbumsResult,
     userInfoResult,
-    lovedtracksResult,
-    nowPlayingResult
+    lovedtracksResult
   ] = settled;
+
+  const recentTracksSection = pickSettledSection(recenttracksResult, "recenttracks", { track: [] });
 
   return {
     sourceStatus: fulfilledCount === settled.length ? "OK" : "PARTIAL",
     stale: false,
     fetchedAt: new Date(nowMs).toISOString(),
-    recenttracks: pickSettledSection(recenttracksResult, "recenttracks", { track: [] }),
+    recenttracks: recentTracksSection,
     topartists: pickSettledSection(topartistsResult, "topartists", { artist: [] }),
     topalbums: pickSettledSection(topalbumsResult, "topalbums", { album: [] }),
     user: pickSettledSection(userInfoResult, "user", {}),
     lovedtracks: pickSettledSection(lovedtracksResult, "lovedtracks", { "@attr": { total: "0" } }),
-    nowPlaying: nowPlayingResult.status === "fulfilled"
-      ? normalizeLastFmNowPlayingPayload(nowPlayingResult.value, nowMs)
+    nowPlaying: recenttracksResult.status === "fulfilled"
+      ? normalizeLastFmNowPlayingPayload({ recenttracks: recentTracksSection }, nowMs)
       : {
           nowPlaying: false,
           stale: false,

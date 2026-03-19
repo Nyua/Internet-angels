@@ -43,7 +43,7 @@
       label: "Steam",
       shortLabel: "ST",
       url: "https://steamcommunity.com/id/foundlifeless/",
-      refreshIntervalMs: 6 * 60 * 60 * 1e3,
+      refreshIntervalMs: 24 * 60 * 60 * 1e3,
       visibleOnly: true
     },
     {
@@ -51,7 +51,7 @@
       label: "Discord",
       shortLabel: "DC",
       url: "https://discord.com/users/331350000154050560",
-      refreshIntervalMs: 60 * 1e3,
+      refreshIntervalMs: 30 * 60 * 1e3,
       visibleOnly: true
     },
     {
@@ -59,7 +59,7 @@
       label: "Last.fm",
       shortLabel: "FM",
       url: "https://www.last.fm/user/FoundLifeless",
-      refreshIntervalMs: 60 * 1e3,
+      refreshIntervalMs: 60 * 60 * 1e3,
       visibleOnly: true
     },
     {
@@ -81,9 +81,9 @@
       autoRefresh: false
     }
   ];
-  var LASTFM_PROXY_REFRESH_INTERVAL_MS = 15 * 60 * 1e3;
-  var STEAM_PROXY_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1e3;
-  var DISCORD_REFRESH_INTERVAL_MS = 10 * 60 * 1e3;
+  var LASTFM_PROXY_REFRESH_INTERVAL_MS = 60 * 60 * 1e3;
+  var STEAM_PROXY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1e3;
+  var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
   function resolveSiteAutoRefreshPolicy(site) {
     const source = site && typeof site === "object" ? site : {};
     const siteId = String(source.id || "").trim();
@@ -747,7 +747,6 @@
   var PROXY_ENDPOINTS = {
     discord: "/api/discord",
     lastfm: "/api/lastfm",
-    lastfmNowPlaying: "/api/lastfm-now-playing",
     steam: "/api/steam-recent-activity"
   };
   function buildProxyEndpoint(pathname) {
@@ -937,12 +936,8 @@
       lovedTracks: ""
     };
     const proxyEndpoint = buildProxyEndpoint(PROXY_ENDPOINTS.lastfm);
-    const nowPlayingEndpoint = buildProxyEndpoint(PROXY_ENDPOINTS.lastfmNowPlaying);
     try {
-      const [proxyPayload, nowPlayingPayload] = await Promise.all([
-        fetchJsonWithTimeout(proxyEndpoint, 1e4, signal, { cacheMode: "default" }),
-        fetchJsonWithTimeout(nowPlayingEndpoint, 2500, signal, { cacheMode: "default" }).catch(() => null)
-      ]);
+      const proxyPayload = await fetchJsonWithTimeout(proxyEndpoint, 1e4, signal, { cacheMode: "default" });
       const mappedRecent = mapLastFmRecentTracksFromApi({ recenttracks: proxyPayload?.recenttracks }, now);
       if (mappedRecent.length) {
         recentTracks = mappedRecent;
@@ -955,7 +950,7 @@
       if (mappedAlbums.length) {
         topAlbums = mappedAlbums;
       }
-      const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(nowPlayingPayload || proxyPayload?.nowPlaying);
+      const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(proxyPayload?.nowPlaying);
       const listeningState = extractLastFmCurrentlyListeningItem(recentTracks);
       currentlyListening = mappedNowPlaying || listeningState.currentlyListening;
       recentTracks = listeningState.recentTracks;

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { onRequest as onDiscordRequest } from "../functions/api/discord.js";
 import { onRequest as onLastFmRequest } from "../functions/api/lastfm.js";
-import { onRequest as onLastFmNowPlayingRequest } from "../functions/api/lastfm-now-playing.js";
 import { onRequest as onSteamRequest } from "../functions/api/steam-recent-activity.js";
 import { writeCachedPayload } from "../functions/lib/cache.js";
 import { normalizeDiscordPayload } from "../functions/lib/discord.js";
@@ -95,42 +94,68 @@ test("lastfm route returns retained stale payload when upstream fails", async ()
   }
 });
 
-test("lastfm-now-playing route returns retained stale payload when upstream fails", async () => {
+test("lastfm route derives now playing from recent tracks and only performs five upstream calls", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
-  const request = createSameOriginRequest("/api/lastfm-now-playing");
+  const request = createSameOriginRequest("/api/lastfm");
+  const callUrls = [];
 
   try {
     globalThis.caches = { default: cache };
-    globalThis.fetch = async () => {
-      throw new Error("boom");
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      callUrls.push(resourceUrl);
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "user.getrecenttracks") {
+        return Response.json({
+          recenttracks: {
+            track: [
+              {
+                name: "WIND CATCHER",
+                artist: { name: "Quadeca" },
+                album: { "#text": "Vanisher" },
+                image: [
+                  { "#text": "" },
+                  { "#text": "https://example.com/art.jpg" }
+                ],
+                url: "https://www.last.fm/music/Quadeca/_/WIND+CATCHER",
+                "@attr": { nowplaying: "true" }
+              }
+            ]
+          }
+        });
+      }
+      if (method === "user.gettopartists") {
+        return Response.json({ topartists: { artist: [] } });
+      }
+      if (method === "user.gettopalbums") {
+        return Response.json({ topalbums: { album: [] } });
+      }
+      if (method === "user.getinfo") {
+        return Response.json({ user: { playcount: "65188" } });
+      }
+      if (method === "user.getlovedtracks") {
+        return Response.json({ lovedtracks: { "@attr": { total: "1197" } } });
+      }
+      throw new Error(`Unexpected Last.fm method: ${method}`);
     };
 
-    await primeCache(cache, request, {
-      sourceStatus: "OK",
-      stale: false,
-      fetchedAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-      nowPlaying: true,
-      track: {
-        title: "WIND CATCHER",
-        artist: "Quadeca",
-        album: "Vanisher",
-        artworkUrl: "https://example.com/art.jpg",
-        url: "https://www.last.fm/music/Quadeca/_/WIND+CATCHER"
-      }
-    }, 15 * 60);
-
-    const response = await onLastFmNowPlayingRequest({
+    const response = await onLastFmRequest({
       request,
       env: { LASTFM_API_KEY: "test-key" }
     });
     const payload = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(payload.stale, true);
-    assert.equal(payload.sourceStatus, "PARTIAL");
-    assert.equal(payload.track.title, "WIND CATCHER");
+    assert.equal(callUrls.length, 5);
+    const recentTrackCalls = callUrls.filter((url) => url.includes("method=user.getrecenttracks"));
+    assert.equal(recentTrackCalls.length, 1);
+    assert.ok(recentTrackCalls.every((url) => new URL(url).searchParams.get("limit") !== "1"));
+    assert.equal(payload.nowPlaying.nowPlaying, true);
+    assert.equal(payload.nowPlaying.track.title, "WIND CATCHER");
+    assert.equal(payload.nowPlaying.track.artist, "Quadeca");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

@@ -14,15 +14,31 @@ test("next page redirects to josie", async ({ page }) => {
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
   const lastfmResponse = await request.get("/api/lastfm");
   expect(lastfmResponse.status()).toBe(200);
-
-  const nowPlayingResponse = await request.get("/api/lastfm-now-playing");
-  expect(nowPlayingResponse.status()).toBe(200);
+  const lastfmPayload = await lastfmResponse.json();
+  expect(lastfmPayload).toHaveProperty("nowPlaying");
 
   const discordResponse = await request.get("/api/discord");
   expect(discordResponse.status()).toBe(200);
 
   const steamResponse = await request.get("/api/steam-recent-activity");
   expect(steamResponse.status()).toBe(200);
+
+  await page.addInitScript(() => {
+    const originalSetInterval = window.setInterval.bind(window);
+    window.__codexIntervalCalls = [];
+    window.setInterval = (handler, timeout, ...args) => {
+      window.__codexIntervalCalls.push(Number(timeout));
+      return originalSetInterval(handler, timeout, ...args);
+    };
+  });
+
+  const apiRequests = [];
+  page.on("request", (outboundRequest) => {
+    const url = new URL(outboundRequest.url());
+    if (url.origin === "http://127.0.0.1:8788" && url.pathname.startsWith("/api/")) {
+      apiRequests.push(url.pathname);
+    }
+  });
 
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
@@ -37,5 +53,22 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
   await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
-  await expect(page.locator(".lastfm-profile-total-value").first()).not.toHaveText("--");
+  await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
+
+  expect(apiRequests).toEqual(expect.arrayContaining([
+    "/api/steam-recent-activity",
+    "/api/discord",
+    "/api/lastfm"
+  ]));
+  expect(apiRequests).not.toContain("/api/lastfm-now-playing");
+
+  const intervalCalls = await page.evaluate(() => window.__codexIntervalCalls || []);
+  expect(intervalCalls).toEqual(expect.arrayContaining([
+    30 * 60 * 1000,
+    60 * 60 * 1000,
+    24 * 60 * 60 * 1000
+  ]));
+  expect(intervalCalls).not.toContain(10 * 60 * 1000);
+  expect(intervalCalls).not.toContain(15 * 60 * 1000);
+  expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
 });

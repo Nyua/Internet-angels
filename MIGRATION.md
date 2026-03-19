@@ -58,7 +58,6 @@ internet-angel-site/
     api/
       discord.js
       lastfm.js
-      lastfm-now-playing.js
       steam-recent-activity.js
     lib/
       cache.js
@@ -95,7 +94,6 @@ Replaced:
 - local Firebase secret wiring -> `.dev.vars`
 - browser-side Lanyard fetch -> `GET /api/discord`
 - full Last.fm fetch -> cached `GET /api/lastfm`
-- now-playing fetch -> short-lived cached `GET /api/lastfm-now-playing`
 
 ## Cloudflare Secrets
 
@@ -128,7 +126,7 @@ LASTFM_API_KEY=replace-me
 ## Functionality Changes
 
 - Last.fm full profile data comes from `GET /api/lastfm` with a 15 minute fresh cache.
-- Last.fm now-playing is checked separately through `GET /api/lastfm-now-playing` with a 60 second fresh cache so page loads can feel more live without forcing full refreshes.
+- Last.fm now-playing is bundled into `GET /api/lastfm`, which keeps the public API smaller and avoids a redundant extra request on every page load.
 - Discord presence is served through Cloudflare and no longer hits Lanyard directly from the browser.
 - Steam recent activity is locked to the configured profile and no longer accepts a query parameter.
 - Edge cache fallback returns stale JSON with `sourceStatus: "PARTIAL"` when upstream services fail.
@@ -145,6 +143,5 @@ LASTFM_API_KEY=replace-me
 Configured TTLs:
 
 - Last.fm: fresh 15 minutes, retained 24 hours
-- Last.fm now-playing: fresh 60 seconds, retained 15 minutes
 - Discord: fresh 10 minutes, retained 6 hours
 - Steam: fresh 12 hours, retained 7 days
