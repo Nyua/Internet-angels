@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("root loads the intro page", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle(/BloomToDeath ASCII Timelapse/);
+  await expect(page).toHaveTitle(/BloomToDeath/);
 });
 
 test("next page redirects to josie", async ({ page }) => {

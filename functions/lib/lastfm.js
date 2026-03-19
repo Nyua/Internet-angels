@@ -8,10 +8,14 @@ import { fetchWithTimeout } from "./response.js";
 export function buildLastFmEndpoint(method, apiKey, extraParams = {}) {
   const endpoint = new URL(LASTFM_API_BASE);
   endpoint.searchParams.set("method", method);
-  endpoint.searchParams.set("user", LASTFM_USER);
   endpoint.searchParams.set("api_key", apiKey);
   endpoint.searchParams.set("format", "json");
+  const hasCustomUser = Object.prototype.hasOwnProperty.call(extraParams, "user");
+  if (method.startsWith("user.") || hasCustomUser) {
+    endpoint.searchParams.set("user", String(hasCustomUser ? extraParams.user : LASTFM_USER));
+  }
   for (const [key, value] of Object.entries(extraParams)) {
+    if (key === "user") continue;
     endpoint.searchParams.set(key, String(value));
   }
   return endpoint.toString();
@@ -30,6 +34,21 @@ export async function fetchLastFmJson(method, apiKey, extraParams = {}) {
   }
 
   return await response.json();
+}
+
+export async function fetchLastFmText(url) {
+  const response = await fetchWithTimeout(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/html,application/xhtml+xml"
+    }
+  }, LASTFM_TIMEOUT_MS);
+
+  if (!response.ok) {
+    throw new Error(`Last.fm upstream failed (${response.status})`);
+  }
+
+  return await response.text();
 }
 
 export function pickSettledSection(result, key, fallback) {
@@ -93,6 +112,75 @@ export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERRO
   };
 }
 
+async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
+  const rawArtists = topartistsSection?.artist;
+  const artists = Array.isArray(rawArtists) ? rawArtists : rawArtists ? [rawArtists] : [];
+  if (!artists.length) {
+    return topartistsSection;
+  }
+
+  const decodeHtmlAttribute = (value) => String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+  const buildArtistImagesUrl = (artistEntry) => {
+    const artistUrl = String(artistEntry?.url || "").trim();
+    if (!artistUrl) {
+      return "";
+    }
+    try {
+      const url = new URL(artistUrl);
+      url.pathname = `${url.pathname.replace(/\/+$/, "")}/+images`;
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch {
+      return "";
+    }
+  };
+  const extractArtistPhotoUrl = (markup, pageUrl) => {
+    const galleryImageMatch = /<a[^>]+href="[^"]*\/\+images\/[a-f0-9]{32}[^"]*"[^>]*>\s*<img[^>]+src="([^"]+)"/i.exec(String(markup || ""));
+    if (!galleryImageMatch?.[1]) {
+      return "";
+    }
+    const rawImageUrl = decodeHtmlAttribute(galleryImageMatch[1]);
+    try {
+      return new URL(rawImageUrl, pageUrl).toString();
+    } catch {
+      return "";
+    }
+  };
+  const artistPhotoResults = await Promise.allSettled(
+    artists.map(async (artistEntry) => {
+      const artistImagesUrl = buildArtistImagesUrl(artistEntry);
+      if (!artistImagesUrl) {
+        return "";
+      }
+      const markup = await fetchLastFmText(artistImagesUrl);
+      return extractArtistPhotoUrl(markup, artistImagesUrl);
+    })
+  );
+
+  const enrichedArtists = artists.map((artistEntry, index) => {
+    const photoResult = artistPhotoResults[index];
+    const artistPhotoUrl = photoResult?.status === "fulfilled" ? String(photoResult.value || "").trim() : "";
+    if (!artistPhotoUrl) {
+      return artistEntry;
+    }
+    return {
+      ...artistEntry,
+      artistPhotoUrl
+    };
+  });
+
+  return {
+    ...topartistsSection,
+    artist: Array.isArray(rawArtists) ? enrichedArtists : enrichedArtists[0] || {}
+  };
+}
+
 export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
   const settled = await Promise.allSettled([
     fetchLastFmJson("user.getrecenttracks", apiKey, { limit: 10, extended: 1 }),
@@ -116,13 +204,17 @@ export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
   ] = settled;
 
   const recentTracksSection = pickSettledSection(recenttracksResult, "recenttracks", { track: [] });
+  const topArtistsSection = pickSettledSection(topartistsResult, "topartists", { artist: [] });
+  const enrichedTopArtistsSection = topartistsResult.status === "fulfilled"
+    ? await enrichTopArtistsWithArtistPhotos(topArtistsSection)
+    : topArtistsSection;
 
   return {
     sourceStatus: fulfilledCount === settled.length ? "OK" : "PARTIAL",
     stale: false,
     fetchedAt: new Date(nowMs).toISOString(),
     recenttracks: recentTracksSection,
-    topartists: pickSettledSection(topartistsResult, "topartists", { artist: [] }),
+    topartists: enrichedTopArtistsSection,
     topalbums: pickSettledSection(topalbumsResult, "topalbums", { album: [] }),
     user: pickSettledSection(userInfoResult, "user", {}),
     lovedtracks: pickSettledSection(lovedtracksResult, "lovedtracks", { "@attr": { total: "0" } }),

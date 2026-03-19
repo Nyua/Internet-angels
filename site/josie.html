@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260319-josie-6" />
+    <link rel="stylesheet" href="/josie.css?v=20260319-josie-10" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -153,9 +153,12 @@
           <canvas id="os-ambient-canvas" class="os-ambient-canvas" aria-hidden="true"></canvas>
         </div>
         <div class="os-shooting-star-layer" aria-hidden="true">
-          <span class="meteor-star meteor-star--one"></span>
-          <span class="meteor-star meteor-star--two"></span>
-          <span class="meteor-star meteor-star--three"></span>
+          <span class="meteor-star">
+            <span class="meteor-star-trail"></span>
+            <span class="meteor-star-core-wrap">
+              <span class="meteor-star-core"></span>
+            </span>
+          </span>
         </div>
         <div id="social-hub-scale-frame" class="social-hub-scale-frame">
           <div id="social-hub-root" class="social-hub" aria-label="Josie social hub">
@@ -170,16 +173,38 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260319-josie-6"></script>
+    <script src="/josie.client.js?v=20260319-josie-10"></script>
     <script>
       (() => {
         const breakpointPx = 1120;
         const referenceWidthPx = 2560;
         const minScale = 0.58;
+        const compactMobileBreakpointPx = 820;
+        const mobileFloatingAudioReservePx = 96;
         let rafId = 0;
-        function applyDesktopScale() {
+        function applyHubScale() {
           const root = document.querySelector("#social-hub-root");
-          if (!(root instanceof HTMLElement)) return;
+          const frame = document.querySelector("#social-hub-scale-frame");
+          if (!(root instanceof HTMLElement) || !(frame instanceof HTMLElement)) return;
+          if (window.innerWidth <= compactMobileBreakpointPx) {
+            root.style.removeProperty("zoom");
+            root.style.removeProperty("will-change");
+            root.style.removeProperty("width");
+            root.style.transformOrigin = "top center";
+            root.style.transform = "scale(1)";
+            frame.style.removeProperty("height");
+            const naturalWidth = root.offsetWidth || frame.clientWidth || window.innerWidth;
+            const naturalHeight = root.offsetHeight || frame.clientHeight || window.innerHeight;
+            const availableWidth = Math.max(1, frame.clientWidth || window.innerWidth);
+            const availableHeight = Math.max(1, window.innerHeight - mobileFloatingAudioReservePx);
+            const scale = Math.max(0.68, Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight));
+            root.style.transform = `scale(${scale.toFixed(4)})`;
+            frame.style.height = `${Math.ceil(naturalHeight * scale)}px`;
+            return;
+          }
+          root.style.removeProperty("transform");
+          root.style.removeProperty("transform-origin");
+          frame.style.removeProperty("height");
           if (window.innerWidth <= breakpointPx) {
             root.style.removeProperty("zoom");
             root.style.removeProperty("will-change");
@@ -195,7 +220,7 @@
           }
           rafId = requestAnimationFrame(() => {
             rafId = 0;
-            applyDesktopScale();
+            applyHubScale();
           });
         }
         window.addEventListener("resize", scheduleDesktopScale, { passive: true });
@@ -215,7 +240,68 @@
     </script>
     <script>
       (() => {
+        const comet = document.querySelector(".meteor-star");
+        if (!(comet instanceof HTMLElement)) return;
+        const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+        const initialDelayMs = 36000;
+        const minIntervalMs = 180000;
+        const maxIntervalMs = 300000;
+        const passDurationMs = 9800;
+        let scheduleTimer = 0;
+        let activeTimer = 0;
+
+        function clearTimers() {
+          window.clearTimeout(scheduleTimer);
+          window.clearTimeout(activeTimer);
+        }
+
+        function nextDelayMs() {
+          return Math.round(minIntervalMs + Math.random() * (maxIntervalMs - minIntervalMs));
+        }
+
+        function schedule(delayMs) {
+          clearTimers();
+          if (reducedMotionQuery?.matches) {
+            comet.classList.remove("is-active");
+            return;
+          }
+          scheduleTimer = window.setTimeout(trigger, delayMs);
+        }
+
+        function trigger() {
+          if (reducedMotionQuery?.matches) return;
+          comet.classList.remove("is-active");
+          void comet.offsetWidth;
+          comet.classList.add("is-active");
+          activeTimer = window.setTimeout(() => {
+            comet.classList.remove("is-active");
+            schedule(nextDelayMs());
+          }, passDurationMs);
+        }
+
+        function handleMotionPreferenceChange() {
+          if (reducedMotionQuery?.matches) {
+            clearTimers();
+            comet.classList.remove("is-active");
+            return;
+          }
+          schedule(initialDelayMs);
+        }
+
+        if (typeof reducedMotionQuery?.addEventListener === "function") {
+          reducedMotionQuery.addEventListener("change", handleMotionPreferenceChange);
+        } else if (typeof reducedMotionQuery?.addListener === "function") {
+          reducedMotionQuery.addListener(handleMotionPreferenceChange);
+        }
+
+        window.addEventListener("pagehide", clearTimers, { once: true });
+        schedule(initialDelayMs);
+      })();
+    </script>
+    <script>
+      (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
+        const compactMobileBreakpointPx = 820;
         const chars = ".:-=+*#%@";
         const bayer4 = [
           [0, 8, 2, 10],
@@ -777,6 +863,14 @@
         }
 
         function startSequence() {
+          const viewportWidth = Math.min(
+            window.innerWidth || Number.POSITIVE_INFINITY,
+            window.visualViewport?.width || Number.POSITIVE_INFINITY
+          );
+          if (viewportWidth <= compactMobileBreakpointPx) {
+            setSiteLoadPlaying(false);
+            return;
+          }
           setSiteLoadPlaying(true);
           void runSliceBootSequence().catch(() => {
             setSiteLoadPlaying(false);

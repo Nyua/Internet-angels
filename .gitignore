@@ -6,5 +6,8 @@ dist/
 !.dev.vars.example
 wrangler-dev.out.log
 wrangler-dev.err.log
+wrangler-local.log
+static-local.log
+tmp-*.cjs
 playwright-report/
 test-results/

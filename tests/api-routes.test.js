@@ -162,6 +162,82 @@ test("lastfm route derives now playing from recent tracks and only performs five
   }
 });
 
+test("lastfm route enriches top artists with artist photos from Last.fm image galleries", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm");
+  const callUrls = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      callUrls.push(resourceUrl);
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "user.getrecenttracks") {
+        return Response.json({ recenttracks: { track: [] } });
+      }
+      if (method === "user.gettopartists") {
+        return Response.json({
+          topartists: {
+            artist: [
+              {
+                name: "Jane Remover",
+                playcount: "44",
+                image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/34s/2a96cbd8b46e442fc41c2b86b821562f.png", size: "large" }],
+                url: "https://www.last.fm/music/Jane+Remover"
+              },
+              {
+                name: "Quadeca",
+                playcount: "39",
+                image: [{ "#text": "", size: "large" }],
+                url: "https://www.last.fm/music/Quadeca"
+              }
+            ]
+          }
+        });
+      }
+      if (method === "user.gettopalbums") {
+        return Response.json({ topalbums: { album: [] } });
+      }
+      if (method === "user.getinfo") {
+        return Response.json({ user: { playcount: "65188" } });
+      }
+      if (method === "user.getlovedtracks") {
+        return Response.json({ lovedtracks: { "@attr": { total: "1197" } } });
+      }
+      if (requestUrl.origin === "https://www.last.fm" && requestUrl.pathname.endsWith("/+images")) {
+        const artistName = requestUrl.pathname.split("/").at(-2)?.replace(/\+/g, " ") || "artist";
+        const artistHash = artistName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        return new Response(
+          `<html><body><a href="${requestUrl.pathname}/03825d251683ecdcac1e427347a2abb0"><img src="https://lastfm.freetls.fastly.net/i/u/avatar170s/${artistHash}-preferred-photo" alt="Preferred image" /></a></body></html>`,
+          {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8" }
+          }
+        );
+      }
+      throw new Error(`Unexpected Last.fm method: ${method}`);
+    };
+
+    const response = await onLastFmRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(callUrls.filter((url) => url.startsWith("https://www.last.fm/music/") && url.endsWith("/+images")).length, 2);
+    assert.equal(payload.topartists.artist[0].artistPhotoUrl, "https://lastfm.freetls.fastly.net/i/u/avatar170s/jane-remover-preferred-photo");
+    assert.equal(payload.topartists.artist[1].artistPhotoUrl, "https://lastfm.freetls.fastly.net/i/u/avatar170s/quadeca-preferred-photo");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("discord route returns retained stale payload when upstream fails", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;

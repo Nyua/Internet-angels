@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BloomToDeath ASCII Timelapse</title>
+  <title>BloomToDeath</title>
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -64,19 +64,6 @@
       display: block;
     }
 
-    .hud {
-      position: fixed;
-      top: 14px;
-      left: 16px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      color: var(--muted);
-      font-size: 12px;
-      pointer-events: none;
-      user-select: none;
-    }
-
     .start-wrap {
       position: fixed;
       inset: 0;
@@ -119,10 +106,6 @@
   <video id="sourceVideoB" class="source-video" playsinline preload="auto" aria-hidden="true"></video>
   <canvas id="asciiCanvas" class="ascii-layer" aria-label="ASCII-rendered timelapse"></canvas>
 
-  <div class="hud">
-    <span id="videoLabel"></span>
-  </div>
-
   <div id="startWrap" class="start-wrap" aria-live="polite">
     <button id="startBtn" class="start-btn" type="button">Start</button>
   </div>
@@ -137,6 +120,13 @@
       const introVideoPath = "Timelapse/Egrets-Intro.mov";
       const nextPageUrl = "next.html";
       const chars = " .:-=+*#%@";
+      const baseCellSize = 6;
+      const bloomPlaybackFraction = 0.5;
+      const egretsDenseGridStartFraction = 0.5;
+      const egretsDenseGridScale = 1 / Math.SQRT2;
+      const asciiColorLevels = 3;
+      const bassBoostFrequencyHz = 180;
+      const bassBoostGainDb = 6;
       const bayer4 = [
         [0, 8, 2, 10],
         [12, 4, 14, 6],
@@ -148,22 +138,21 @@
       const ctx = asciiCanvas.getContext("2d", { alpha: false });
       const sourceVideoA = document.getElementById("sourceVideoA");
       const sourceVideoB = document.getElementById("sourceVideoB");
-      const videoLabel = document.getElementById("videoLabel");
       const startWrap = document.getElementById("startWrap");
       const startBtn = document.getElementById("startBtn");
 
       const sampleCanvas = document.createElement("canvas");
       const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
       const glyphFillCache = new Map();
+      const mediaSourceNodes = new WeakMap();
 
       let dpr = Math.max(1, window.devicePixelRatio || 1);
       let viewportW = 0;
       let viewportH = 0;
       let cols = 0;
       let rows = 0;
-      const cellSize = 6;
-      let cellW = cellSize;
-      let cellH = Math.round(cellSize * 1.32);
+      let cellW = baseCellSize;
+      let cellH = Math.round(baseCellSize * 1.32);
       let lastFrame = 0;
       const targetFrameMs = 1000 / 24;
       let glyphColor = "#f5f5f5";
@@ -173,6 +162,10 @@
       let hasStartedIntro = false;
       let introPrimed = false;
       const introSwitchLeadSeconds = 0.08;
+      let gridSignature = "";
+      let audioCtx = null;
+      let bassShelfFilter = null;
+      let masterGain = null;
 
       sourceVideoA.loop = false;
       sourceVideoB.loop = false;
@@ -190,9 +183,14 @@
       }
 
       function getGlyphFillStyle(r, g, b) {
-        const rq = r & 0xf8;
-        const gq = g & 0xf8;
-        const bq = b & 0xf8;
+        const maxBucket = Math.max(1, asciiColorLevels - 1);
+        const quantize = (channel) => {
+          const bucket = Math.round((channel / 255) * maxBucket);
+          return Math.round((bucket / maxBucket) * 255);
+        };
+        const rq = quantize(r);
+        const gq = quantize(g);
+        const bq = quantize(b);
         const key = (rq << 16) | (gq << 8) | bq;
         let style = glyphFillCache.get(key);
         if (!style) {
@@ -223,15 +221,6 @@
         return bloomVideos[index];
       }
 
-      function bloomDebugLabel(path) {
-        const file = path.split("/").pop() || "";
-        const match = file.match(/BloomToDeath-(\d+)\.mov/i);
-        if (match) {
-          return `BloomToDeath(${match[1]}).MOV`;
-        }
-        return file;
-      }
-
       function getViewportSize() {
         if (window.visualViewport) {
           return {
@@ -260,11 +249,67 @@
         ctx.textBaseline = "top";
         ctx.textAlign = "left";
         ctx.imageSmoothingEnabled = false;
+        syncAsciiGrid(true);
+      }
 
-        cellW = cellSize;
-        cellH = Math.round(cellSize * 1.32);
+      function resolveCellScale() {
+        if (
+          activeVideo === sourceVideoB
+          && Number.isFinite(sourceVideoB.duration)
+          && sourceVideoB.duration > 0
+          && sourceVideoB.currentTime >= sourceVideoB.duration * egretsDenseGridStartFraction
+        ) {
+          return egretsDenseGridScale;
+        }
+        return 1;
+      }
+
+      async function ensureAudioGraph() {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) return null;
+
+        if (!audioCtx) {
+          audioCtx = new AudioContextCtor();
+          bassShelfFilter = audioCtx.createBiquadFilter();
+          bassShelfFilter.type = "lowshelf";
+          bassShelfFilter.frequency.value = bassBoostFrequencyHz;
+          bassShelfFilter.gain.value = bassBoostGainDb;
+
+          masterGain = audioCtx.createGain();
+          masterGain.gain.value = 1;
+
+          bassShelfFilter.connect(masterGain);
+          masterGain.connect(audioCtx.destination);
+
+          for (const videoEl of [sourceVideoA, sourceVideoB]) {
+            if (mediaSourceNodes.has(videoEl)) continue;
+            const sourceNode = audioCtx.createMediaElementSource(videoEl);
+            sourceNode.connect(bassShelfFilter);
+            mediaSourceNodes.set(videoEl, sourceNode);
+          }
+        }
+
+        if (audioCtx.state === "suspended") {
+          try {
+            await audioCtx.resume();
+          } catch (err) {
+          }
+        }
+
+        return audioCtx;
+      }
+
+      function syncAsciiGrid(force = false) {
+        const effectiveCellSize = baseCellSize * resolveCellScale();
+        cellW = effectiveCellSize;
+        cellH = effectiveCellSize * 1.32;
         cols = Math.max(2, Math.floor(viewportW / cellW));
         rows = Math.max(2, Math.floor(viewportH / cellH));
+        const nextGridSignature = `${cols}x${rows}`;
+        if (!force && nextGridSignature === gridSignature) {
+          return;
+        }
+        gridSignature = nextGridSignature;
 
         sampleCanvas.width = cols;
         sampleCanvas.height = rows;
@@ -288,6 +333,7 @@
 
       function drawAsciiFrame() {
         if (activeVideo.readyState < 2) return;
+        syncAsciiGrid();
         sampleCtx.drawImage(activeVideo, 0, 0, cols, rows);
         const frame = sampleCtx.getImageData(0, 0, cols, rows);
         const data = frame.data;
@@ -295,7 +341,7 @@
 
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, viewportW, viewportH);
-        ctx.font = `${Math.round(cellSize * 1.2)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+        ctx.font = `${Math.round(cellW * 1.2)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
 
         const densityMax = chars.length - 1;
         const edgeStrength = 0.68;
@@ -348,6 +394,7 @@
 
       async function startPlayback() {
         try {
+          await ensureAudioGraph();
           await activeVideo.play();
           startWrap.classList.remove("visible");
         } catch (err) {
@@ -365,6 +412,7 @@
           sourceVideoB.muted = sourceVideoA.muted;
           sourceVideoA.pause();
           try {
+            await ensureAudioGraph();
             await sourceVideoB.play();
             startWrap.classList.remove("visible");
           } catch (err) {
@@ -386,6 +434,7 @@
         if (introPrimed || sourceVideoB.readyState < 2) return;
         introPrimed = true;
         try {
+          await ensureAudioGraph();
           sourceVideoB.muted = true;
           sourceVideoB.currentTime = 0;
           await sourceVideoB.play();
@@ -401,6 +450,7 @@
       startBtn.addEventListener("click", async () => {
         activeVideo.muted = false;
         try {
+          await ensureAudioGraph();
           await activeVideo.play();
           startWrap.classList.remove("visible");
         } catch (err) {
@@ -428,7 +478,6 @@
       sourceVideoA.src = selectedBloom;
       sourceVideoB.src = introVideoPath;
       sourceVideoB.load();
-      videoLabel.textContent = bloomDebugLabel(selectedBloom);
 
       sourceVideoA.addEventListener("loadeddata", () => {
         startPlayback();
@@ -437,7 +486,8 @@
       sourceVideoA.addEventListener("timeupdate", () => {
         if (hasStartedIntro) return;
         if (!sourceVideoA.duration || sourceVideoA.duration === Infinity) return;
-        if (sourceVideoA.duration - sourceVideoA.currentTime <= introSwitchLeadSeconds) {
+        const bloomExitTime = sourceVideoA.duration * bloomPlaybackFraction;
+        if (sourceVideoA.currentTime >= Math.max(0, bloomExitTime - introSwitchLeadSeconds)) {
           void switchToIntro();
         }
       });

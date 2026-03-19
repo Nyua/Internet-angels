@@ -642,12 +642,13 @@
     return artists.slice(0, LASTFM_GRID_LIMIT).map((entry, index) => {
       const title = firstNonEmpty(entry?.name, "Unknown artist");
       const countLabel = parseLastFmCountLabel(entry?.playcount, "plays");
+      const artistPhotoUrl = resolveLastFmImageUrl(entry?.artistPhotoUrl, "https://www.last.fm");
       return {
         id: `lastfm-top-artist-${index}-${hashText(`${title}-${countLabel}`).slice(0, 12)}`,
         title,
         subtitle: "",
         countLabel: firstNonEmpty(countLabel, "-- plays"),
-        imageUrl: pickLastFmImageUrl(entry?.image),
+        imageUrl: artistPhotoUrl || pickLastFmImageUrl(entry?.image),
         url: resolveUrl(entry?.url, "https://www.last.fm")
       };
     });
@@ -1132,6 +1133,15 @@
       second: "2-digit"
     }).format(date);
   }
+  function formatAudioTimeLeft(currentTime, duration) {
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    if (!safeDuration) return "--:--";
+    const safeCurrentTime = Number.isFinite(currentTime) && currentTime >= 0 ? currentTime : 0;
+    const remainingSeconds = Math.max(0, Math.ceil(safeDuration - safeCurrentTime));
+    const minutes = Math.floor(remainingSeconds / 60);
+    const seconds = remainingSeconds % 60;
+    return `-${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
   function sourceClass(sourceStatus) {
     const normalized = String(sourceStatus || "PARTIAL").toLowerCase();
     if (normalized === "ok") return "chip-source-ok";
@@ -1258,6 +1268,8 @@
     let waveCtx = null;
     let titleEl = null;
     let artistEl = null;
+    let progressFillEl = null;
+    let timeRemainingEl = null;
     let compactPlayerMode = false;
     let resizeObserver = null;
     let manifestPromise = null;
@@ -1274,6 +1286,8 @@
     let siteLoadWaitPromise = null;
     let siteLoadClassObserver = null;
     let initialTrackQueued = false;
+    let reactiveBeat = 0;
+    let reactiveFlash = 0;
     const audioEl = new Audio();
     const WAVE_BLEED_X = 72;
     const WAVE_BLEED_TOP = 48;
@@ -1286,12 +1300,111 @@
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
     }
+    function getReactiveTargets() {
+      const targets = [];
+      if (playerRoot instanceof HTMLElement) {
+        targets.push(playerRoot);
+      }
+      if (waveSurface instanceof HTMLElement && !targets.includes(waveSurface)) {
+        targets.push(waveSurface);
+      }
+      return targets;
+    }
+    function resolveShuffleTheme(track) {
+      const themeSeed = hashText(`${track?.title || "Shuffle"}|${track?.artist || "Unknown Artist"}`).padStart(8, "0");
+      const primaryBase = parseInt(themeSeed.slice(0, 2), 16) || 120;
+      const secondaryBase = parseInt(themeSeed.slice(2, 4), 16) || 188;
+      const sparkleBase = parseInt(themeSeed.slice(4, 6), 16) || 236;
+      const primaryHue = Math.round(primaryBase / 255 * 360);
+      const secondaryHue = (primaryHue + 28 + Math.round(secondaryBase / 255 * 84)) % 360;
+      const sparkleHue = (secondaryHue + 12 + Math.round(sparkleBase / 255 * 42)) % 360;
+      return {
+        accent: `${primaryHue} 90% 72%`,
+        accentStrong: `${(primaryHue + 10) % 360} 96% 80%`,
+        secondary: `${secondaryHue} 88% 76%`,
+        sparkle: `${sparkleHue} 96% 92%`
+      };
+    }
+    function applyShuffleTheme(track) {
+      const theme = resolveShuffleTheme(track);
+      getReactiveTargets().forEach((target) => {
+        target.style.setProperty("--shuffle-accent", theme.accent);
+        target.style.setProperty("--shuffle-accent-strong", theme.accentStrong);
+        target.style.setProperty("--shuffle-secondary", theme.secondary);
+        target.style.setProperty("--shuffle-sparkle", theme.sparkle);
+      });
+    }
+    function syncReactiveVisuals(rawBeat = 0, rawFlash = 0) {
+      const targetBeat = clamp2(rawBeat, 0, 1);
+      const beatAttack = targetBeat > reactiveBeat ? 0.34 : 0.14;
+      reactiveBeat = clamp2(reactiveBeat + (targetBeat - reactiveBeat) * beatAttack, 0, 1);
+      reactiveBeat *= targetBeat > 0.008 ? 0.998 : 0.948;
+      reactiveFlash = clamp2(Math.max(rawFlash, reactiveFlash * 0.86), 0, 1);
+      const glowOpacity = Math.min(0.46, 0.16 + reactiveBeat * 0.24 + reactiveFlash * 0.06);
+      const frostOpacity = Math.min(0.96, 0.76 + reactiveBeat * 0.18 + reactiveFlash * 0.04);
+      const auraBlur = 30 + reactiveBeat * 22 + reactiveFlash * 18;
+      const drift = reactiveBeat * 14 + reactiveFlash * 8;
+      getReactiveTargets().forEach((target) => {
+        target.style.setProperty("--shuffle-beat", reactiveBeat.toFixed(3));
+        target.style.setProperty("--shuffle-flash", reactiveFlash.toFixed(3));
+        target.style.setProperty("--shuffle-glow-opacity", glowOpacity.toFixed(3));
+        target.style.setProperty("--shuffle-frost-opacity", frostOpacity.toFixed(3));
+        target.style.setProperty("--shuffle-aura-blur", `${auraBlur.toFixed(1)}px`);
+        target.style.setProperty("--shuffle-drift", `${drift.toFixed(2)}px`);
+      });
+    }
+    function measureReactivePulse() {
+      if (audioEl.paused || !(analyserNode instanceof AnalyserNode) || !analyserSamples.length) {
+        return { beat: 0, flash: 0 };
+      }
+      analyserNode.getFloatTimeDomainData(analyserSamples);
+      let peak = 0;
+      let transientPeak = 0;
+      let sumSquares = 0;
+      let sampleCount = 0;
+      let previousSample = 0;
+      for (let index = 0; index < analyserSamples.length; index += 6) {
+        const sample = analyserSamples[index] || 0;
+        const magnitude = Math.abs(sample);
+        peak = Math.max(peak, magnitude);
+        transientPeak = Math.max(transientPeak, Math.abs(sample - previousSample));
+        sumSquares += sample * sample;
+        previousSample = sample;
+        sampleCount += 1;
+      }
+      const rms = sampleCount ? Math.sqrt(sumSquares / sampleCount) : 0;
+      return {
+        beat: clamp2(
+          rms * 3.9 +
+          Math.max(0, peak - 0.16) * 1.8 +
+          Math.max(0, transientPeak - 0.04) * 6.4,
+          0,
+          1
+        ),
+        flash: clamp2(
+          Math.max(0, peak - 0.26) * 2.4 +
+          Math.max(0, transientPeak - 0.075) * 9.6,
+          0,
+          1
+        )
+      };
+    }
     function syncUi() {
       if (titleEl instanceof HTMLElement) {
         titleEl.textContent = currentTrack?.title || (loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle...");
       }
       if (artistEl instanceof HTMLElement) {
         artistEl.textContent = currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist");
+      }
+      applyShuffleTheme(currentTrack);
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const currentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
+      if (progressFillEl instanceof HTMLElement) {
+        progressFillEl.style.transform = `scaleX(${progress.toFixed(4)})`;
+      }
+      if (timeRemainingEl instanceof HTMLElement) {
+        timeRemainingEl.textContent = formatAudioTimeLeft(currentTime, duration);
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.classList.toggle("is-compact", compactPlayerMode);
@@ -1629,6 +1742,8 @@
     }
     function renderLoop(nowMs) {
       if (disposed) return;
+      const pulseMetrics = measureReactivePulse();
+      syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash);
       if (playerRoot && playbackUnlocked && !compactPlayerMode) {
         drawTrace();
       } else {
@@ -1694,6 +1809,8 @@
       waveSurface = root2.matches("[data-shuffle-surface]") ? root2 : root2.querySelector("[data-shuffle-surface]");
       titleEl = root2.querySelector("[data-shuffle-title]");
       artistEl = root2.querySelector("[data-shuffle-artist]");
+      progressFillEl = root2.querySelector("[data-shuffle-progress-fill]");
+      timeRemainingEl = root2.querySelector("[data-shuffle-time]");
       if (waveSurface instanceof HTMLElement) {
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
@@ -1733,6 +1850,8 @@
       hideWavePortal();
       titleEl = null;
       artistEl = null;
+      progressFillEl = null;
+      timeRemainingEl = null;
       compactPlayerMode = false;
     }
     function attach(root2) {
@@ -2155,11 +2274,29 @@
     return `
     <div class="josie-mobile-audio-player">
       <button class="josie-mobile-audio-chip" type="button" data-shuffle-player data-shuffle-mode="compact" data-shuffle-surface aria-label="Site music player">
-        <span class="josie-mobile-audio-chip-icon" aria-hidden="true">♪</span>
+        <span class="josie-mobile-audio-chip-icon" aria-hidden="true">
+          <span class="josie-mobile-audio-chip-icon-symbol">&#9835;</span>
+        </span>
         <span class="josie-mobile-audio-chip-copy">
           <span class="josie-mobile-audio-chip-kicker">Now Playing</span>
-          <span class="josie-mobile-audio-chip-title" data-shuffle-title>Loading Shuffle...</span>
-          <span class="josie-mobile-audio-chip-artist" data-shuffle-artist>Unknown Artist</span>
+          <span class="josie-mobile-audio-chip-title-row">
+            <span class="josie-mobile-audio-chip-title" data-shuffle-title>Loading Shuffle...</span>
+            <span class="josie-mobile-audio-chip-time" data-shuffle-time>--:--</span>
+          </span>
+          <span class="josie-mobile-audio-chip-artist-row">
+            <span class="josie-mobile-audio-chip-artist" data-shuffle-artist>Unknown Artist</span>
+            <span class="josie-mobile-audio-chip-meter" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </span>
+          <span class="josie-mobile-audio-chip-progress">
+            <span class="josie-mobile-audio-chip-progress-track">
+              <span class="josie-mobile-audio-chip-progress-fill" data-shuffle-progress-fill></span>
+            </span>
+          </span>
         </span>
       </button>
     </div>
@@ -2191,6 +2328,7 @@
       const onlineState = resolveLinkOnlineState(site.id, payload);
       const statusDot = onlineState === null ? "" : `<span class="steam-link-status-dot steam-link-status-dot--${onlineState ? "online" : "offline"}" aria-hidden="true" title="${onlineState ? "Online" : "Offline"}"></span>`;
       const siteLabel = escapeHtml(SITE_THEME_LABEL[site.id] || site.label);
+      const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
       const linkMarkup = openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${siteLabel}</a>` : `<span class="steam-sidebar-link">${siteLabel}</span>`;
       return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}">
@@ -2198,10 +2336,9 @@
           <p class="steam-sidebar-row-title">
             <span class="steam-sidebar-row-title-wrap">
               <span class="steam-sidebar-link-shell">
-                ${renderSidebarSiteIcon(site.id)}
+                ${iconMarkup}
                 ${linkMarkup}
               </span>
-              ${statusDot}
             </span>
           </p>
         </div>
@@ -2241,7 +2378,7 @@
       const dock = document.createElement("div");
       dock.className = "josie-mobile-audio-dock";
       dock.hidden = true;
-      root2?.appendChild(dock);
+      (document.body || root2)?.appendChild(dock);
       mobileAudioDock = dock;
       return dock;
     }
