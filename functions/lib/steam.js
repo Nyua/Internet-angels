@@ -74,6 +74,14 @@ function parseMarkdownLastUrl(line) {
   return String(matches[matches.length - 1]?.[1] || "").trim();
 }
 
+function normalizeSteamMirrorTextLine(line) {
+  return String(line || "")
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeSteamProfileUrl(rawValue = STEAM_PROFILE_URL) {
   const source = String(rawValue || "").trim();
   if (!source) {
@@ -293,9 +301,27 @@ function findSteamProfileAvatarFromMarkdown(lines, siteUrl) {
 function parseSteamMirrorHeader(lines, profileName, siteUrl) {
   const recentActivityIndex = lines.findIndex((line) => /Recent Activity/i.test(String(line || "").trim()));
   const headerLines = recentActivityIndex > 0 ? lines.slice(0, recentActivityIndex) : lines;
-  const level = headerLines.map((line) => String(line || "").trim()).find((line) => /^\d{1,3}$/.test(line)) || "";
-  const statusText = headerLines.map((line) => String(line || "").trim()).find((line) => /^(Currently|Online|Offline|Away|Busy|In-Game)/i.test(line)) || "";
-  const bio = headerLines.map((line) => String(line || "").trim()).filter((line) => {
+  const normalizedHeaderLines = headerLines.map((line) => normalizeSteamMirrorTextLine(line));
+  const profileIndex = normalizedHeaderLines.findIndex((line) => line === profileName);
+  const statusText = (
+    profileIndex >= 0
+      ? normalizedHeaderLines.slice(profileIndex)
+      : normalizedHeaderLines
+  ).find((line) => /^(Currently|Online|Offline|Away|Busy|In-Game)/i.test(line)) || "";
+  const profileWindow = profileIndex >= 0
+    ? normalizedHeaderLines.slice(profileIndex, Math.min(normalizedHeaderLines.length, profileIndex + 14))
+    : normalizedHeaderLines;
+  const level = profileWindow.find((line) => /^\d{1,3}$/.test(line)) || "";
+  const bioCandidates = (
+    profileIndex >= 0
+      ? normalizedHeaderLines.slice(
+        profileIndex + 1,
+        statusText
+          ? Math.max(profileIndex + 1, normalizedHeaderLines.findIndex((line, index) => index > profileIndex && line === statusText))
+          : Math.min(normalizedHeaderLines.length, profileIndex + 14)
+      )
+      : normalizedHeaderLines
+  ).filter((line) => {
     if (!line) {
       return false;
     }
@@ -305,20 +331,30 @@ function parseSteamMirrorHeader(lines, profileName, siteUrl) {
     if (/^\d{1,3}$/.test(line)) {
       return false;
     }
+    if (/^#\s*Steam Community ::/i.test(line)) {
+      return false;
+    }
     if (/^Title:|^URL Source:|^Markdown Content:/i.test(line)) {
-      return false;
-    }
-    if (/^\[?!?\[?Image/i.test(line)) {
-      return false;
-    }
-    if (/\]\(https?:\/\//i.test(line)) {
       return false;
     }
     if (/^(Featured Artwork Showcase|Recent Activity)$/i.test(line)) {
       return false;
     }
+    if (/^(This user has also played as:?|View more info)$/i.test(line)) {
+      return false;
+    }
+    if (/^Level\s+\d+$/i.test(line)) {
+      return false;
+    }
+    if (/^(Badges|Games|Inventory|Screenshots|Reviews|Artwork|Groups)\b/i.test(line)) {
+      return false;
+    }
+    if (/^\d[\d.,]*\s*(?:Members|hours?|hrs?)\b/i.test(line)) {
+      return false;
+    }
     return true;
-  })[0] || "";
+  });
+  const bio = bioCandidates[0] || "";
 
   return {
     avatarUrl: findSteamProfileAvatarFromMarkdown(lines, siteUrl),
@@ -505,4 +541,3 @@ export async function fetchSteamRecentActivityPayload(nowMs = Date.now()) {
     ]
   };
 }
-
