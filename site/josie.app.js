@@ -84,9 +84,24 @@
   var LASTFM_PROXY_REFRESH_INTERVAL_MS = 60 * 60 * 1e3;
   var STEAM_PROXY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1e3;
   var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
+  var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
+  var compactMobileLayoutQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`) : null;
+  function isCompactMobileLayout() {
+    if (typeof window === "undefined") return false;
+    return Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
+  }
+  function shouldFetchSitePayload(siteId) {
+    const normalizedSiteId = String(siteId || "").trim().toLowerCase();
+    if (!normalizedSiteId) return false;
+    if (isCompactMobileLayout()) {
+      return normalizedSiteId === "steam" || normalizedSiteId === "discord";
+    }
+    return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
+  }
   function resolveSiteAutoRefreshPolicy(site) {
     const source = site && typeof site === "object" ? site : {};
     const siteId = String(source.id || "").trim();
+    const compactMobile = isCompactMobileLayout();
     const basePolicy = {
       bootRefresh: source.bootRefresh !== false,
       autoRefresh: source.autoRefresh !== false,
@@ -110,8 +125,10 @@
     if (siteId === "lastfm") {
       return {
         ...basePolicy,
+        bootRefresh: !compactMobile,
+        autoRefresh: !compactMobile,
         visibleOnly: true,
-        intervalMs: LASTFM_PROXY_REFRESH_INTERVAL_MS
+        intervalMs: compactMobile ? 0 : LASTFM_PROXY_REFRESH_INTERVAL_MS
       };
     }
     if (siteId === "twitter" || siteId === "spotify" || siteId === "soundcloud") {
@@ -507,6 +524,14 @@
     }
     return resolveLastFmImageUrl(fallback, "https://www.last.fm");
   }
+  function isLastFmGenericImageUrl(url) {
+    const normalized = String(url || "").trim().toLowerCase();
+    return !normalized || normalized.includes("2a96cbd8b46e442fc41c2b86b821562f");
+  }
+  function pickUsefulLastFmImageUrl(images, fallback = "") {
+    const picked = pickLastFmImageUrl(images, fallback);
+    return isLastFmGenericImageUrl(picked) ? "" : picked;
+  }
   function formatLastFmAgeLabel(uts, nowMs = Date.now()) {
     const numericUts = Number(uts);
     if (!Number.isFinite(numericUts) || numericUts <= 0) return "";
@@ -624,6 +649,48 @@
         countLabel: firstNonEmpty(countLabel, "-- plays"),
         imageUrl: pickLastFmImageUrl(entry?.image),
         url: resolveUrl(entry?.url, "https://www.last.fm")
+      };
+    });
+  }
+  function buildLastFmArtistArtworkIndex({ recentTracks, topAlbums }) {
+    const imageByArtist = /* @__PURE__ */ new Map();
+    const registerImage = (artistName, imageUrl) => {
+      const normalizedArtist = String(artistName || "").trim().toLowerCase();
+      const normalizedImage = resolveLastFmImageUrl(imageUrl, "https://www.last.fm");
+      if (!normalizedArtist || !normalizedImage || isLastFmGenericImageUrl(normalizedImage) || imageByArtist.has(normalizedArtist)) {
+        return;
+      }
+      imageByArtist.set(normalizedArtist, normalizedImage);
+    };
+    const trackItems = Array.isArray(recentTracks) ? recentTracks : [];
+    for (const item of trackItems) {
+      registerImage(item?.subtitle, item?.imageUrl);
+    }
+    const albumItems = Array.isArray(topAlbums) ? topAlbums : [];
+    for (const item of albumItems) {
+      registerImage(item?.subtitle, item?.imageUrl);
+    }
+    return imageByArtist;
+  }
+  function applyLastFmArtistArtworkFallback(items, artworkByArtist) {
+    const sourceItems = Array.isArray(items) ? items : [];
+    const imageByArtist = artworkByArtist instanceof Map ? artworkByArtist : /* @__PURE__ */ new Map();
+    return sourceItems.map((item) => {
+      const normalizedArtist = String(item?.title || "").trim().toLowerCase();
+      const currentImage = resolveLastFmImageUrl(item?.imageUrl, "https://www.last.fm");
+      if (currentImage && !isLastFmGenericImageUrl(currentImage)) {
+        return item;
+      }
+      const fallbackImage = imageByArtist.get(normalizedArtist) || "";
+      if (!fallbackImage) {
+        return {
+          ...item,
+          imageUrl: ""
+        };
+      }
+      return {
+        ...item,
+        imageUrl: fallbackImage
       };
     });
   }
@@ -942,14 +1009,18 @@
       if (mappedRecent.length) {
         recentTracks = mappedRecent;
       }
-      const mappedArtists = mapLastFmTopArtistsFromApi({ topartists: proxyPayload?.topartists });
-      if (mappedArtists.length) {
-        topArtists = mappedArtists;
-      }
       const mappedAlbums = mapLastFmTopAlbumsFromApi({ topalbums: proxyPayload?.topalbums });
       if (mappedAlbums.length) {
         topAlbums = mappedAlbums;
       }
+      const artistArtworkIndex = buildLastFmArtistArtworkIndex({
+        recentTracks,
+        topAlbums
+      });
+      const mappedArtists = applyLastFmArtistArtworkFallback(
+        mapLastFmTopArtistsFromApi({ topartists: proxyPayload?.topartists }),
+        artistArtworkIndex
+      );
       const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(proxyPayload?.nowPlaying);
       const listeningState = extractLastFmCurrentlyListeningItem(recentTracks);
       currentlyListening = mappedNowPlaying || listeningState.currentlyListening;
@@ -963,6 +1034,9 @@
         artists: firstNonEmpty(pickLastFmCountValue(proxyPayload?.user?.artist_count), profileTotals.artists),
         lovedTracks: firstNonEmpty(pickLastFmCountValue(proxyPayload?.lovedtracks?.["@attr"]?.total), profileTotals.lovedTracks)
       };
+      if (mappedArtists.length) {
+        topArtists = mappedArtists;
+      }
       const sections = {
         currentlyListening,
         recentTracks,
@@ -988,8 +1062,8 @@
         stats: [
           {
             label: "Feed",
-            value: nowPlayingPayload
-              ? `Now Playing: ${resolveProxyFreshnessLabel(nowPlayingPayload?.stale)}`
+            value: currentlyListening
+              ? `Now Playing: ${resolveProxyFreshnessLabel(proxyPayload?.stale)}`
               : resolveProxyFreshnessLabel(proxyPayload?.stale)
           },
           { label: "Scrobbles", value: profileTotals.scrobbles || "--" },
@@ -1008,6 +1082,7 @@
     async function loadSitePayload(context) {
       const { site } = context;
       if (!site || !site.id) return null;
+      if (!shouldFetchSitePayload(site.id)) return context.previous || null;
       if (site.id === "steam") return await loadSteamPayload(context);
       if (site.id === "discord") return await loadDiscordPayload(context);
       if (site.id === "lastfm") return await loadLastFmPayload(context);
@@ -1034,6 +1109,17 @@
       return "";
     }
     return "";
+  }
+  function formatExternalPromptDisplayUrl(raw) {
+    const safeUrl = sanitizeUrl(raw);
+    if (!safeUrl) return "";
+    try {
+      const parsed = new URL(safeUrl);
+      const pathname = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/$/, "");
+      return `${parsed.host}${pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return safeUrl.replace(/^https?:\/\//i, "");
+    }
   }
   function formatTimestamp(value) {
     if (!Number.isFinite(value) || value <= 0) return "pending";
@@ -1172,6 +1258,7 @@
     let waveCtx = null;
     let titleEl = null;
     let artistEl = null;
+    let compactPlayerMode = false;
     let resizeObserver = null;
     let manifestPromise = null;
     let previewCtx = null;
@@ -1206,8 +1293,16 @@
       if (artistEl instanceof HTMLElement) {
         artistEl.textContent = currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist");
       }
+      if (playerRoot instanceof HTMLElement) {
+        playerRoot.classList.toggle("is-compact", compactPlayerMode);
+        playerRoot.classList.toggle("is-loading", loadState === "loading");
+        playerRoot.classList.toggle("is-error", loadState === "error");
+        playerRoot.classList.toggle("is-blocked", loadState === "blocked");
+        playerRoot.classList.toggle("is-playing", Boolean(currentTrack) && !audioEl.paused);
+      }
       if (waveSurface instanceof HTMLElement) {
         waveSurface.classList.toggle("is-blocked", loadState === "blocked");
+        waveSurface.classList.toggle("is-playing", Boolean(currentTrack) && !audioEl.paused);
       }
     }
     function isSiteLoadPending() {
@@ -1534,7 +1629,7 @@
     }
     function renderLoop(nowMs) {
       if (disposed) return;
-      if (playerRoot && playbackUnlocked) {
+      if (playerRoot && playbackUnlocked && !compactPlayerMode) {
         drawTrace();
       } else {
         hideWavePortal();
@@ -1595,7 +1690,8 @@
     function bindRoot(root2) {
       if (!(root2 instanceof HTMLElement)) return;
       playerRoot = root2;
-      waveSurface = root2.querySelector("[data-shuffle-surface]");
+      compactPlayerMode = root2.getAttribute("data-shuffle-mode") === "compact";
+      waveSurface = root2.matches("[data-shuffle-surface]") ? root2 : root2.querySelector("[data-shuffle-surface]");
       titleEl = root2.querySelector("[data-shuffle-title]");
       artistEl = root2.querySelector("[data-shuffle-artist]");
       if (waveSurface instanceof HTMLElement) {
@@ -1620,7 +1716,7 @@
           resizeObserver.observe(waveSurface);
         }
       }
-      if (playbackUnlocked) {
+      if (playbackUnlocked && !compactPlayerMode) {
         ensureWaveCanvasSize();
       } else {
         hideWavePortal();
@@ -1637,6 +1733,7 @@
       hideWavePortal();
       titleEl = null;
       artistEl = null;
+      compactPlayerMode = false;
     }
     function attach(root2) {
       if (disposed) return;
@@ -1834,7 +1931,8 @@
     }
     return escapeHtml(safeBio);
   }
-  function renderHero(payloadById, sites) {
+  function renderHero(payloadById, sites, options = {}) {
+    const compact = Boolean(options?.compact);
     const hero = pickHeroPayload(payloadById, sites);
     const avatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL) || sanitizeUrl(hero?.profile?.avatarUrl || payloadById.get("steam")?.profile?.avatarUrl || "");
     const decorationUrl = sanitizeUrl(
@@ -1842,7 +1940,7 @@
     );
     const heroName = escapeHtml(hero?.profile?.name || "FoundLifeless");
     const heroOrnament = renderHeroOrnamentMarkup();
-    const heroDescription = renderHeroDescriptionMarkup(hero?.profile?.bio);
+    const heroDescription = compact ? "" : renderHeroDescriptionMarkup(hero?.profile?.bio);
     return `
     <section class="steam-hero-shell" aria-label="Profile hero">
       <div class="steam-hero-content">
@@ -1917,7 +2015,7 @@
     const imageUrl = sanitizeUrl(row.imageUrl);
     const buttonAttrs = itemUrl ? ` data-item-url="${escapeHtml(itemUrl)}"` : "";
     const itemClass = isNowPlaying ? "lastfm-recent-item lastfm-recent-item--now-playing" : "lastfm-recent-item";
-    const ageLabel = isNowPlaying ? firstNonEmpty(row.countLabel, "listening now") : firstNonEmpty(row.countLabel, "--");
+    const ageLabel = firstNonEmpty(row.countLabel, "--");
     return `
         <li class="${itemClass}">
             <button class="social-item-button lastfm-recent-button" type="button"${buttonAttrs}>
@@ -1927,8 +2025,7 @@
               <span class="lastfm-recent-title">${escapeHtml(row.title || "Unknown track")}</span>
               <span class="lastfm-recent-meta">${escapeHtml(row.subtitle || row.meta || "Unknown artist")}</span>
               <span class="lastfm-recent-side">
-                ${isNowPlaying ? '<span class="lastfm-now-playing-badge">Now Playing</span>' : ""}
-                <span class="lastfm-recent-age">${escapeHtml(ageLabel)}</span>
+                ${isNowPlaying ? '<span class="lastfm-now-playing-badge" aria-label="Now Playing"><span class="lastfm-now-playing-bars" aria-hidden="true"><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span></span><span class="lastfm-now-playing-label">Now Playing</span></span>' : `<span class="lastfm-recent-age">${escapeHtml(ageLabel)}</span>`}
               </span>
             </button>
           </li>
@@ -2054,6 +2151,20 @@
     </article>
   `;
   }
+  function renderCompactMobileAudioPlayer() {
+    return `
+    <div class="josie-mobile-audio-player">
+      <button class="josie-mobile-audio-chip" type="button" data-shuffle-player data-shuffle-mode="compact" data-shuffle-surface aria-label="Site music player">
+        <span class="josie-mobile-audio-chip-icon" aria-hidden="true">♪</span>
+        <span class="josie-mobile-audio-chip-copy">
+          <span class="josie-mobile-audio-chip-kicker">Now Playing</span>
+          <span class="josie-mobile-audio-chip-title" data-shuffle-title>Loading Shuffle...</span>
+          <span class="josie-mobile-audio-chip-artist" data-shuffle-artist>Unknown Artist</span>
+        </span>
+      </button>
+    </div>
+  `;
+  }
   function renderSiteShowcase(site, payload) {
     const safePayload = ensurePayload(site, payload);
     if (site.id === "steam") return renderSteamShowcase(site, safePayload);
@@ -2124,6 +2235,26 @@
     let externalPromptAcceptButton = null;
     let pendingExternalUrl = "";
     let lastFocusedTrigger = null;
+    let mobileAudioDock = null;
+    function ensureMobileAudioDock() {
+      if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
+      const dock = document.createElement("div");
+      dock.className = "josie-mobile-audio-dock";
+      dock.hidden = true;
+      root2?.appendChild(dock);
+      mobileAudioDock = dock;
+      return dock;
+    }
+    function syncMobileAudioDock(enabled) {
+      const dock = ensureMobileAudioDock();
+      dock.hidden = !enabled;
+      if (!enabled) {
+        dock.innerHTML = "";
+        return null;
+      }
+      dock.innerHTML = renderCompactMobileAudioPlayer();
+      return dock.querySelector("[data-shuffle-player]");
+    }
     function launchExternal(url) {
       const safeUrl = sanitizeUrl(url);
       if (!safeUrl) return;
@@ -2138,12 +2269,13 @@
       dialog.innerHTML = `
       <div class="external-link-confirm-backdrop" data-external-confirm-cancel></div>
       <div class="external-link-confirm-window" role="dialog" aria-modal="true" aria-labelledby="external-link-confirm-title">
-        <h3 class="external-link-confirm-title" id="external-link-confirm-title">Leave This Site?</h3>
-        <p class="external-link-confirm-copy">You're about to be redirected to:</p>
+        <button class="external-link-confirm-close" type="button" aria-label="Close this dialog" data-external-confirm-cancel>&times;</button>
+        <h3 class="external-link-confirm-title" id="external-link-confirm-title">Are you sure?</h3>
+        <p class="external-link-confirm-copy">You are going to visit</p>
         <p class="external-link-confirm-url" data-external-confirm-url></p>
         <div class="external-link-confirm-actions">
-          <button class="external-link-confirm-button external-link-confirm-button--cancel" type="button" data-external-confirm-cancel>Nah,</button>
-          <button class="external-link-confirm-button external-link-confirm-button--accept" type="button" data-external-confirm-accept>Ye</button>
+          <button class="external-link-confirm-button external-link-confirm-button--accept" type="button" data-external-confirm-accept>Visit</button>
+          <button class="external-link-confirm-button external-link-confirm-button--cancel" type="button" data-external-confirm-cancel>Cancel</button>
         </div>
       </div>
     `;
@@ -2200,7 +2332,8 @@
       pendingExternalUrl = safeUrl;
       lastFocusedTrigger = trigger instanceof HTMLElement ? trigger : null;
       if (externalPromptUrlEl instanceof HTMLElement) {
-        externalPromptUrlEl.textContent = safeUrl;
+        externalPromptUrlEl.textContent = formatExternalPromptDisplayUrl(safeUrl);
+        externalPromptUrlEl.setAttribute("title", safeUrl);
       }
       dialog.hidden = false;
       dialog.setAttribute("aria-hidden", "false");
@@ -2242,14 +2375,23 @@
       if (!(showcases instanceof HTMLElement)) return;
       if (!(profile instanceof HTMLElement)) return;
       if (!(sidebar instanceof HTMLElement)) return;
+      const compactMobile = isCompactMobileLayout();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
-      profile.innerHTML = renderHero(payloadById, sites);
-      showcases.innerHTML = [
-        renderJosieDescriptionShowcase(),
-        ...showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id)))
-      ].join("");
-      shufflePlayerController?.attach(showcases.querySelector("[data-shuffle-player]"));
+      root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
+      profile.innerHTML = renderHero(payloadById, sites, { compact: compactMobile });
+      if (compactMobile) {
+        showcases.innerHTML = "";
+        showcases.hidden = true;
+      } else {
+        showcases.hidden = false;
+        showcases.innerHTML = [
+          renderJosieDescriptionShowcase(),
+          ...showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id)))
+        ].join("");
+      }
+      const shuffleRoot = compactMobile ? syncMobileAudioDock(true) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
+      shufflePlayerController?.attach(shuffleRoot);
       sidebar.innerHTML = renderSidebar(payloadById, sites);
       if (lastRefreshLabel instanceof HTMLElement) {
         const refreshText = formatTimestamp(snapshot?.lastRefreshAt);
@@ -2275,6 +2417,8 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
+      mobileAudioDock?.remove();
+      mobileAudioDock = null;
       shufflePlayerController?.dispose();
       root2?.removeEventListener("click", onRootClick);
       refreshButton?.removeEventListener("click", onRefreshClick);
@@ -2527,6 +2671,8 @@
     let ambientDeltaSec = 1 / 60;
     let lastAmbientFrameMs = 0;
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    const compactMobileLayout = isCompactMobileLayout();
+    const enableAmbientPointerResponse = !compactMobileLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -2567,11 +2713,20 @@
       return (seed ^ Math.imul(cycleIndex + 1, salt)) >>> 0;
     }
     function updatePointerState() {
+      if (!enableAmbientPointerResponse) {
+        pointerCurrentX = renderWidth * 0.5;
+        pointerCurrentY = renderHeight * 0.5;
+        pointerStrength = 0;
+        return;
+      }
       pointerCurrentX += (pointerTargetX - pointerCurrentX) * 0.16;
       pointerCurrentY += (pointerTargetY - pointerCurrentY) * 0.16;
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
+      if (!enableAmbientPointerResponse) {
+        return { offsetX: 0, offsetY: 0, influence: 0 };
+      }
       if (pointerStrength < 0.002) {
         return { offsetX: 0, offsetY: 0, influence: 0 };
       }
@@ -2828,9 +2983,9 @@
     function rebuildField() {
       const area = cssWidth * cssHeight;
       const rng = createSeededRandom((cssWidth * 73856093 ^ cssHeight * 19349663 ^ 2654435761) >>> 0);
-      const starCount = Math.max(54, Math.min(168, Math.round(area / 28e3)));
-      const glintCount = Math.max(7, Math.min(16, Math.round(area / 19e4)));
-      const flareCount = Math.max(1, Math.min(2, Math.round(area / 14e5)));
+      const starCount = compactMobileLayout ? Math.max(34, Math.min(72, Math.round(area / 42e3))) : Math.max(54, Math.min(168, Math.round(area / 28e3)));
+      const glintCount = compactMobileLayout ? Math.max(0, Math.min(4, Math.round(area / 34e4))) : Math.max(7, Math.min(16, Math.round(area / 19e4)));
+      const flareCount = compactMobileLayout ? 0 : Math.max(1, Math.min(2, Math.round(area / 14e5)));
       stars = Array.from({ length: starCount }, (_, index) => buildStarPrototype(rng, index));
       glints = Array.from({ length: glintCount }, (_, index) => buildGlintPrototype(rng, index));
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
@@ -2842,7 +2997,7 @@
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
-      dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      dpr = Math.max(1, Math.min(compactMobileLayout ? 1.25 : 2, window.devicePixelRatio || 1));
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
       if (osAmbientCanvas.width !== renderWidth || osAmbientCanvas.height !== renderHeight) {
@@ -3008,9 +3163,11 @@
       window.visualViewport.addEventListener("resize", resize);
     }
     document.addEventListener("visibilitychange", sync);
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("pointerout", handlePointerOut, { passive: true });
-    window.addEventListener("blur", handleWindowBlur);
+    if (enableAmbientPointerResponse) {
+      window.addEventListener("pointermove", handlePointerMove, { passive: true });
+      window.addEventListener("pointerout", handlePointerOut, { passive: true });
+      window.addEventListener("blur", handleWindowBlur);
+    }
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     if (root instanceof HTMLElement) {
       bodyObserver.observe(root, { attributes: true, attributeFilter: ["class"] });
@@ -3030,9 +3187,11 @@
           window.visualViewport.removeEventListener("resize", resize);
         }
         document.removeEventListener("visibilitychange", sync);
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerout", handlePointerOut);
-        window.removeEventListener("blur", handleWindowBlur);
+        if (enableAmbientPointerResponse) {
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerout", handlePointerOut);
+          window.removeEventListener("blur", handleWindowBlur);
+        }
       }
     };
   }
@@ -3046,13 +3205,13 @@
   function createSiteCursorController() {
     if (!shouldEnableCustomCursor()) return null;
     if (!(document.body instanceof HTMLElement)) return null;
-    const tailPointCount = 16;
-    const tailLifetimeMs = 220;
-    const trailCanvasSize = 300;
-    const trailSegmentSizePx = 16;
-    const maxTrailSegmentsPerMove = 6;
-    const trailSubdivisionCount = 2;
-    const scrollMorphHoldMs = 220;
+    const tailPointCount = 10;
+    const tailLifetimeMs = 148;
+    const trailCanvasSize = 220;
+    const trailSegmentSizePx = 22;
+    const maxTrailSegmentsPerMove = 4;
+    const trailSubdivisionCount = 1;
+    const scrollMorphHoldMs = 170;
     const cursorEl = document.createElement("div");
     cursorEl.className = "site-pointer";
     cursorEl.setAttribute("aria-hidden", "true");
@@ -3082,13 +3241,14 @@
     }
     let trailCanvasDpr = 1;
     function resizeTrailCanvas() {
-      trailCanvasDpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      trailCanvasDpr = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
       trailCanvas.width = Math.round(trailCanvasSize * trailCanvasDpr);
       trailCanvas.height = Math.round(trailCanvasSize * trailCanvasDpr);
       trailCanvas.style.width = `${trailCanvasSize}px`;
       trailCanvas.style.height = `${trailCanvasSize}px`;
       trailContext.setTransform(1, 0, 0, 1, 0, 0);
       trailContext.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+      trailContext.imageSmoothingEnabled = true;
     }
     function clearTrailCanvas() {
       trailContext.setTransform(1, 0, 0, 1, 0, 0);
@@ -3112,7 +3272,7 @@
     let pointerEnergy = 0;
     let currentInteractiveTarget = null;
     const trailHistory = [];
-    const pointerMoveEventName = "onpointerrawupdate" in window ? "pointerrawupdate" : "pointermove";
+    const pointerMoveEventName = "pointermove";
     function trimTrailHistory(nowMs = performance.now()) {
       while (trailHistory.length > tailPointCount) {
         trailHistory.pop();
@@ -3243,6 +3403,9 @@
       cursorEl.classList.toggle("is-interactive", Boolean(currentInteractiveTarget));
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
+      if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
+        return fallbackTarget;
+      }
       if (Number.isFinite(x) && Number.isFinite(y)) {
         const hitTarget = document.elementFromPoint(x, y);
         if (hitTarget) return hitTarget;
@@ -3304,13 +3467,13 @@
         y: point.y - headY
       }));
       const tailOpacity = clamp((0.12 + motionStrength * 0.72) * (1 - idleFade * 0.98), 0, 0.88);
-      const coreWidth = 4.8 + motionStrength * 3.4 + (scrollDirection !== 0 ? 0.6 : 0);
-      const glowWidth = 16 + motionStrength * 12 + (scrollDirection !== 0 ? 1.8 : 0);
+      const coreWidth = 3.6 + motionStrength * 2.2 + (scrollDirection !== 0 ? 0.4 : 0);
+      const glowWidth = 11 + motionStrength * 6 + (scrollDirection !== 0 ? 1.2 : 0);
       const sampledPoints = sampleTrailPoints(relativePoints, trailSubdivisionCount);
       cursorEl.style.setProperty("--cursor-tail-opacity", tailOpacity.toFixed(3));
       clearTrailCanvas();
-      drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.18, 16 + motionStrength * 8, 0.12);
-      drawTrailRibbon(sampledPoints, coreWidth, tailOpacity * 0.46, 6 + motionStrength * 3, 0.06);
+      drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.14, 8 + motionStrength * 3, 0.08);
+      drawTrailRibbon(sampledPoints, coreWidth, tailOpacity * 0.4, 3 + motionStrength * 1.5, 0.04);
     }
     function tick(nowMs) {
       if (disposed) return;
@@ -3333,10 +3496,8 @@
     function onPointerMove(event) {
       if (!(event instanceof PointerEvent)) return;
       if (event.pointerType === "touch") return;
-      const samples = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : null;
-      const latestSample = samples && samples.length ? samples[samples.length - 1] : event;
-      syncPosition(latestSample.clientX, latestSample.clientY);
-      syncInteractiveTarget(resolvePointerTargetAt(latestSample.clientX, latestSample.clientY, event.target));
+      syncPosition(event.clientX, event.clientY);
+      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
     }
     function onPointerOver(event) {
       if (!(event instanceof PointerEvent)) return;
@@ -3450,12 +3611,25 @@
     socialHubRenderer = null;
     socialHubInitialized = false;
   }
+  function syncLayoutMode() {
+    if (!socialHubInitialized || !socialHubState || !socialHubRenderer) return;
+    socialHubState.startAutoRefresh();
+    socialHubRenderer.render(socialHubState.snapshot(Date.now()));
+    siteCursorController?.refresh?.();
+  }
   function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     setReadyState();
     ambientBackdropController = createAmbientBackdropController();
     siteCursorController = createSiteCursorController();
     initializeSocialHubIfNeeded();
+    if (compactMobileLayoutQuery) {
+      if (typeof compactMobileLayoutQuery.addEventListener === "function") {
+        compactMobileLayoutQuery.addEventListener("change", syncLayoutMode);
+      } else if (typeof compactMobileLayoutQuery.addListener === "function") {
+        compactMobileLayoutQuery.addListener(syncLayoutMode);
+      }
+    }
     siteCursorController?.refresh?.();
   }
   if (document.readyState === "loading") {
@@ -3465,6 +3639,13 @@
   }
   window.addEventListener("pagehide", () => {
     destroySocialHub();
+    if (compactMobileLayoutQuery) {
+      if (typeof compactMobileLayoutQuery.removeEventListener === "function") {
+        compactMobileLayoutQuery.removeEventListener("change", syncLayoutMode);
+      } else if (typeof compactMobileLayoutQuery.removeListener === "function") {
+        compactMobileLayoutQuery.removeListener(syncLayoutMode);
+      }
+    }
     ambientBackdropController?.dispose?.();
     ambientBackdropController = null;
     siteCursorController?.dispose?.();
