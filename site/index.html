@@ -113,10 +113,14 @@
   <script>
     (() => {
       const mobileIntroBypassMaxWidthPx = 820;
-      function shouldSkipIntroOnMobile() {
+      function shouldSkipIntro() {
         if (typeof window === "undefined") return false;
-        const mobileMatch = window.matchMedia?.(`(max-width: ${mobileIntroBypassMaxWidthPx}px)`)?.
-          matches;
+        try {
+          if (window.localStorage.getItem('hasSeenJosieIntro') === 'true') {
+            return true;
+          }
+        } catch (e) {}
+        const mobileMatch = window.matchMedia?.(`(max-width: ${mobileIntroBypassMaxWidthPx}px)`)?.matches;
         const coarsePointerMatch = window.matchMedia?.("(pointer: coarse)")?.matches;
         return Boolean(mobileMatch || coarsePointerMatch || window.innerWidth <= mobileIntroBypassMaxWidthPx);
       }
@@ -127,7 +131,7 @@
         }
         return "/josie.html";
       }
-      if (shouldSkipIntroOnMobile()) {
+      if (shouldSkipIntro()) {
         window.location.replace(resolveMobileJosieUrl());
         return;
       }
@@ -288,7 +292,7 @@
           return;
         }
 
-        const targetAspect = targetWidth / targetHeight;
+        const targetAspect = viewportW / viewportH;
         const videoAspect = videoWidth / videoHeight;
         let sx = 0;
         let sy = 0;

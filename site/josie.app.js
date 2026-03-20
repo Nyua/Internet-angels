@@ -2364,12 +2364,17 @@
       </li>
     `;
     }).join("");
+    const cinnaGifs = ['cinna_sleep.gif', 'cinna_wink.gif'];
+    const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
     return `
     <section class="steam-sidebar-panel">
       <h3 class="steam-sidebar-title">Profile Links:</h3>
       <ul class="steam-sidebar-list">
         ${rows}
       </ul>
+      <div class="cinna-mobile-gif-wrap" aria-hidden="true">
+        <img class="cinna-mobile-gif" src="/${randomCinna}" alt="" loading="lazy" decoding="async" />
+      </div>
     </section>
   `;
   }
@@ -2411,10 +2416,14 @@
       dock.innerHTML = renderCompactMobileAudioPlayer();
       return dock.querySelector("[data-shuffle-player]");
     }
-    function launchExternal(url) {
+    function launchExternal(url, target = "_blank") {
       const safeUrl = sanitizeUrl(url);
       if (!safeUrl) return;
-      window.open(safeUrl, "_blank", "noopener,noreferrer");
+      if (target === "_blank") {
+        window.open(safeUrl, "_blank", "noopener,noreferrer");
+      } else {
+        window.location.href = safeUrl;
+      }
     }
     function ensureExternalPrompt() {
       if (externalPromptRoot instanceof HTMLElement) return externalPromptRoot;
@@ -2431,6 +2440,7 @@
         <p class="external-link-confirm-url" data-external-confirm-url></p>
         <div class="external-link-confirm-actions">
           <button class="external-link-confirm-button external-link-confirm-button--accept" type="button" data-external-confirm-accept>Visit</button>
+          <button class="external-link-confirm-button external-link-confirm-button--new-tab" type="button" data-external-confirm-new-tab>New Tab</button>
           <button class="external-link-confirm-button external-link-confirm-button--cancel" type="button" data-external-confirm-cancel>Cancel</button>
         </div>
       </div>
@@ -2450,7 +2460,12 @@
         if (target.closest("[data-external-confirm-accept]")) {
           const targetUrl = pendingExternalUrl;
           hideExternalPrompt();
-          launchExternal(targetUrl);
+          launchExternal(targetUrl, "_self");
+        }
+        if (target.closest("[data-external-confirm-new-tab]")) {
+          const targetUrl = pendingExternalUrl;
+          hideExternalPrompt();
+          launchExternal(targetUrl, "_blank");
         }
       });
       dialog.addEventListener("keydown", (event) => {
@@ -2465,7 +2480,7 @@
           if (!targetUrl) return;
           event.preventDefault();
           hideExternalPrompt();
-          launchExternal(targetUrl);
+          launchExternal(targetUrl, "_self");
         }
       });
       return dialog;
