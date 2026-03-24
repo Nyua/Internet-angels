@@ -74,7 +74,7 @@ function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = [])
 }
 
 function buildAvatarManifest() {
-  const avatarsDir = path.join(siteDir, "avatars");
+  const avatarsDir = path.join(distDir, "avatars");
   if (!fs.existsSync(avatarsDir)) {
     return { avatars: [] };
   }
