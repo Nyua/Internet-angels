@@ -64,6 +64,36 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
   const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
   expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
+  const smallCopyStyles = await page.locator(".steam-sidebar-row-title").first().evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      color: styles.color
+    };
+  });
+  expect(smallCopyStyles.color).toBe("rgb(255, 0, 122)");
+  const totalAlignment = await page.locator(".lastfm-profile-total").first().evaluate((node) => {
+    const card = node.getBoundingClientRect();
+    const label = node.querySelector(".lastfm-profile-total-label")?.getBoundingClientRect();
+    const value = node.querySelector(".lastfm-profile-total-value")?.getBoundingClientRect();
+    const centerOffset = (box) => box ? Math.abs((box.left + box.width / 2) - (card.left + card.width / 2)) : null;
+    return {
+      labelOffset: centerOffset(label),
+      valueOffset: centerOffset(value)
+    };
+  });
+  expect(totalAlignment.labelOffset).not.toBeNull();
+  expect(totalAlignment.valueOffset).not.toBeNull();
+  expect(totalAlignment.labelOffset).toBeLessThan(2);
+  expect(totalAlignment.valueOffset).toBeLessThan(2);
+  const heroShellStyles = await page.locator(".steam-hero-shell").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      backgroundColor: styles.backgroundColor,
+      boxShadow: styles.boxShadow
+    };
+  });
+  expect(heroShellStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(heroShellStyles.boxShadow).not.toContain("120vmax");
   await page.locator(".steam-sidebar-row--discord").evaluate((node) => node.click());
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 

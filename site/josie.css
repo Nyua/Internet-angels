@@ -77,6 +77,8 @@ body {
   .social-open-original,
   .steam-hero-label,
   .steam-hero-stat,
+  .steam-sidebar-row-title,
+  .steam-sidebar-link,
   .steam-showcase-subtitle,
   .steam-showcase-name,
   .steam-showcase-handle,
@@ -803,12 +805,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 0.22em;
   white-space: nowrap;
   width: 100%;
-  font-size: 2em;
+  font-size: 4em;
 }
 
 .steam-hero-description {
   margin: 1px 0 0;
-  font-size: clamp(20px, 1.55vw, 24px);
+  font-size: clamp(27px, 2.07vw, 32px);
   line-height: 1.35;
   color: #d8ecfa;
   width: 100%;
@@ -1024,7 +1026,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   border: 0;
   border-radius: 6px;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.14), rgba(220, 237, 250, 0.08));
+  background: linear-gradient(165deg, rgba(248, 253, 255, 0.07), rgba(220, 237, 250, 0.04));
   backdrop-filter: blur(13px) saturate(118%);
   -webkit-backdrop-filter: blur(13px) saturate(118%);
   min-height: 54px;
@@ -2353,14 +2355,14 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-showcase--steam-activity {
-  border-color: var(--glass-white-border-strong);
+  border-color: color-mix(in srgb, var(--glass-white-border-strong) 50%, transparent);
   background:
     linear-gradient(162deg, var(--showcase-shell-grad-a) 0%, var(--showcase-shell-grad-b) 100%),
     linear-gradient(165deg, var(--glass-white-a), var(--glass-white-b) 52%, var(--glass-white-c));
   box-shadow:
     0 16px 30px var(--glass-white-shadow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(146, 183, 216, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(146, 183, 216, 0.08);
 }
 
 .steam-activity-header {
@@ -2369,7 +2371,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   gap: 10px;
   padding: 7px 12px;
-  border-bottom: 1px solid var(--glass-white-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-white-border) 50%, transparent);
   background: linear-gradient(180deg, rgba(250, 254, 255, 0.14), rgba(220, 237, 250, 0.08));
   backdrop-filter: blur(9px) saturate(116%);
   -webkit-backdrop-filter: blur(9px) saturate(116%);
@@ -2410,7 +2412,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-activity-row-button {
   width: 100%;
-  border: 1px solid rgba(31, 51, 90, 0.78);
+  border: 1px solid rgba(31, 51, 90, 0.39);
   background: linear-gradient(180deg, rgba(4, 14, 35, 0.6), rgba(2, 9, 24, 0.56));
   color: #edf5ff;
   text-align: left;
@@ -2431,7 +2433,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-activity-capsule {
   width: 184px;
   height: 69px;
-  border: 1px solid rgba(58, 98, 173, 0.62);
+  border: 1px solid rgba(58, 98, 173, 0.31);
   background: rgba(9, 21, 52, 0.86);
   overflow: hidden;
   display: inline-flex;
@@ -2622,15 +2624,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-showcase--lastfm-minimal {
-  border: 2px solid transparent;
+  border: 2px solid rgba(255, 255, 255, 0.18);
   border-radius: 3px !important;
-  box-shadow:
-    0 16px 30px var(--glass-white-shadow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  background:
-    linear-gradient(162deg, var(--showcase-shell-grad-a) 0%, var(--showcase-shell-grad-b) 100%) padding-box,
-    linear-gradient(165deg, var(--glass-white-a), var(--glass-white-b) 52%, var(--glass-white-c)) padding-box,
-    linear-gradient(to bottom, var(--glass-white-border-strong) 0%, var(--glass-white-border-strong) 400px, transparent 800px) border-box;
+  box-shadow: none;
+  background: #0d0d12;
 }
 
 .steam-showcase-body--lastfm-minimal {
@@ -2639,8 +2636,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-showcase-content--lastfm-minimal {
   border: 0;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.14), rgba(220, 237, 250, 0.08));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  background: #111118;
+  box-shadow: none;
   padding: 0;
   gap: 0;
 }
@@ -2658,13 +2655,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   overflow: hidden;
   border: 0;
   border-bottom: 0;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.14), rgba(220, 237, 250, 0.08));
+  background: #161621;
   padding: 10px 4px 8px;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  backdrop-filter: blur(11px) saturate(118%);
-  -webkit-backdrop-filter: blur(11px) saturate(118%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .lastfm-section:first-child {
@@ -2672,16 +2669,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .lastfm-section::before {
-  content: '';
+  content: none;
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background:
-    linear-gradient(118deg, rgba(255, 255, 255, 0.12), rgba(240, 248, 255, 0.04) 36%, rgba(255, 255, 255, 0) 60%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, rgba(255, 255, 255, 0) 1px 3px);
-  opacity: 0.5;
-  mix-blend-mode: soft-light;
 }
 
 .lastfm-section:nth-child(2) .lastfm-media-count {
@@ -2716,18 +2708,17 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-height: 52px;
   padding: 7px 9px;
   border: 0;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.14), rgba(220, 237, 250, 0.08));
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  background: #1b1b27;
+  display: grid;
+  justify-items: center;
+  align-content: center;
   text-align: center;
   gap: 2px;
 }
 
 .lastfm-profile-total-label {
   display: block;
-  width: 100%;
+  width: auto;
   text-align: center;
   font-size: 9px;
   letter-spacing: 0.08em;
@@ -2737,7 +2728,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .lastfm-profile-total-value {
   display: block;
-  width: 100%;
+  width: auto;
   text-align: center;
   font-size: 15px;
   line-height: 1;
@@ -2753,12 +2744,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 0;
   max-height: none;
   overflow: visible;
-  border-top: 1px solid rgba(255, 255, 255, 0.36);
+  border-top: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-item {
   margin: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.36);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-button {
@@ -2777,7 +2768,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .lastfm-recent-button:hover {
   filter: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: #20202d;
 }
 
 .lastfm-recent-art {
@@ -2788,7 +2779,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  background: #222230;
   font-size: 12px;
   line-height: 1;
   overflow: hidden;
@@ -2940,7 +2931,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   text-align: left;
   gap: 0;
   border: 0;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.14), rgba(220, 237, 250, 0.08));
+  background: #1b1b27;
 }
 
 .lastfm-media-image-wrap {
@@ -2949,7 +2940,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  border-bottom: 1px solid rgba(178, 84, 108, 0.42);
+  border-bottom: 2px solid rgba(178, 84, 108, 0.21);
 }
 
 .lastfm-media-image {
@@ -2957,7 +2948,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   height: 100%;
   display: block;
   object-fit: cover;
-  background: rgba(31, 11, 18, 0.9);
+  background: #151520;
   transition: transform 260ms ease, filter 260ms ease;
   transform-origin: center;
 }
