@@ -62,6 +62,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
+  const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
+  expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
   await page.locator(".steam-sidebar-row--discord").evaluate((node) => node.click());
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 

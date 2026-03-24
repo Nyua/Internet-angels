@@ -5,6 +5,9 @@ import {
 } from "./config.js";
 import { fetchWithTimeout } from "./response.js";
 
+const LASTFM_GENERIC_IMAGE_TOKEN = "2a96cbd8b46e442fc41c2b86b821562f";
+const DEEZER_ARTIST_SEARCH_BASE = "https://api.deezer.com/search/artist";
+
 export function buildLastFmEndpoint(method, apiKey, extraParams = {}) {
   const endpoint = new URL(LASTFM_API_BASE);
   endpoint.searchParams.set("method", method);
@@ -36,21 +39,6 @@ export async function fetchLastFmJson(method, apiKey, extraParams = {}) {
   return await response.json();
 }
 
-export async function fetchLastFmText(url) {
-  const response = await fetchWithTimeout(url, {
-    method: "GET",
-    headers: {
-      Accept: "text/html,application/xhtml+xml"
-    }
-  }, LASTFM_TIMEOUT_MS);
-
-  if (!response.ok) {
-    throw new Error(`Last.fm upstream failed (${response.status})`);
-  }
-
-  return await response.text();
-}
-
 export function pickSettledSection(result, key, fallback) {
   if (result.status !== "fulfilled" || !result.value || typeof result.value !== "object") {
     return fallback;
@@ -73,6 +61,10 @@ export function pickLastFmImageUrl(images) {
     }
   }
   return "";
+}
+
+function isLastFmGenericImageUrl(url) {
+  return String(url || "").includes(LASTFM_GENERIC_IMAGE_TOKEN);
 }
 
 export function normalizeLastFmNowPlayingPayload(upstreamPayload, nowMs = Date.now()) {
@@ -119,78 +111,58 @@ async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
     return topartistsSection;
   }
 
-  const decodeHtmlAttribute = (value) => String(value || "")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-  const buildArtistImagesUrl = (artistEntry) => {
-    const artistUrl = String(artistEntry?.url || "").trim();
-    if (!artistUrl) {
+  const normalizeArtistName = (value) => String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const fetchArtistPhotoFromDeezer = async (artistName) => {
+    const query = String(artistName || "").trim();
+    if (!query) {
       return "";
     }
-    try {
-      const url = new URL(artistUrl);
-      url.pathname = `${url.pathname.replace(/\/+$/, "")}/+images`;
-      url.search = "";
-      url.hash = "";
-      return url.toString();
-    } catch {
+    const endpoint = new URL(DEEZER_ARTIST_SEARCH_BASE);
+    endpoint.searchParams.set("q", query);
+    const response = await fetchWithTimeout(endpoint.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    }, LASTFM_TIMEOUT_MS);
+    if (!response.ok) {
+      throw new Error(`Deezer upstream failed (${response.status})`);
+    }
+    const payload = await response.json();
+    const candidates = Array.isArray(payload?.data) ? payload.data : [];
+    if (!candidates.length) {
       return "";
     }
-  };
-  const extractArtistPhotoUrl = (markup, pageUrl) => {
-    const source = String(markup || "");
-    if (!source) {
-      return "";
-    }
-    const resolvePhotoUrl = (rawImageUrl) => {
-      const candidate = decodeHtmlAttribute(rawImageUrl);
-      if (!candidate) {
-        return "";
-      }
-      try {
-        return new URL(candidate, pageUrl).toString();
-      } catch {
-        return "";
-      }
-    };
-    const itemPattern = /<li[^>]*class="[^"]*image-list-item-wrapper[^"]*"[\s\S]*?<\/li>/gi;
-    let firstPhotoUrl = "";
-    let match;
-    while ((match = itemPattern.exec(source))) {
-      const itemMarkup = match[0];
-      const imageMatch = itemMarkup.match(/<img[^>]+src="([^"]+)"/i);
-      const resolvedPhotoUrl = resolvePhotoUrl(imageMatch?.[1] || "");
-      if (!resolvedPhotoUrl) {
-        continue;
-      }
-      if (!firstPhotoUrl) {
-        firstPhotoUrl = resolvedPhotoUrl;
-      }
-      if (/image-list-item-preferred-icon/i.test(itemMarkup)) {
-        return resolvedPhotoUrl;
-      }
-    }
-    if (firstPhotoUrl) {
-      return firstPhotoUrl;
-    }
-    const galleryAnchorMatch = source.match(/<a[^>]+href="[^"]*\/\+images\/[a-f0-9]{8,}[^"]*"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"/i);
-    if (galleryAnchorMatch?.[1]) {
-      return resolvePhotoUrl(galleryAnchorMatch[1]);
-    }
-    const ogImageMatch = source.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
-    return resolvePhotoUrl(ogImageMatch?.[1] || "");
+    const normalizedQuery = normalizeArtistName(query);
+    const exactMatch = candidates.find((entry) => normalizeArtistName(entry?.name) === normalizedQuery) || null;
+    const closeMatch = exactMatch || candidates.find((entry) => {
+      const normalizedCandidate = normalizeArtistName(entry?.name);
+      return normalizedCandidate && (
+        normalizedCandidate.includes(normalizedQuery) ||
+        normalizedQuery.includes(normalizedCandidate)
+      );
+    }) || null;
+    const match = closeMatch || candidates[0] || null;
+    return String(
+      match?.picture_big ||
+      match?.picture_medium ||
+      match?.picture_xl ||
+      match?.picture ||
+      ""
+    ).trim();
   };
   const artistPhotoResults = await Promise.allSettled(
     artists.map(async (artistEntry) => {
-      const artistImagesUrl = buildArtistImagesUrl(artistEntry);
-      if (!artistImagesUrl) {
+      const existingImageUrl = pickLastFmImageUrl(artistEntry?.image);
+      if (existingImageUrl && !isLastFmGenericImageUrl(existingImageUrl)) {
         return "";
       }
-      const markup = await fetchLastFmText(artistImagesUrl);
-      return extractArtistPhotoUrl(markup, artistImagesUrl);
+      return await fetchArtistPhotoFromDeezer(artistEntry?.name);
     })
   );
 

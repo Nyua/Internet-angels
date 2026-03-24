@@ -162,7 +162,7 @@ test("lastfm route derives now playing from recent tracks and only performs five
   }
 });
 
-test("lastfm route enriches top artists with artist photos from Last.fm image galleries", async () => {
+test("lastfm route enriches top artists with fallback artist photos when Last.fm only returns placeholders", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
@@ -208,16 +208,29 @@ test("lastfm route enriches top artists with artist photos from Last.fm image ga
       if (method === "user.getlovedtracks") {
         return Response.json({ lovedtracks: { "@attr": { total: "1197" } } });
       }
-      if (requestUrl.origin === "https://www.last.fm" && requestUrl.pathname.endsWith("/+images")) {
-        const artistName = requestUrl.pathname.split("/").at(-2)?.replace(/\+/g, " ") || "artist";
-        const artistHash = artistName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        return new Response(
-          `<html><body><a href="${requestUrl.pathname}/03825d251683ecdcac1e427347a2abb0"><img src="https://lastfm.freetls.fastly.net/i/u/avatar170s/${artistHash}-preferred-photo" alt="Preferred image" /></a></body></html>`,
-          {
-            status: 200,
-            headers: { "content-type": "text/html; charset=utf-8" }
-          }
-        );
+      if (requestUrl.origin === "https://api.deezer.com" && requestUrl.pathname === "/search/artist") {
+        const query = requestUrl.searchParams.get("q");
+        if (query === "Jane Remover") {
+          return Response.json({
+            data: [
+              {
+                name: "Jane Remover",
+                picture_big: "https://cdn-images.dzcdn.net/images/artist/jane-remover-photo/500x500-000000-80-0-0.jpg"
+              }
+            ]
+          });
+        }
+        if (query === "Quadeca") {
+          return Response.json({
+            data: [
+              {
+                name: "Quadeca",
+                picture_big: "https://cdn-images.dzcdn.net/images/artist/quadeca-photo/500x500-000000-80-0-0.jpg"
+              }
+            ]
+          });
+        }
+        return Response.json({ data: [] });
       }
       throw new Error(`Unexpected Last.fm method: ${method}`);
     };
@@ -229,9 +242,9 @@ test("lastfm route enriches top artists with artist photos from Last.fm image ga
     const payload = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(callUrls.filter((url) => url.startsWith("https://www.last.fm/music/") && url.endsWith("/+images")).length, 2);
-    assert.equal(payload.topartists.artist[0].artistPhotoUrl, "https://lastfm.freetls.fastly.net/i/u/avatar170s/jane-remover-preferred-photo");
-    assert.equal(payload.topartists.artist[1].artistPhotoUrl, "https://lastfm.freetls.fastly.net/i/u/avatar170s/quadeca-preferred-photo");
+    assert.equal(callUrls.filter((url) => url.startsWith("https://api.deezer.com/search/artist")).length, 2);
+    assert.equal(payload.topartists.artist[0].artistPhotoUrl, "https://cdn-images.dzcdn.net/images/artist/jane-remover-photo/500x500-000000-80-0-0.jpg");
+    assert.equal(payload.topartists.artist[1].artistPhotoUrl, "https://cdn-images.dzcdn.net/images/artist/quadeca-photo/500x500-000000-80-0-0.jpg");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
