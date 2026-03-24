@@ -1091,6 +1091,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   text-decoration: none;
   border-bottom: 0;
   font-size: 14px;
+  font-weight: 700;
 }
 
 .steam-sidebar-link-shell {

@@ -80,6 +80,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     };
   });
   expect(smallCopyStyles.color).toBe("rgb(255, 0, 122)");
+  const firstProfileLinkWeight = await page.locator(".steam-sidebar-link").first().evaluate((node) => window.getComputedStyle(node).fontWeight);
+  expect(Number.parseInt(firstProfileLinkWeight, 10)).toBeGreaterThanOrEqual(700);
   const lastFmVisualStyles = await page.evaluate(() => {
     const recentTitle = document.querySelector(".lastfm-recent-title");
     const artistTitle = document.querySelector(".lastfm-media-grid--artists .lastfm-media-title");
