@@ -46,6 +46,7 @@
   --control-bottom: rgba(171, 208, 236, 0.74);
   --control-border: rgba(129, 183, 223, 0.72);
   --control-text: #15314f;
+  --small-copy-accent: #ff007a;
 
   --focus-ring: #78f2ff;
   --container-radius: 8px;
@@ -70,6 +71,41 @@ body {
 
 body {
   touch-action: manipulation;
+}
+
+:is(
+  .social-open-original,
+  .steam-hero-label,
+  .steam-hero-stat,
+  .steam-showcase-subtitle,
+  .steam-showcase-name,
+  .steam-showcase-handle,
+  .steam-showcase-bio,
+  .steam-stat-label,
+  .steam-stat-value,
+  .social-item-title,
+  .social-item-meta,
+  .social-card-empty,
+  .steam-activity-capsule-fallback,
+  .steam-live-status,
+  .steam-live-badge,
+  .steam-live-section-title,
+  .steam-recent-title,
+  .steam-recent-meta,
+  .lastfm-profile-total-label,
+  .lastfm-profile-total-value,
+  .lastfm-recent-title,
+  .lastfm-recent-meta,
+  .lastfm-recent-age,
+  .lastfm-now-playing-badge,
+  .lastfm-media-title,
+  .lastfm-media-subtitle,
+  .lastfm-media-count,
+  .lastfm-media-image--fallback,
+  .josie-audio-player-artist,
+  .external-link-confirm-url
+) {
+  color: var(--small-copy-accent) !important;
 }
 
 body.has-custom-cursor,
@@ -633,8 +669,9 @@ body.site-load-playing .os-ambient-backdrop {
 .steam-hero-shell {
   position: relative;
   border: 0;
-  backdrop-filter: blur(16px) saturate(118%);
-  -webkit-backdrop-filter: blur(16px) saturate(118%);
+  background: transparent !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -648,7 +685,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-hero-shell::before {
-  content: '';
+  content: none;
   position: absolute;
   left: 10px;
   right: 10px;
@@ -1532,7 +1569,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   position: relative;
   isolation: isolate;
-  border: 2px solid var(--glass-white-border-strong);
+  border: 0;
   border-radius: 3px !important;
   overflow: hidden;
   background:
@@ -2689,6 +2726,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .lastfm-profile-total-label {
+  display: block;
+  width: 100%;
+  text-align: center;
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2696,6 +2736,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .lastfm-profile-total-value {
+  display: block;
+  width: 100%;
+  text-align: center;
   font-size: 15px;
   line-height: 1;
   color: #ffeff3;
@@ -2878,7 +2921,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .lastfm-media-grid {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 1rem;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;

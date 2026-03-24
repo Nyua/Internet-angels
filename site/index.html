@@ -284,32 +284,6 @@
         return 1;
       }
 
-      function drawVideoCover(videoEl, targetCtx, targetWidth, targetHeight) {
-        const videoWidth = Number(videoEl.videoWidth) || 0;
-        const videoHeight = Number(videoEl.videoHeight) || 0;
-        if (!videoWidth || !videoHeight) {
-          targetCtx.drawImage(videoEl, 0, 0, targetWidth, targetHeight);
-          return;
-        }
-
-        const targetAspect = viewportW / viewportH;
-        const videoAspect = videoWidth / videoHeight;
-        let sx = 0;
-        let sy = 0;
-        let sw = videoWidth;
-        let sh = videoHeight;
-
-        if (videoAspect > targetAspect) {
-          sw = videoHeight * targetAspect;
-          sx = (videoWidth - sw) / 2;
-        } else if (videoAspect < targetAspect) {
-          sh = videoWidth / targetAspect;
-          sy = (videoHeight - sh) / 2;
-        }
-
-        targetCtx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
-      }
-
       async function ensureAudioGraph() {
         const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextCtor) return null;
@@ -380,8 +354,7 @@
       function drawAsciiFrame() {
         if (activeVideo.readyState < 2) return;
         syncAsciiGrid();
-        sampleCtx.clearRect(0, 0, cols, rows);
-        drawVideoCover(activeVideo, sampleCtx, cols, rows);
+        sampleCtx.drawImage(activeVideo, 0, 0, cols, rows);
         const frame = sampleCtx.getImageData(0, 0, cols, rows);
         const data = frame.data;
         const lum = luminanceFromImageData(frame);
