@@ -86,17 +86,23 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const recentTitle = document.querySelector(".lastfm-recent-title");
     const artistTitle = document.querySelector(".lastfm-media-grid--artists .lastfm-media-title");
     const lastFmSection = document.querySelector(".lastfm-section");
+    const lastFmShowcaseContent = document.querySelector(".steam-showcase-content--lastfm-minimal");
+    const lastFmShowcaseShell = document.querySelector(".steam-showcase--lastfm-minimal");
     const steamActivityShell = document.querySelector(".steam-showcase--steam-activity");
     const steamHours = document.querySelector(".steam-activity-header-hours");
     const steamHoursOnRecord = document.querySelector(".steam-activity-hours");
     const steamLastPlayed = document.querySelector(".steam-activity-last-played");
     const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
     const backgroundOf = (node) => node ? window.getComputedStyle(node).backgroundColor : null;
+    const pseudoDisplayOf = (node, pseudo) => node ? window.getComputedStyle(node, pseudo).display : null;
     return {
       recentTitleColor: colorOf(recentTitle),
       artistTitleColor: colorOf(artistTitle),
       lastFmSectionBackground: backgroundOf(lastFmSection),
+      lastFmShowcaseContentBackground: backgroundOf(lastFmShowcaseContent),
+      lastFmShowcaseBeforeDisplay: pseudoDisplayOf(lastFmShowcaseShell, "::before"),
       steamActivityBackground: backgroundOf(steamActivityShell),
+      steamActivityBeforeDisplay: pseudoDisplayOf(steamActivityShell, "::before"),
       steamHoursColor: colorOf(steamHours),
       steamHoursOnRecordColor: colorOf(steamHoursOnRecord),
       steamLastPlayedColor: colorOf(steamLastPlayed)
@@ -105,7 +111,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(255, 255, 255)");
   expect(lastFmVisualStyles.artistTitleColor).toBe("rgb(255, 255, 255)");
   expect(lastFmVisualStyles.lastFmSectionBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(lastFmVisualStyles.lastFmShowcaseContentBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(lastFmVisualStyles.lastFmShowcaseBeforeDisplay).toBe("none");
   expect(lastFmVisualStyles.steamActivityBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(lastFmVisualStyles.steamActivityBeforeDisplay).toBe("none");
   expect(lastFmVisualStyles.steamHoursColor).toBe("rgb(255, 0, 122)");
   expect(lastFmVisualStyles.steamHoursOnRecordColor).toBe("rgb(255, 0, 122)");
   expect(lastFmVisualStyles.steamLastPlayedColor).toBe("rgb(255, 0, 122)");

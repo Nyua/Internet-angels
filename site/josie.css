@@ -2359,6 +2359,15 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border-color: color-mix(in srgb, var(--glass-white-border-strong) 50%, transparent);
   background: transparent;
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.steam-showcase--steam-activity::before,
+.steam-showcase--steam-activity::after,
+.steam-showcase--lastfm-minimal::before,
+.steam-showcase--lastfm-minimal::after {
+  display: none;
 }
 
 .steam-activity-header {
@@ -2623,19 +2632,24 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border: 2px solid rgba(255, 255, 255, 0.18);
   border-radius: 3px !important;
   box-shadow: none;
-  background: #0f151e;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .steam-showcase-body--lastfm-minimal {
   padding: 0;
+  background: transparent;
 }
 
 .steam-showcase-content--lastfm-minimal {
   border: 0;
-  background: #111924;
+  background: transparent;
   box-shadow: none;
   padding: 0;
   gap: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .lastfm-sections {
