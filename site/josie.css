@@ -805,7 +805,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 0.22em;
   white-space: nowrap;
   width: 100%;
-  font-size: 4em;
+  font-size: 2.67em;
 }
 
 .steam-hero-description {
@@ -1026,9 +1026,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   border: 0;
   border-radius: 6px;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.07), rgba(220, 237, 250, 0.04));
-  backdrop-filter: blur(13px) saturate(118%);
-  -webkit-backdrop-filter: blur(13px) saturate(118%);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   min-height: 54px;
   padding: 8px 10px;
   cursor: pointer;
@@ -1145,7 +1145,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-sidebar-row:hover {
-  filter: brightness(1.04);
+  filter: none;
 }
 
 .steam-sidebar-row:hover .steam-sidebar-link,
@@ -2357,12 +2357,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-showcase--steam-activity {
   border-color: color-mix(in srgb, var(--glass-white-border-strong) 50%, transparent);
   background:
-    linear-gradient(162deg, var(--showcase-shell-grad-a) 0%, var(--showcase-shell-grad-b) 100%),
-    linear-gradient(165deg, var(--glass-white-a), var(--glass-white-b) 52%, var(--glass-white-c));
+    linear-gradient(180deg, rgba(20, 31, 46, 0.98) 0%, rgba(13, 22, 34, 0.98) 100%);
   box-shadow:
-    0 16px 30px var(--glass-white-shadow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 -1px 0 rgba(146, 183, 216, 0.08);
+    0 14px 28px rgba(2, 9, 18, 0.34),
+    inset 0 1px 0 rgba(134, 168, 201, 0.08),
+    inset 0 -1px 0 rgba(80, 112, 148, 0.08);
 }
 
 .steam-activity-header {
@@ -2372,9 +2371,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 10px;
   padding: 7px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--glass-white-border) 50%, transparent);
-  background: linear-gradient(180deg, rgba(250, 254, 255, 0.14), rgba(220, 237, 250, 0.08));
-  backdrop-filter: blur(9px) saturate(116%);
-  -webkit-backdrop-filter: blur(9px) saturate(116%);
+  background: #152232;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .steam-activity-header-title {
@@ -2392,9 +2391,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-activity-body {
   padding: 10px;
-  background: linear-gradient(165deg, rgba(248, 253, 255, 0.12), rgba(220, 237, 250, 0.08));
-  backdrop-filter: blur(8px) saturate(116%);
-  -webkit-backdrop-filter: blur(8px) saturate(116%);
+  background: #101924;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .steam-activity-list {
@@ -2413,7 +2412,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-activity-row-button {
   width: 100%;
   border: 1px solid rgba(31, 51, 90, 0.39);
-  background: linear-gradient(180deg, rgba(4, 14, 35, 0.6), rgba(2, 9, 24, 0.56));
+  background: #172334;
   color: #edf5ff;
   text-align: left;
   padding: 10px;
@@ -2422,19 +2421,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   grid-template-columns: 184px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  backdrop-filter: blur(7px) saturate(118%);
-  -webkit-backdrop-filter: blur(7px) saturate(118%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .steam-activity-row-button:hover {
-  filter: brightness(1.04);
+  filter: brightness(1.02);
 }
 
 .steam-activity-capsule {
   width: 184px;
   height: 69px;
   border: 1px solid rgba(58, 98, 173, 0.31);
-  background: rgba(9, 21, 52, 0.86);
+  background: #0f1724;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
@@ -2627,7 +2626,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border: 2px solid rgba(255, 255, 255, 0.18);
   border-radius: 3px !important;
   box-shadow: none;
-  background: #0d0d12;
+  background: #0f151e;
 }
 
 .steam-showcase-body--lastfm-minimal {
@@ -2636,7 +2635,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-showcase-content--lastfm-minimal {
   border: 0;
-  background: #111118;
+  background: #111924;
   box-shadow: none;
   padding: 0;
   gap: 0;
@@ -2655,7 +2654,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   overflow: hidden;
   border: 0;
   border-bottom: 0;
-  background: #161621;
+  background: #15202d;
   padding: 10px 4px 8px;
   display: flex;
   flex-direction: column;
@@ -2708,7 +2707,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-height: 52px;
   padding: 7px 9px;
   border: 0;
-  background: #1b1b27;
+  background: #1a2735;
   display: grid;
   justify-items: center;
   align-content: center;
@@ -2768,7 +2767,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .lastfm-recent-button:hover {
   filter: none;
-  background: #20202d;
+  background: #1d2b3a;
 }
 
 .lastfm-recent-art {
@@ -2779,7 +2778,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  background: #222230;
+  background: #1b2836;
   font-size: 12px;
   line-height: 1;
   overflow: hidden;
@@ -2931,7 +2930,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   text-align: left;
   gap: 0;
   border: 0;
-  background: #1b1b27;
+  background: #1a2735;
 }
 
 .lastfm-media-image-wrap {
@@ -2948,7 +2947,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   height: 100%;
   display: block;
   object-fit: cover;
-  background: #151520;
+  background: #111924;
   transition: transform 260ms ease, filter 260ms ease;
   transform-origin: center;
 }
