@@ -8,9 +8,18 @@ const appSourcePath = path.join(siteDir, "josie.app.js");
 const clientOutputPath = path.join(distDir, "josie.client.js");
 const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
+const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
+]);
+const avatarExtensions = /* @__PURE__ */ new Set([
+  ".avif",
+  ".gif",
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".webp"
 ]);
 
 const headersFile = `/*.html
@@ -64,6 +73,20 @@ function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = [])
   return oversized;
 }
 
+function buildAvatarManifest() {
+  const avatarsDir = path.join(siteDir, "avatars");
+  if (!fs.existsSync(avatarsDir)) {
+    return { avatars: [] };
+  }
+  const avatars = fs.readdirSync(avatarsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((fileName) => avatarExtensions.has(path.extname(fileName).toLowerCase()))
+    .sort((left, right) => left.localeCompare(right))
+    .map((fileName) => `/avatars/${fileName}`);
+  return { avatars };
+}
+
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
 fs.cpSync(siteDir, distDir, {
@@ -84,6 +107,8 @@ if (fs.existsSync(appOutputPath)) {
   fs.rmSync(appOutputPath, { force: true });
 }
 fs.writeFileSync(headersPath, headersFile, "utf8");
+fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
+fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
 
 const oversizedFiles = collectOversizedFiles(distDir);
 if (oversizedFiles.length) {

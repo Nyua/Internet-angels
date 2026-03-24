@@ -1166,18 +1166,40 @@
     soundcloud: "SoundCloud"
   };
   var NON_SHOWCASE_SITE_IDS = /* @__PURE__ */ new Set(["twitter", "discord", "spotify", "soundcloud"]);
+  var AVATAR_MANIFEST_URL = "/assets/avatar-manifest.json";
   var HERO_RANDOM_AVATAR_URLS = [
+    "/avatars/avatar_joser.jpg",
+    "/avatars/josie-main-profile.jpg",
     "/avatars/josie-main-profile1.jpg",
+    "/avatars/josie-main-profile2.jpg",
     "/avatars/josie-main-profile3.jpg",
     "/avatars/josie-main-profile4.jpg"
   ];
-  function pickRandomHeroAvatarUrl() {
-    const pool = HERO_RANDOM_AVATAR_URLS.filter((entry) => String(entry || "").trim().length > 0);
+  var heroAvatarManifestPromise = null;
+  function pickRandomHeroAvatarUrl(entries = HERO_RANDOM_AVATAR_URLS) {
+    const pool = (Array.isArray(entries) ? entries : HERO_RANDOM_AVATAR_URLS).filter((entry) => String(entry || "").trim().length > 0);
     if (!pool.length) return "/avatars/josie-main-profile.jpg";
     const index = Math.floor(Math.random() * pool.length);
     return pool[index] || pool[0];
   }
   var HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl();
+  async function ensureHeroAvatarSelection() {
+    if (heroAvatarManifestPromise) return heroAvatarManifestPromise;
+    heroAvatarManifestPromise = (async () => {
+      try {
+        const response = await fetch(AVATAR_MANIFEST_URL, { cache: "default" });
+        if (!response.ok) {
+          throw new Error(`Avatar manifest fetch failed (${response.status})`);
+        }
+        const data = await response.json();
+        HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl(Array.isArray(data?.avatars) ? data.avatars : HERO_RANDOM_AVATAR_URLS);
+      } catch {
+        HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl();
+      }
+      return HERO_AVATAR_LOCKED_URL;
+    })();
+    return heroAvatarManifestPromise;
+  }
   var DEFAULT_HERO_BIO = "˚₊‧꒰ა ♡ ໒꒱ ‧₊˚";
   var JOSIE_TOP_SHOWCASE_TEXT = "I'm just here, lol.";
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
@@ -3792,11 +3814,12 @@
     socialHubRenderer.render(socialHubState.snapshot(Date.now()));
     siteCursorController?.refresh?.();
   }
-  function bootstrap() {
+  async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     setReadyState();
     ambientBackdropController = createAmbientBackdropController();
     siteCursorController = createSiteCursorController();
+    await ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();
     if (compactMobileLayoutQuery) {
       if (typeof compactMobileLayoutQuery.addEventListener === "function") {

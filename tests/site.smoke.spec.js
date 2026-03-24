@@ -19,6 +19,12 @@ test("next page redirects to josie", async ({ page }) => {
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
+  const avatarManifestResponse = await request.get("/assets/avatar-manifest.json");
+  expect(avatarManifestResponse.status()).toBe(200);
+  const avatarManifest = await avatarManifestResponse.json();
+  expect(Array.isArray(avatarManifest.avatars)).toBe(true);
+  expect(avatarManifest.avatars.length).toBeGreaterThan(0);
+
   const lastfmResponse = await request.get("/api/lastfm");
   expect(lastfmResponse.status()).toBe(200);
   const lastfmPayload = await lastfmResponse.json();
@@ -55,6 +61,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true");
   await expect(page.locator(".steam-hero-name")).toHaveText("Josie");
   await expect(page.locator(".steam-hero-ornament")).toHaveCount(1);
+  const heroAvatarSrc = await page.locator(".steam-hero-avatar").first().getAttribute("src");
+  expect(heroAvatarSrc).toBeTruthy();
+  expect(avatarManifest.avatars).toContain(new URL(heroAvatarSrc, "http://127.0.0.1:8788").pathname);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-heart")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
@@ -71,6 +80,33 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     };
   });
   expect(smallCopyStyles.color).toBe("rgb(255, 0, 122)");
+  const lastFmVisualStyles = await page.evaluate(() => {
+    const recentTitle = document.querySelector(".lastfm-recent-title");
+    const artistTitle = document.querySelector(".lastfm-media-grid--artists .lastfm-media-title");
+    const lastFmSection = document.querySelector(".lastfm-section");
+    const steamActivityShell = document.querySelector(".steam-showcase--steam-activity");
+    const steamHours = document.querySelector(".steam-activity-header-hours");
+    const steamHoursOnRecord = document.querySelector(".steam-activity-hours");
+    const steamLastPlayed = document.querySelector(".steam-activity-last-played");
+    const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
+    const backgroundOf = (node) => node ? window.getComputedStyle(node).backgroundColor : null;
+    return {
+      recentTitleColor: colorOf(recentTitle),
+      artistTitleColor: colorOf(artistTitle),
+      lastFmSectionBackground: backgroundOf(lastFmSection),
+      steamActivityBackground: backgroundOf(steamActivityShell),
+      steamHoursColor: colorOf(steamHours),
+      steamHoursOnRecordColor: colorOf(steamHoursOnRecord),
+      steamLastPlayedColor: colorOf(steamLastPlayed)
+    };
+  });
+  expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(255, 255, 255)");
+  expect(lastFmVisualStyles.artistTitleColor).toBe("rgb(255, 255, 255)");
+  expect(lastFmVisualStyles.lastFmSectionBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(lastFmVisualStyles.steamActivityBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(lastFmVisualStyles.steamHoursColor).toBe("rgb(255, 0, 122)");
+  expect(lastFmVisualStyles.steamHoursOnRecordColor).toBe("rgb(255, 0, 122)");
+  expect(lastFmVisualStyles.steamLastPlayedColor).toBe("rgb(255, 0, 122)");
   const totalAlignment = await page.locator(".lastfm-profile-total").first().evaluate((node) => {
     const card = node.getBoundingClientRect();
     const label = node.querySelector(".lastfm-profile-total-label")?.getBoundingClientRect();

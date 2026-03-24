@@ -2356,12 +2356,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-showcase--steam-activity {
   border-color: color-mix(in srgb, var(--glass-white-border-strong) 50%, transparent);
-  background:
-    linear-gradient(180deg, rgba(20, 31, 46, 0.98) 0%, rgba(13, 22, 34, 0.98) 100%);
-  box-shadow:
-    0 14px 28px rgba(2, 9, 18, 0.34),
-    inset 0 1px 0 rgba(134, 168, 201, 0.08),
-    inset 0 -1px 0 rgba(80, 112, 148, 0.08);
+  background: transparent;
+  box-shadow: none;
 }
 
 .steam-activity-header {
@@ -2371,7 +2367,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 10px;
   padding: 7px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--glass-white-border) 50%, transparent);
-  background: #152232;
+  background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -2386,12 +2382,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-activity-header-hours {
   font-size: 16px;
-  color: #e2ecff;
+  color: var(--small-copy-accent);
 }
 
 .steam-activity-body {
   padding: 10px;
-  background: #101924;
+  background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -2412,7 +2408,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-activity-row-button {
   width: 100%;
   border: 1px solid rgba(31, 51, 90, 0.39);
-  background: #172334;
+  background: transparent;
   color: #edf5ff;
   text-align: left;
   padding: 10px;
@@ -2433,7 +2429,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 184px;
   height: 69px;
   border: 1px solid rgba(58, 98, 173, 0.31);
-  background: #0f1724;
+  background: transparent;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
@@ -2480,12 +2476,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-activity-last-played {
   font-size: 16px;
   line-height: 1.2;
-  color: #c7d7f4;
+  color: var(--small-copy-accent);
   white-space: nowrap;
 }
 
 .steam-activity-last-played {
-  color: #c7d7f4;
+  color: var(--small-copy-accent);
 }
 
 .steam-live-layout {
@@ -2654,7 +2650,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   overflow: hidden;
   border: 0;
   border-bottom: 0;
-  background: #15202d;
+  background: transparent;
   padding: 10px 4px 8px;
   display: flex;
   flex-direction: column;
@@ -2707,7 +2703,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-height: 52px;
   padding: 7px 9px;
   border: 0;
-  background: #1a2735;
+  background: transparent;
   display: grid;
   justify-items: center;
   align-content: center;
@@ -2767,7 +2763,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .lastfm-recent-button:hover {
   filter: none;
-  background: #1d2b3a;
+  background: transparent;
 }
 
 .lastfm-recent-art {
@@ -2800,7 +2796,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   font-size: 14px;
   line-height: 1.2;
   font-weight: 700;
-  color: #fff0f4;
+  color: #ffffff !important;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2886,7 +2882,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .lastfm-recent-item--now-playing .lastfm-recent-button {
-  background: linear-gradient(90deg, rgba(255, 192, 214, 0.09), rgba(255, 255, 255, 0.04));
+  background: transparent;
 }
 
 @keyframes lastfmNowPlayingBar {
@@ -2930,7 +2926,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   text-align: left;
   gap: 0;
   border: 0;
-  background: #1a2735;
+  background: transparent;
 }
 
 .lastfm-media-image-wrap {
@@ -2998,6 +2994,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.lastfm-media-grid--artists .lastfm-media-title {
+  color: #ffffff !important;
 }
 
 .lastfm-media-subtitle {
