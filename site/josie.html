@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260325-josie-26" />
+    <link rel="stylesheet" href="/josie.css?v=20260325-josie-27" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -166,7 +166,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260325-josie-26"></script>
+    <script src="/josie.client.js?v=20260325-josie-27"></script>
     <script>
       (() => {
         const breakpointPx = 1120;
@@ -183,6 +183,7 @@
             root.style.removeProperty("zoom");
             root.style.removeProperty("will-change");
             root.style.removeProperty("width");
+            root.style.margin = "0 auto";
             root.style.transformOrigin = "top center";
             root.style.transform = "scale(1)";
             frame.style.removeProperty("height");
@@ -197,6 +198,7 @@
           }
           root.style.removeProperty("transform");
           root.style.removeProperty("transform-origin");
+          root.style.removeProperty("margin");
           frame.style.removeProperty("height");
           if (window.innerWidth <= breakpointPx) {
             root.style.removeProperty("zoom");

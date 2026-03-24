@@ -184,6 +184,25 @@ test("josie mobile uses the docked desktop player shell", async ({ page }) => {
   await expect(page.locator(".josie-mobile-audio-player [data-shuffle-title]")).toBeVisible();
   await expect(page.locator(".josie-mobile-audio-player [data-shuffle-artist]")).toBeVisible();
   await expect(page.locator(".steam-sidebar-list")).toBeVisible();
+  await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
+  const mobileCentering = await page.evaluate(() => {
+    const viewportCenter = window.innerWidth / 2;
+    const heroAvatar = document.querySelector(".steam-hero-avatar-wrap");
+    const sidebarPanel = document.querySelector(".steam-sidebar-panel");
+    const centerOffset = (node) => {
+      if (!(node instanceof HTMLElement)) return null;
+      const rect = node.getBoundingClientRect();
+      return Math.abs(rect.left + rect.width / 2 - viewportCenter);
+    };
+    return {
+      heroOffset: centerOffset(heroAvatar),
+      sidebarOffset: centerOffset(sidebarPanel)
+    };
+  });
+  expect(mobileCentering.heroOffset).not.toBeNull();
+  expect(mobileCentering.sidebarOffset).not.toBeNull();
+  expect(mobileCentering.heroOffset).toBeLessThan(4);
+  expect(mobileCentering.sidebarOffset).toBeLessThan(4);
   await page.locator(".steam-sidebar-row--discord .steam-sidebar-site-icon svg").evaluate((node) => node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 

@@ -2362,6 +2362,210 @@
     };
     return `<span class="steam-sidebar-site-icon steam-sidebar-site-icon--${safeSiteId}" aria-hidden="true">${iconMarkupById[siteId] || ""}</span>`;
   }
+  var cinnaGifAssetCache = /* @__PURE__ */ new Map();
+  function skipGifSubBlocks2(data, offset) {
+    let cursor = offset;
+    while (cursor < data.length) {
+      const size = data[cursor];
+      cursor += 1;
+      if (size === 0) break;
+      cursor += size;
+    }
+    return cursor;
+  }
+  function parseGifTimingData(data) {
+    if (!(data instanceof Uint8Array) || data.length < 14) {
+      return { frameDelaysMs: [], totalDurationMs: 2200 };
+    }
+    const signature = String.fromCharCode(data[0], data[1], data[2], data[3], data[4], data[5]);
+    if (signature !== "GIF87a" && signature !== "GIF89a") {
+      return { frameDelaysMs: [], totalDurationMs: 2200 };
+    }
+    let offset = 13;
+    const packed = data[10];
+    if (packed & 128) {
+      offset += 3 * (1 << ((packed & 7) + 1));
+    }
+    let frameDelay = 10;
+    const frameDelaysMs = [];
+    while (offset < data.length) {
+      const token = data[offset];
+      if (token === 59) break;
+      if (token === 33) {
+        const label = data[offset + 1];
+        if (label === 249 && offset + 7 < data.length) {
+          const rawDelay = data[offset + 4] | data[offset + 5] << 8;
+          frameDelay = rawDelay <= 1 ? 10 : rawDelay;
+          offset += 8;
+          continue;
+        }
+        offset += 2;
+        offset = skipGifSubBlocks2(data, offset);
+        continue;
+      }
+      if (token === 44) {
+        if (offset + 9 >= data.length) break;
+        const localPacked = data[offset + 9];
+        offset += 10;
+        if (localPacked & 128) {
+          offset += 3 * (1 << ((localPacked & 7) + 1));
+        }
+        offset += 1;
+        offset = skipGifSubBlocks2(data, offset);
+        frameDelaysMs.push(frameDelay * 10);
+        frameDelay = 10;
+        continue;
+      }
+      break;
+    }
+    const totalDurationMs = frameDelaysMs.reduce((sum, delay) => sum + delay, 0);
+    return {
+      frameDelaysMs,
+      totalDurationMs: totalDurationMs > 0 ? totalDurationMs : 2200
+    };
+  }
+  async function ensureCinnaGifAsset(url) {
+    const safeUrl = sanitizeUrl(url);
+    if (!safeUrl) return null;
+    if (cinnaGifAssetCache.has(safeUrl)) {
+      return cinnaGifAssetCache.get(safeUrl);
+    }
+    const assetPromise = (async () => {
+      const response = await fetch(safeUrl, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error(`Cinna GIF fetch failed (${response.status})`);
+      }
+      const buffer = await response.arrayBuffer();
+      const timing = parseGifTimingData(new Uint8Array(buffer));
+      const asset = {
+        frameDelaysMs: timing.frameDelaysMs,
+        totalDurationMs: timing.totalDurationMs,
+        frames: [],
+        objectUrl: "",
+        width: 0,
+        height: 0
+      };
+      if (typeof ImageDecoder === "function" && typeof createImageBitmap === "function") {
+        const decoder = new ImageDecoder({ data: buffer, type: "image/gif" });
+        await decoder.tracks.ready;
+        const frameCount = decoder.tracks.selectedTrack?.frameCount || timing.frameDelaysMs.length || 1;
+        for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+          const decoded = await decoder.decode({ frameIndex, completeFramesOnly: true });
+          const bitmap = await createImageBitmap(decoded.image);
+          decoded.image.close();
+          asset.frames.push(bitmap);
+        }
+        decoder.close();
+        if (asset.frames[0]) {
+          asset.width = asset.frames[0].width;
+          asset.height = asset.frames[0].height;
+        }
+      } else {
+        asset.objectUrl = URL.createObjectURL(new Blob([buffer], { type: "image/gif" }));
+      }
+      return asset;
+    })();
+    cinnaGifAssetCache.set(safeUrl, assetPromise);
+    return assetPromise;
+  }
+  function createCinnaMobileGifController(sidebarRoot) {
+    let disposed = false;
+    let restartTimerId = 0;
+    let rafId = 0;
+    let frameStartedAt = 0;
+    let frameIndex = 0;
+    const gifImage = sidebarRoot?.querySelector(".cinna-mobile-gif");
+    if (!(gifImage instanceof HTMLImageElement)) {
+      return { dispose() {
+      } };
+    }
+    const safeUrl = sanitizeUrl(gifImage.getAttribute("data-cinna-gif-src") || gifImage.getAttribute("src") || "");
+    if (!safeUrl) {
+      return { dispose() {
+      } };
+    }
+    let canvas = null;
+    let ctx = null;
+    function cleanupTimers() {
+      if (restartTimerId) {
+        window.clearInterval(restartTimerId);
+        restartTimerId = 0;
+      }
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+    }
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      cleanupTimers();
+      if (canvas instanceof HTMLCanvasElement) {
+        canvas.remove();
+      }
+      gifImage.hidden = false;
+      gifImage.classList.remove("cinna-mobile-gif--enhanced");
+    }
+    ensureCinnaGifAsset(safeUrl).then((asset) => {
+      if (disposed || !asset) return;
+      if (Array.isArray(asset.frames) && asset.frames.length) {
+        canvas = document.createElement("canvas");
+        canvas.className = "cinna-mobile-gif cinna-mobile-gif--canvas";
+        canvas.width = asset.width || asset.frames[0].width || 1;
+        canvas.height = asset.height || asset.frames[0].height || 1;
+        canvas.style.aspectRatio = `${canvas.width} / ${canvas.height}`;
+        ctx = canvas.getContext("2d", { alpha: true });
+        if (!ctx) {
+          canvas.remove();
+          canvas = null;
+          gifImage.hidden = false;
+          return;
+        }
+        gifImage.hidden = true;
+        gifImage.classList.add("cinna-mobile-gif--enhanced");
+        gifImage.after(canvas);
+        const frameDelays = asset.frameDelaysMs.length ? asset.frameDelaysMs : asset.frames.map(() => Math.round(asset.totalDurationMs / Math.max(1, asset.frames.length)));
+        const drawFrame = (nextIndex) => {
+          if (!ctx || !canvas || disposed) return;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const frame = asset.frames[nextIndex] || asset.frames[0];
+          if (frame) {
+            ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+          }
+        };
+        const animate = (now) => {
+          if (disposed) return;
+          if (!frameStartedAt) frameStartedAt = now;
+          const frameDelay = Math.max(16, frameDelays[frameIndex] || frameDelays[0] || 100);
+          if (now - frameStartedAt >= frameDelay) {
+            frameStartedAt = now;
+            frameIndex = (frameIndex + 1) % asset.frames.length;
+            drawFrame(frameIndex);
+          }
+          rafId = window.requestAnimationFrame(animate);
+        };
+        drawFrame(frameIndex);
+        rafId = window.requestAnimationFrame(animate);
+        return;
+      }
+      if (asset.objectUrl) {
+        gifImage.loading = "eager";
+        gifImage.decoding = "sync";
+        gifImage.src = asset.objectUrl;
+        restartTimerId = window.setInterval(() => {
+          if (disposed) return;
+          gifImage.src = "";
+          window.requestAnimationFrame(() => {
+            if (!disposed) {
+              gifImage.src = asset.objectUrl;
+            }
+          });
+        }, Math.max(900, asset.totalDurationMs + 64));
+      }
+    }).catch(() => {
+    });
+    return { dispose };
+  }
   function renderSidebar(payloadById, sites) {
     const rows = sites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
@@ -2395,7 +2599,7 @@
         ${rows}
       </ul>
       <div class="cinna-mobile-gif-wrap" aria-hidden="true">
-        <img class="cinna-mobile-gif" src="/${randomCinna}" alt="" loading="lazy" decoding="async" />
+        <img class="cinna-mobile-gif" src="/${randomCinna}" data-cinna-gif-src="/${randomCinna}" alt="" loading="eager" decoding="async" />
       </div>
     </section>
   `;
@@ -2419,6 +2623,7 @@
     let pendingExternalUrl = "";
     let lastFocusedTrigger = null;
     let mobileAudioDock = null;
+    let cinnaMobileGifController = null;
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -2437,6 +2642,12 @@
       }
       dock.innerHTML = renderCompactMobileAudioPlayer();
       return dock.querySelector("[data-shuffle-player]");
+    }
+    function syncCinnaMobileGif(enabled) {
+      cinnaMobileGifController?.dispose?.();
+      cinnaMobileGifController = null;
+      if (!enabled || !(sidebar instanceof HTMLElement)) return;
+      cinnaMobileGifController = createCinnaMobileGifController(sidebar);
     }
     function launchExternal(url, target = "_blank") {
       const safeUrl = sanitizeUrl(url);
@@ -2586,6 +2797,7 @@
       const shuffleRoot = compactMobile ? syncMobileAudioDock(true) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
       shufflePlayerController?.attach(shuffleRoot);
       sidebar.innerHTML = renderSidebar(payloadById, sites);
+      syncCinnaMobileGif(compactMobile);
       if (lastRefreshLabel instanceof HTMLElement) {
         const refreshText = formatTimestamp(snapshot?.lastRefreshAt);
         const summary = snapshot?.summary || { ok: 0, partial: 0, failed: 0 };
@@ -2610,6 +2822,8 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
+      cinnaMobileGifController?.dispose?.();
+      cinnaMobileGifController = null;
       mobileAudioDock?.remove();
       mobileAudioDock = null;
       shufflePlayerController?.dispose();
