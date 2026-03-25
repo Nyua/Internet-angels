@@ -18,6 +18,15 @@ const LASTFM_GENERIC_IMAGE_TOKEN = "2a96cbd8b46e442fc41c2b86b821562f";
 const DEEZER_ARTIST_SEARCH_BASE = "https://api.deezer.com/search/artist";
 const LASTFM_INTERNAL_CACHE_BASE = "https://internet-angel.internal/__lastfm";
 
+export function normalizeArtistSearchName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function buildLastFmEndpoint(method, apiKey, extraParams = {}) {
   const endpoint = new URL(LASTFM_API_BASE);
   endpoint.searchParams.set("method", method);
@@ -75,6 +84,46 @@ export function pickLastFmImageUrl(images) {
 
 export function isLastFmGenericImageUrl(url) {
   return String(url || "").includes(LASTFM_GENERIC_IMAGE_TOKEN);
+}
+
+export async function findArtistPhotoUrlViaDeezer(artistName) {
+  const query = String(artistName || "").trim();
+  if (!query) {
+    return "";
+  }
+  const endpoint = new URL(DEEZER_ARTIST_SEARCH_BASE);
+  endpoint.searchParams.set("q", query);
+  const response = await fetchWithTimeout(endpoint.toString(), {
+    method: "GET",
+    headers: {
+      Accept: "application/json"
+    }
+  }, LASTFM_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`Deezer upstream failed (${response.status})`);
+  }
+  const payload = await response.json();
+  const candidates = Array.isArray(payload?.data) ? payload.data : [];
+  if (!candidates.length) {
+    return "";
+  }
+  const normalizedQuery = normalizeArtistSearchName(query);
+  const exactMatch = candidates.find((entry) => normalizeArtistSearchName(entry?.name) === normalizedQuery) || null;
+  const closeMatch = exactMatch || candidates.find((entry) => {
+    const normalizedCandidate = normalizeArtistSearchName(entry?.name);
+    return normalizedCandidate && (
+      normalizedCandidate.includes(normalizedQuery) ||
+      normalizedQuery.includes(normalizedCandidate)
+    );
+  }) || null;
+  const match = closeMatch || candidates[0] || null;
+  return String(
+    match?.picture_big ||
+    match?.picture_medium ||
+    match?.picture_xl ||
+    match?.picture ||
+    ""
+  ).trim();
 }
 
 function toLastFmTrackArray(section) {
@@ -420,59 +469,13 @@ async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
   if (!artists.length) {
     return topartistsSection;
   }
-
-  const normalizeArtistName = (value) => String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const fetchArtistPhotoFromDeezer = async (artistName) => {
-    const query = String(artistName || "").trim();
-    if (!query) {
-      return "";
-    }
-    const endpoint = new URL(DEEZER_ARTIST_SEARCH_BASE);
-    endpoint.searchParams.set("q", query);
-    const response = await fetchWithTimeout(endpoint.toString(), {
-      method: "GET",
-      headers: {
-        Accept: "application/json"
-      }
-    }, LASTFM_TIMEOUT_MS);
-    if (!response.ok) {
-      throw new Error(`Deezer upstream failed (${response.status})`);
-    }
-    const payload = await response.json();
-    const candidates = Array.isArray(payload?.data) ? payload.data : [];
-    if (!candidates.length) {
-      return "";
-    }
-    const normalizedQuery = normalizeArtistName(query);
-    const exactMatch = candidates.find((entry) => normalizeArtistName(entry?.name) === normalizedQuery) || null;
-    const closeMatch = exactMatch || candidates.find((entry) => {
-      const normalizedCandidate = normalizeArtistName(entry?.name);
-      return normalizedCandidate && (
-        normalizedCandidate.includes(normalizedQuery) ||
-        normalizedQuery.includes(normalizedCandidate)
-      );
-    }) || null;
-    const match = closeMatch || candidates[0] || null;
-    return String(
-      match?.picture_big ||
-      match?.picture_medium ||
-      match?.picture_xl ||
-      match?.picture ||
-      ""
-    ).trim();
-  };
   const artistPhotoResults = await Promise.allSettled(
     artists.map(async (artistEntry) => {
       const existingImageUrl = pickLastFmImageUrl(artistEntry?.image);
       if (existingImageUrl && !isLastFmGenericImageUrl(existingImageUrl)) {
         return "";
       }
-      return await fetchArtistPhotoFromDeezer(artistEntry?.name);
+      return await findArtistPhotoUrlViaDeezer(artistEntry?.name);
     })
   );
 

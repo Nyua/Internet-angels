@@ -454,6 +454,10 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
             topTags: [
               { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
               { name: "bedroom pop", url: "https://www.last.fm/tag/bedroom+pop" }
+            ],
+            similarTracks: [
+              { title: "California", artist: "beabadoobee", url: "https://www.last.fm/music/beabadoobee/_/California", match: 0.82 },
+              { title: "Glue Song", artist: "beabadoobee", url: "https://www.last.fm/music/beabadoobee/_/Glue+Song", match: 0.79 }
             ]
           },
           spotify: {
@@ -485,10 +489,19 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
                 title: "the perfect pair",
                 lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
                 artworkUrl: "https://example.com/perfect-pair.jpg",
-                userPlaycount: 0,
+                userPlaycount: 2,
                 userLoved: false,
                 globalPlaycount: 29424507,
                 listeners: 1452743
+              },
+              {
+                title: "Talk",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Talk",
+                artworkUrl: "https://example.com/talk.jpg",
+                userPlaycount: 9,
+                userLoved: true,
+                globalPlaycount: 1820011,
+                listeners: 942304
               }
             ]
           }
@@ -505,34 +518,35 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
         fetchedAt: new Date().toISOString(),
         query: { artist, track, album: "" },
         track: {
-          title: "the perfect pair",
+          title: track || "the perfect pair",
           artist: "beabadoobee",
           album: "Beatopia",
           durationMs: 193000,
           durationLabel: "3:13",
-          artworkUrl: "https://example.com/perfect-pair.jpg",
-          lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+          artworkUrl: track === "Talk" ? "https://example.com/talk.jpg" : "https://example.com/perfect-pair.jpg",
+          lastfmUrl: track === "Talk" ? "https://www.last.fm/music/beabadoobee/_/Talk" : "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
           artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
-          userPlaycount: 0,
-          userLoved: false,
-          globalPlaycount: 29424507,
-          listeners: 1452743,
+          userPlaycount: track === "Talk" ? 9 : 2,
+          userLoved: track === "Talk",
+          globalPlaycount: track === "Talk" ? 1820011 : 29424507,
+          listeners: track === "Talk" ? 942304 : 1452743,
           summary: "",
           publishedAt: null,
-          topTags: []
+          topTags: [],
+          similarTracks: []
         },
         spotify: {
-          matchStatus: "unmatched",
+          matchStatus: track === "Talk" ? "matched" : "unmatched",
           embedUrl: "",
-          openUrl: "",
-          searchUrl: "https://open.spotify.com/search/the%20perfect%20pair%20beabadoobee",
-          previewUrl: "",
-          title: "",
-          artist: "",
-          album: "",
-          artworkUrl: ""
+          openUrl: track === "Talk" ? "https://open.spotify.com/track/spotify-talk" : "",
+          searchUrl: track === "Talk" ? "https://open.spotify.com/search/Talk%20beabadoobee" : "https://open.spotify.com/search/the%20perfect%20pair%20beabadoobee",
+          previewUrl: track === "Talk" ? "https://p.scdn.co/mp3-preview/talk-preview.mp3" : "",
+          title: track === "Talk" ? "Talk" : "",
+          artist: track === "Talk" ? "beabadoobee" : "",
+          album: track === "Talk" ? "Beatopia" : "",
+          artworkUrl: track === "Talk" ? "https://i.scdn.co/image/talk.jpg" : ""
         },
-        scrobbles: { total: 0, items: [] },
+        scrobbles: { total: track === "Talk" ? 9 : 2, items: [] },
         artistTopTracks: { artist: "beabadoobee", items: [] }
       })
     });
@@ -570,7 +584,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     };
   });
   expect(panelBox).not.toBeNull();
-  expect(panelBox.width).toBeLessThanOrEqual(760);
+  expect(panelBox.width).toBeLessThanOrEqual(680);
   expect(panelBox.scrollbarWidth).toBe("none");
   expect(panelBox.overflowY).toBe("auto");
   const panelTypography = await page.evaluate(() => {
@@ -591,9 +605,12 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(previewPlayer).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-secondary [data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-similar")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-similar")).toContainText("Sounds like");
+  await expect(page.locator(".lastfm-track-panel-similar-chip").first()).toContainText("California");
   await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
-  await expect(page.locator("[data-track-preview-volume]")).toHaveValue("0.39");
+  await expect(page.locator("[data-track-preview-volume]")).toHaveValue("0.2");
   await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
   const previewToggle = page.locator("[data-track-preview-toggle]");
   await previewToggle.click();
@@ -633,9 +650,10 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
   await cancelPrompt.click();
   await expect(page.locator(".external-link-confirm")).not.toHaveClass(/is-open/);
-  await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(1);
-  await page.locator(".lastfm-track-panel-related-button").click();
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("the perfect pair");
+  await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(2);
+  await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
+  await page.locator(".lastfm-track-panel-related-button").first().click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Talk");
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -732,6 +750,225 @@ test("josie track details panel falls back to spotify search when no preview mat
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
   await page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+});
+
+test("josie opens artist and album detail panels from top charts and follows album artist links", async ({ page }) => {
+  const apiRequests = [];
+  page.on("request", (request) => {
+    apiRequests.push(request.url());
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: { track: [] },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "33",
+              url: "https://www.last.fm/music/beabadoobee",
+              image: [{ "#text": "https://example.com/bea-grid.jpg", size: "large" }]
+            }
+          ]
+        },
+        topalbums: {
+          album: [
+            {
+              name: "Beatopia",
+              artist: { name: "beabadoobee" },
+              playcount: "21",
+              url: "https://www.last.fm/music/beabadoobee/Beatopia",
+              image: [{ "#text": "https://example.com/beatopia-grid.jpg", size: "large" }]
+            }
+          ]
+        },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-artist-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee" },
+        artist: {
+          name: "beabadoobee",
+          artworkUrl: "https://example.com/bea-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee",
+          summary: "A dreamy indie artist.",
+          listeners: 285055,
+          playcount: 2740015,
+          topTrackCount: 2,
+          topTags: [
+            { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+            { name: "bedroom pop", url: "https://www.last.fm/tag/bedroom+pop" }
+          ]
+        },
+        topTracks: {
+          artist: "beabadoobee",
+          items: [
+            {
+              title: "Talk",
+              artist: "beabadoobee",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Talk",
+              artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+              artworkUrl: "https://example.com/talk.jpg",
+              userPlaycount: 9,
+              userLoved: true,
+              globalPlaycount: 1820011,
+              listeners: 942304
+            },
+            {
+              title: "the perfect pair",
+              artist: "beabadoobee",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+              artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+              artworkUrl: "https://example.com/perfect-pair.jpg",
+              userPlaycount: 2,
+              userLoved: false,
+              globalPlaycount: 29424507,
+              listeners: 1452743
+            }
+          ]
+        },
+        topAlbums: {
+          artist: "beabadoobee",
+          items: [
+            {
+              title: "Beatopia",
+              artist: "beabadoobee",
+              artworkUrl: "https://example.com/beatopia-detail.jpg",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/Beatopia",
+              releasedAt: "15 Jul 2022",
+              releaseYear: "2022",
+              topTags: [
+                { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+                { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
+              ],
+              playcount: 1200456,
+              listeners: 500123
+            }
+          ]
+        }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-album-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee", album: "Beatopia" },
+        album: {
+          title: "Beatopia",
+          artist: "beabadoobee",
+          artworkUrl: "https://example.com/beatopia-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/Beatopia",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          summary: "A dreamy sophomore album.",
+          listeners: 500123,
+          playcount: 1200456,
+          releasedAt: "15 Jul 2022",
+          runtimeMs: 308000,
+          runtimeLabel: "5:08",
+          trackCount: 2,
+          topTags: [
+            { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+            { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
+          ]
+        },
+        tracks: {
+          items: [
+            {
+              rank: 1,
+              title: "Talk",
+              artist: "beabadoobee",
+              artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+              durationMs: 144000,
+              durationLabel: "2:24",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Talk",
+              userPlaycount: 9,
+              userLoved: true,
+              globalPlaycount: 1820011,
+              listeners: 942304
+            },
+            {
+              rank: 2,
+              title: "the perfect pair",
+              artist: "beabadoobee",
+              artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+              durationMs: 164000,
+              durationLabel: "2:44",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+              userPlaycount: 2,
+              userLoved: false,
+              globalPlaycount: 29424507,
+              listeners: 1452743
+            }
+          ]
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-kicker")).toContainText("Artist details");
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Albums" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
+  await expect(page.locator(".lastfm-track-panel-related-button--album")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("Beatopia");
+  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("2022");
+  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("indie pop");
+  await page.locator(".lastfm-track-panel-related-button--album").first().click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+
+  await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Track list" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-track-item")).toHaveCount(2);
+  const headerArtistLink = page.locator(".lastfm-track-panel-meta .lastfm-track-panel-inline-link").first();
+  await expect(headerArtistLink).toHaveText("beabadoobee");
+  await headerArtistLink.click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+
+  await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
+  const trackArtistLink = page.locator(".lastfm-track-panel-track-meta .lastfm-track-panel-inline-link").first();
+  await expect(trackArtistLink).toHaveText("beabadoobee");
+  await trackArtistLink.click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+
+  expect(apiRequests.some((url) => url.includes("/api/lastfm-artist-details"))).toBe(true);
+  expect(apiRequests.some((url) => url.includes("/api/lastfm-album-details"))).toBe(true);
+  expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
 });
 
 test("josie does not mount a spotify player when the detail track has no preview clip", async ({ page }) => {

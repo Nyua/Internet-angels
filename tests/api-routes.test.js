@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { onRequest as onDiscordRequest } from "../functions/api/discord.js";
+import { onRequest as onLastFmAlbumDetailsRequest } from "../functions/api/lastfm-album-details.js";
+import { onRequest as onLastFmArtistDetailsRequest } from "../functions/api/lastfm-artist-details.js";
 import { onRequest as onLastFmRequest } from "../functions/api/lastfm.js";
 import { onRequest as onLastFmTrackDetailsRequest } from "../functions/api/lastfm-track-details.js";
 import { onRequest as onSteamRequest } from "../functions/api/steam-recent-activity.js";
@@ -497,6 +499,23 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
             }
           });
         }
+        if (trackName === "Talk") {
+          return Response.json({
+            track: {
+              name: "Talk",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              album: {
+                title: "Beatopia",
+                image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/talk.jpg" }]
+              },
+              url: "https://www.last.fm/music/beabadoobee/_/Talk",
+              playcount: "1820011",
+              listeners: "942304",
+              userplaycount: "9",
+              userloved: "1"
+            }
+          });
+        }
         throw new Error(`Unexpected track.getInfo track ${trackName}`);
       }
       if (method === "track.gettoptags") {
@@ -505,6 +524,26 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
             tag: [
               { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
               { name: "bedroom pop", url: "https://www.last.fm/tag/bedroom+pop" }
+            ]
+          }
+        });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({
+          similartracks: {
+            track: [
+              {
+                name: "California",
+                artist: { name: "beabadoobee" },
+                url: "https://www.last.fm/music/beabadoobee/_/California",
+                match: "0.82"
+              },
+              {
+                name: "Glue Song",
+                artist: { name: "beabadoobee" },
+                url: "https://www.last.fm/music/beabadoobee/_/Glue+Song",
+                match: "0.79"
+              }
             ]
           }
         });
@@ -548,6 +587,13 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
                 playcount: "29424507",
                 listeners: "1452743",
                 url: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair"
+              },
+              {
+                name: "Talk",
+                artist: { name: "beabadoobee" },
+                playcount: "1820011",
+                listeners: "942304",
+                url: "https://www.last.fm/music/beabadoobee/_/Talk"
               }
             ]
           }
@@ -573,6 +619,8 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.track.userPlaycount, 3);
     assert.equal(payload.track.userLoved, true);
     assert.equal(payload.track.artworkUrl, "https://i.scdn.co/image/spotify-track-art.jpg");
+    assert.equal(payload.track.similarTracks.length, 2);
+    assert.equal(payload.track.similarTracks[0].title, "California");
     assert.equal(payload.track.topTags.length, 2);
     assert.equal(payload.track.summary, "A bright and clipped single.");
     assert.equal(payload.spotify.matchStatus, "matched");
@@ -581,10 +629,13 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.scrobbles.total, 3);
     assert.equal(payload.scrobbles.items[0].playedAtLabel, "23 Mar 2026, 07:21");
     assert.equal(payload.artistTopTracks.artist, "beabadoobee");
-    assert.equal(payload.artistTopTracks.items.length, 1);
-    assert.equal(payload.artistTopTracks.items[0].title, "the perfect pair");
-    assert.equal(payload.artistTopTracks.items[0].globalPlaycount, 29424507);
+    assert.equal(payload.artistTopTracks.items.length, 2);
+    assert.equal(payload.artistTopTracks.items[0].title, "Talk");
+    assert.equal(payload.artistTopTracks.items[0].userPlaycount, 9);
+    assert.equal(payload.artistTopTracks.items[1].title, "the perfect pair");
+    assert.equal(payload.artistTopTracks.items[1].globalPlaycount, 29424507);
     assert.equal(callUrls.filter((url) => url === "https://accounts.spotify.com/api/token").length, 1);
+    assert.equal(callUrls.filter((url) => url.includes("method=track.getsimilar")).length, 1);
     assert.equal(callUrls.filter((url) => url.includes("method=user.gettrackscrobbles")).length, 1);
     assert.equal(callUrls.filter((url) => url.includes("method=artist.gettoptracks")).length, 1);
   } finally {
@@ -624,6 +675,9 @@ test("lastfm track details route returns partial data when scrobble and spotify 
       }
       if (method === "track.gettoptags") {
         return Response.json({ toptags: { tag: [] } });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
       }
       if (method === "user.gettrackscrobbles") {
         throw new Error("scrobbles down");
@@ -698,6 +752,276 @@ test("lastfm track details route returns retained stale payload when upstream fa
     assert.equal(payload.stale, true);
     assert.equal(payload.sourceStatus, "PARTIAL");
     assert.equal(payload.track.title, "One Time");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm artist details route validates query params and assembles artist detail data", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const missingArtistRequest = createSameOriginRequest("/api/lastfm-artist-details");
+  const request = createSameOriginRequest("/api/lastfm-artist-details?artist=beabadoobee");
+
+  try {
+    globalThis.caches = { default: cache };
+    const missingArtistResponse = await onLastFmArtistDetailsRequest({
+      request: missingArtistRequest,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    assert.equal(missingArtistResponse.status, 400);
+    assert.equal((await missingArtistResponse.json()).error, "artist is required");
+
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      if (resourceUrl.startsWith("https://api.deezer.com/search/artist")) {
+        return Response.json({
+          data: [
+            {
+              name: "beabadoobee",
+              picture_big: "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg"
+            }
+          ]
+        });
+      }
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "artist.getinfo") {
+        return Response.json({
+          artist: {
+            name: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee",
+            image: [{ "#text": "" }],
+            bio: {
+              summary: "Filipino-British indie artist.<a href=\"https://www.last.fm/music/beabadoobee\">Read more on Last.fm</a>"
+            },
+            stats: {
+              listeners: "285055",
+              playcount: "2740015"
+            },
+            tags: {
+              tag: [
+                { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+                { name: "bedroom pop", url: "https://www.last.fm/tag/bedroom+pop" }
+              ]
+            }
+          }
+        });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({
+          toptracks: {
+            track: [
+              {
+                name: "Talk",
+                artist: { name: "beabadoobee" },
+                playcount: "1820011",
+                listeners: "942304",
+                url: "https://www.last.fm/music/beabadoobee/_/Talk"
+              },
+              {
+                name: "the perfect pair",
+                artist: { name: "beabadoobee" },
+                playcount: "29424507",
+                listeners: "1452743",
+                url: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair"
+              }
+            ]
+          }
+        });
+      }
+      if (method === "artist.gettopalbums") {
+        return Response.json({
+          topalbums: {
+            album: [
+              {
+                name: "Beatopia",
+                artist: { name: "beabadoobee" },
+                playcount: "1200456",
+                url: "https://www.last.fm/music/beabadoobee/Beatopia",
+                image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg" }]
+              }
+            ]
+          }
+        });
+      }
+      if (method === "album.getinfo") {
+        return Response.json({
+          album: {
+            name: "Beatopia",
+            artist: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee/Beatopia",
+            image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg" }],
+            playcount: "1200456",
+            listeners: "500123",
+            releasedate: "15 Jul 2022, 00:00",
+            tags: {
+              tag: [
+                { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+                { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
+              ]
+            }
+          }
+        });
+      }
+      if (method === "track.getInfo") {
+        const trackName = requestUrl.searchParams.get("track");
+        if (trackName === "Talk") {
+          return Response.json({
+            track: {
+              name: "Talk",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              album: { title: "Beatopia", image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/talk.jpg" }] },
+              url: "https://www.last.fm/music/beabadoobee/_/Talk",
+              playcount: "1820011",
+              listeners: "942304",
+              userplaycount: "9",
+              userloved: "1"
+            }
+          });
+        }
+        return Response.json({
+          track: {
+            name: "the perfect pair",
+            artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+            album: { title: "Beatopia", image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/perfect-pair.jpg" }] },
+            url: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+            playcount: "29424507",
+            listeners: "1452743",
+            userplaycount: "2",
+            userloved: "0"
+          }
+        });
+      }
+      throw new Error(`Unexpected request: ${resourceUrl}`);
+    };
+
+    const response = await onLastFmArtistDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.artist.name, "beabadoobee");
+    assert.equal(payload.artist.artworkUrl, "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg");
+    assert.equal(payload.artist.summary, "Filipino-British indie artist.");
+    assert.equal(payload.artist.topTags.length, 2);
+    assert.equal(payload.topTracks.items[0].title, "Talk");
+    assert.equal(payload.topTracks.items[0].userPlaycount, 9);
+    assert.equal(payload.topAlbums.items.length, 1);
+    assert.equal(payload.topAlbums.items[0].title, "Beatopia");
+    assert.equal(payload.topAlbums.items[0].releaseYear, "2022");
+    assert.equal(payload.topAlbums.items[0].topTags[0].name, "indie pop");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm album details route assembles album detail data and track popularity", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-album-details?artist=beabadoobee&album=Beatopia");
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "album.getinfo") {
+        return Response.json({
+          album: {
+            name: "Beatopia",
+            artist: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee/Beatopia",
+            image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg" }],
+            playcount: "1200456",
+            listeners: "500123",
+            releasedate: "15 Jul 2022, 00:00",
+            wiki: {
+              summary: "A dreamy sophomore album.<a href=\"https://www.last.fm/music/beabadoobee/Beatopia\">Read more on Last.fm</a>"
+            },
+            tags: {
+              tag: [
+                { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+                { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
+              ]
+            },
+            tracks: {
+              track: [
+                { name: "Talk", duration: "144", "@attr": { rank: "1" } },
+                { name: "the perfect pair", duration: "164", "@attr": { rank: "2" } }
+              ]
+            }
+          }
+        });
+      }
+      if (method === "artist.getinfo") {
+        return Response.json({
+          artist: {
+            name: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee",
+            stats: {
+              listeners: "285055",
+              playcount: "2740015"
+            }
+          }
+        });
+      }
+      if (method === "track.getInfo") {
+        const trackName = requestUrl.searchParams.get("track");
+        if (trackName === "Talk") {
+          return Response.json({
+            track: {
+              name: "Talk",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              url: "https://www.last.fm/music/beabadoobee/_/Talk",
+              duration: "144000",
+              playcount: "1820011",
+              listeners: "942304",
+              userplaycount: "9",
+              userloved: "1"
+            }
+          });
+        }
+        return Response.json({
+          track: {
+            name: "the perfect pair",
+            artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+            url: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+            duration: "164000",
+            playcount: "29424507",
+            listeners: "1452743",
+            userplaycount: "2",
+            userloved: "0"
+          }
+        });
+      }
+      throw new Error(`Unexpected request: ${resourceUrl}`);
+    };
+
+    const response = await onLastFmAlbumDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.album.title, "Beatopia");
+    assert.equal(payload.album.artist, "beabadoobee");
+    assert.equal(payload.album.releasedAt, "15 Jul 2022");
+    assert.equal(payload.album.runtimeLabel, "5:08");
+    assert.equal(payload.album.topTags.length, 2);
+    assert.equal(payload.tracks.items.length, 2);
+    assert.equal(payload.tracks.items[0].title, "Talk");
+    assert.equal(payload.tracks.items[0].userPlaycount, 9);
+    assert.equal(payload.tracks.items[0].artistLastFmUrl, "https://www.last.fm/music/beabadoobee");
+    assert.equal(payload.tracks.items[1].globalPlaycount, 29424507);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
