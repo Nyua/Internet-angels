@@ -85,6 +85,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   const lastFmVisualStyles = await page.evaluate(() => {
     const recentTitle = document.querySelector(".lastfm-recent-title");
     const artistTitle = document.querySelector(".lastfm-media-grid--artists .lastfm-media-title");
+    const albumTitle = document.querySelector(".lastfm-media-grid--albums .lastfm-media-title");
     const lastFmSection = document.querySelector(".lastfm-section");
     const lastFmShowcaseContent = document.querySelector(".steam-showcase-content--lastfm-minimal");
     const lastFmShowcaseShell = document.querySelector(".steam-showcase--lastfm-minimal");
@@ -98,6 +99,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     return {
       recentTitleColor: colorOf(recentTitle),
       artistTitleColor: colorOf(artistTitle),
+      albumTitleColor: colorOf(albumTitle),
       lastFmSectionBackground: backgroundOf(lastFmSection),
       lastFmShowcaseContentBackground: backgroundOf(lastFmShowcaseContent),
       lastFmShowcaseBeforeDisplay: pseudoDisplayOf(lastFmShowcaseShell, "::before"),
@@ -110,6 +112,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(255, 255, 255)");
   expect(lastFmVisualStyles.artistTitleColor).toBe("rgb(255, 255, 255)");
+  expect(lastFmVisualStyles.albumTitleColor).toBe("rgb(255, 255, 255)");
   expect(lastFmVisualStyles.lastFmSectionBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.lastFmShowcaseContentBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.lastFmShowcaseBeforeDisplay).toBe("none");
@@ -185,6 +188,8 @@ test("josie mobile uses the docked desktop player shell", async ({ page }) => {
   await expect(page.locator(".josie-mobile-audio-player [data-shuffle-artist]")).toBeVisible();
   await expect(page.locator(".steam-sidebar-list")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
+  await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
+  await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
   const mobileCentering = await page.evaluate(() => {
     const viewportCenter = window.innerWidth / 2;
     const heroAvatar = document.querySelector(".steam-hero-avatar-wrap");
