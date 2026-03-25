@@ -572,6 +572,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Your plays" })).toHaveCount(0);
   const panelBox = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
+    const backdropEl = document.querySelector(".lastfm-track-panel-backdrop");
     if (!(windowEl instanceof HTMLElement)) {
       return null;
     }
@@ -580,13 +581,22 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     return {
       width: rect.width,
       scrollbarWidth: styles.getPropertyValue("scrollbar-width").trim(),
-      overflowY: styles.overflowY
+      overflowY: styles.overflowY,
+      backgroundColor: styles.backgroundColor,
+      backdropFilter: backdropEl instanceof HTMLElement ? window.getComputedStyle(backdropEl).backdropFilter : "",
+      compactDebugBadgeCount: document.querySelectorAll(".lastfm-track-panel-badge").length
     };
   });
   expect(panelBox).not.toBeNull();
   expect(panelBox.width).toBeLessThanOrEqual(680);
   expect(panelBox.scrollbarWidth).toBe("none");
   expect(panelBox.overflowY).toBe("auto");
+  expect(panelBox.backgroundColor).toBe("rgb(0, 0, 0)");
+  expect(panelBox.backdropFilter).toContain("blur");
+  expect(panelBox.compactDebugBadgeCount).toBeLessThanOrEqual(1);
+  await expect(page.locator(".lastfm-track-panel-badge", { hasText: "Cloudflare" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-badge", { hasText: "Live" })).toHaveCount(0);
+  await expect(page.getByText(/Last refresh:/)).toHaveCount(0);
   const panelTypography = await page.evaluate(() => {
     const title = document.querySelector(".lastfm-track-panel-title");
     const meta = document.querySelector(".lastfm-track-panel-meta");
@@ -937,6 +947,16 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-kicker")).toContainText("Artist details");
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  const artistPanelLayout = await page.evaluate(() => {
+    const layout = document.querySelector(".lastfm-track-panel-layout");
+    const primary = document.querySelector(".lastfm-track-panel-primary");
+    return {
+      className: layout instanceof HTMLElement ? layout.className : "",
+      primaryWidth: primary instanceof HTMLElement ? primary.getBoundingClientRect().width : 0
+    };
+  });
+  expect(artistPanelLayout.className).toContain("lastfm-track-panel-layout--compact-primary");
+  expect(artistPanelLayout.primaryWidth).toBeLessThan(170);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");

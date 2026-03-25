@@ -2738,8 +2738,6 @@
     const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
-    const freshnessLabel = detail?.stale ? "Cloudflare cache" : "Cloudflare edge";
-    const statusLabel = String(detail?.sourceStatus || "PARTIAL").toLowerCase() === "ok" ? "Live" : "Partial";
     const scrobbleItems = Array.isArray(scrobbles.items) ? scrobbles.items.slice(0, 8) : [];
     const relatedItems = Array.isArray(artistTopTracks.items)
       ? [...artistTopTracks.items].sort((left, right) => {
@@ -2797,6 +2795,9 @@
         </div>
       </section>
     ` : "";
+    const layoutClass = spotifyPreviewMarkup || soundsLikeMarkup
+      ? "lastfm-track-panel-layout"
+      : "lastfm-track-panel-layout lastfm-track-panel-layout--compact-primary";
     const summaryMarkup = track.summary ? `
       <section class="lastfm-track-panel-summary">
         <h4 class="lastfm-track-panel-section-title">About this track</h4>
@@ -2858,7 +2859,7 @@
     return `
       <div class="lastfm-track-panel-window" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
-        <div class="lastfm-track-panel-layout">
+        <div class="${layoutClass}">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art">
               ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
@@ -2868,11 +2869,6 @@
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
-              <div class="lastfm-track-panel-badges">
-                <span class="lastfm-track-panel-badge">${escapeHtml(freshnessLabel)}</span>
-                <span class="lastfm-track-panel-badge">${escapeHtml(statusLabel)}</span>
-                ${track.userLoved ? '<span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved">Loved</span>' : ""}
-              </div>
               <p class="lastfm-track-panel-kicker">Track details</p>
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(track.title || "Unknown track")}</h3>
               <p class="lastfm-track-panel-meta">
@@ -2880,6 +2876,7 @@
                 ${track.album ? `<span class="lastfm-track-panel-meta-separator">•</span><span>${escapeHtml(track.album)}</span>` : ""}
                 ${track.durationLabel ? `<span class="lastfm-track-panel-meta-separator">•</span><span>${escapeHtml(track.durationLabel)}</span>` : ""}
               </p>
+              ${track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved">Loved</span></div>' : ""}
             </header>
             <div class="lastfm-track-panel-stats">
               ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
@@ -2955,8 +2952,6 @@
     const artist = detail?.artist || {};
     const topTracks = detail?.topTracks || {};
     const topAlbums = detail?.topAlbums || {};
-    const freshnessLabel = detail?.stale ? "Cloudflare cache" : "Cloudflare edge";
-    const statusLabel = String(detail?.sourceStatus || "PARTIAL").toLowerCase() === "ok" ? "Live" : "Partial";
     const topTrackItems = Array.isArray(topTracks.items) ? topTracks.items.slice(0, 5) : [];
     const topAlbumItems = Array.isArray(topAlbums.items) ? topAlbums.items : [];
     const artworkUrl = sanitizeUrl(artist.artworkUrl);
@@ -3042,7 +3037,7 @@
     return `
       <div class="lastfm-track-panel-window" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
-        <div class="lastfm-track-panel-layout">
+        <div class="lastfm-track-panel-layout lastfm-track-panel-layout--compact-primary">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art">
               ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">★</span>'}
@@ -3050,10 +3045,6 @@
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
-              <div class="lastfm-track-panel-badges">
-                <span class="lastfm-track-panel-badge">${escapeHtml(freshnessLabel)}</span>
-                <span class="lastfm-track-panel-badge">${escapeHtml(statusLabel)}</span>
-              </div>
               <p class="lastfm-track-panel-kicker">Artist details</p>
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(artist.name || "Unknown artist")}</h3>
               <p class="lastfm-track-panel-meta">Last.fm artist profile</p>
@@ -3116,8 +3107,6 @@
     const album = detail?.album || {};
     const trackSection = detail?.tracks || {};
     const trackItems = Array.isArray(trackSection.items) ? trackSection.items : [];
-    const freshnessLabel = detail?.stale ? "Cloudflare cache" : "Cloudflare edge";
-    const statusLabel = String(detail?.sourceStatus || "PARTIAL").toLowerCase() === "ok" ? "Live" : "Partial";
     const artworkUrl = sanitizeUrl(album.artworkUrl);
     const albumArtistInline = renderLastFmArtistLinkButton(album.artist, album.artistLastFmUrl);
     const tagsMarkup = renderLastFmDetailTagMarkup(album.topTags, "Album genres");
@@ -3170,7 +3159,7 @@
     return `
       <div class="lastfm-track-panel-window" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
-        <div class="lastfm-track-panel-layout">
+        <div class="lastfm-track-panel-layout lastfm-track-panel-layout--compact-primary">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art">
               ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
@@ -3178,10 +3167,6 @@
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
-              <div class="lastfm-track-panel-badges">
-                <span class="lastfm-track-panel-badge">${escapeHtml(freshnessLabel)}</span>
-                <span class="lastfm-track-panel-badge">${escapeHtml(statusLabel)}</span>
-              </div>
               <p class="lastfm-track-panel-kicker">Album details</p>
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(album.title || "Unknown album")}</h3>
               <p class="lastfm-track-panel-meta">
@@ -4390,9 +4375,8 @@
       sidebar.innerHTML = renderSidebar(payloadById, sites);
       syncCinnaMobileGif(compactMobile);
       if (lastRefreshLabel instanceof HTMLElement) {
-        const refreshText = formatTimestamp(snapshot?.lastRefreshAt);
-        const summary = snapshot?.summary || { ok: 0, partial: 0, failed: 0 };
-        lastRefreshLabel.textContent = `Last refresh: ${refreshText} | OK ${summary.ok} | Partial ${summary.partial} | Failed ${summary.failed}`;
+        lastRefreshLabel.textContent = "";
+        lastRefreshLabel.hidden = true;
       }
       if (refreshButton instanceof HTMLButtonElement) {
         refreshButton.disabled = Boolean(snapshot?.refreshAllInProgress);

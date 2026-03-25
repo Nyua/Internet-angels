@@ -692,29 +692,28 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-backdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at top, rgba(255, 0, 122, 0.08), transparent 38%),
-    rgba(4, 6, 12, 0.82);
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .lastfm-track-panel-shell {
   position: relative;
-  width: min(620px, calc(100vw - 144px));
-  max-height: calc(100vh - 144px);
+  width: min(586px, calc(100vw - 132px));
+  max-height: calc(100vh - 132px);
 }
 
 .lastfm-track-panel-window {
   position: relative;
   overflow: auto;
-  max-height: calc(100vh - 144px);
-  border: 1px solid rgba(255, 0, 122, 0.16);
+  max-height: calc(100vh - 132px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(13, 17, 29, 0.995), rgba(7, 10, 18, 0.995));
+  background: #000000;
   box-shadow:
-    0 42px 90px rgba(0, 0, 0, 0.54),
+    0 42px 90px rgba(0, 0, 0, 0.72),
     0 0 0 1px rgba(255, 255, 255, 0.025) inset,
-    0 0 48px rgba(255, 0, 122, 0.07);
+    0 0 42px rgba(255, 0, 122, 0.05);
   font-family: var(--lastfm-font);
   transform: translateY(14px) scale(0.985);
   opacity: 0;
@@ -734,13 +733,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 36%),
-    radial-gradient(circle at top right, rgba(255, 0, 122, 0.07), transparent 28%);
-  pointer-events: none;
+  display: none;
 }
 
 .lastfm-track-panel-close {
@@ -771,9 +764,13 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-layout {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(188px, 204px) minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px;
+  grid-template-columns: minmax(164px, 184px) minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.lastfm-track-panel-layout--compact-primary {
+  grid-template-columns: minmax(132px, 148px) minmax(0, 1fr);
 }
 
 .lastfm-track-panel-primary,
@@ -781,7 +778,11 @@ body.lastfm-track-panel-open {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+}
+
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-primary {
+  gap: 0;
 }
 
 .lastfm-track-panel-art {
@@ -790,9 +791,14 @@ body.lastfm-track-panel-open {
   aspect-ratio: 1 / 1;
   border-radius: 14px;
   overflow: hidden;
-  background: #0e1423;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art {
+  max-width: 148px;
+  justify-self: start;
 }
 
 .lastfm-track-panel-art-image {
@@ -902,7 +908,7 @@ body.lastfm-track-panel-open {
   padding: 8px 9px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.84);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -997,8 +1003,8 @@ body.lastfm-track-panel-open {
   padding: 9px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(15, 19, 34, 0.92), rgba(9, 12, 24, 0.96));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .lastfm-track-panel-preview-head {
@@ -1104,7 +1110,7 @@ body.lastfm-track-panel-open {
   padding: 7px 9px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.84);
   color: inherit;
   text-align: left;
   display: grid;
@@ -1116,13 +1122,13 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-similar-chip:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 0, 122, 0.18);
-  background: rgba(255, 0, 122, 0.06);
+  background: rgba(20, 0, 10, 0.9);
 }
 
 .lastfm-track-panel-similar-title {
   color: #ffffff;
   font-family: var(--hub-font);
-  font-size: 11px;
+  font-size: 16px;
   line-height: 1.15;
 }
 
@@ -1144,13 +1150,13 @@ body.lastfm-track-panel-open {
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  background: #000000;
 }
 
 .lastfm-track-panel-spotify-embed-host {
   width: 100%;
   min-height: 352px;
-  background: #0c111d;
+  background: #000000;
 }
 
 .lastfm-track-panel-spotify-embed {
@@ -1158,7 +1164,7 @@ body.lastfm-track-panel-open {
   height: 352px;
   display: block;
   border: 0;
-  background: #0c111d;
+  background: #000000;
 }
 
 .lastfm-track-panel-history-list,
@@ -1174,7 +1180,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-related-button {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.84);
 }
 
 .lastfm-track-panel-history-item {
@@ -1207,7 +1213,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-related-title {
   color: #ffffff;
   font-family: var(--hub-font);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;

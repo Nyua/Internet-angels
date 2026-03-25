@@ -151,6 +151,7 @@ function scoreSpotifyCandidate(candidate, normalizedTrack, normalizedArtist, nor
   const artistNames = Array.isArray(candidate?.artists) ? candidate.artists.map((artist) => normalizeMatchText(artist?.name)) : [];
   const primaryArtist = artistNames[0] || "";
   const albumName = normalizeMatchText(candidate?.album?.name);
+  const hasPreview = Boolean(String(candidate?.preview_url || "").trim());
   let score = 0;
   if (candidateTrack && candidateTrack === normalizedTrack) score += 5;
   if (primaryArtist && primaryArtist === normalizedArtist) score += 4;
@@ -158,6 +159,7 @@ function scoreSpotifyCandidate(candidate, normalizedTrack, normalizedArtist, nor
   if (candidateTrack && normalizedTrack && (candidateTrack.includes(normalizedTrack) || normalizedTrack.includes(candidateTrack))) score += 1.5;
   if (primaryArtist && normalizedArtist && (primaryArtist.includes(normalizedArtist) || normalizedArtist.includes(primaryArtist))) score += 1;
   if (normalizedAlbum && albumName && albumName === normalizedAlbum) score += 1;
+  if (hasPreview) score += 0.25;
   return score;
 }
 
