@@ -21,6 +21,8 @@ npm install
 
 ```bash
 LASTFM_API_KEY=your_lastfm_api_key
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 ```
 
 3. Build the site:
@@ -62,11 +64,14 @@ Pages project defaults:
 Production secret to add in Cloudflare Pages:
 
 - `LASTFM_API_KEY`
+- `SPOTIFY_CLIENT_ID`
+- `SPOTIFY_CLIENT_SECRET`
 
 ## API Routes
 
 - `GET /api/discord`
 - `GET /api/lastfm`
+- `GET /api/lastfm-track-details`
 - `GET /api/steam-recent-activity`
 
 These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard.
@@ -85,7 +90,7 @@ Cloudflare dashboard path:
 2. Select the `internet-angel` project
 3. Settings
 4. Variables and Secrets
-5. Add `LASTFM_API_KEY` as an encrypted secret
+5. Add `LASTFM_API_KEY`, `SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET` as encrypted secrets
 
 ## Deploy Checklist
 
@@ -95,7 +100,7 @@ Cloudflare dashboard path:
 4. Set the build command to `npm run build`.
 5. Set the build output directory to `dist`.
 6. Set Node version to `20` in Pages build configuration if needed.
-7. Add the `LASTFM_API_KEY` secret before the first production deploy.
+7. Add the `LASTFM_API_KEY`, `SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET` secrets before the first production deploy.
 8. Deploy.
 9. Add `internet-angel.net` as the custom domain.
 10. Set the apex domain as primary.

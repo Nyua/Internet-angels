@@ -164,6 +164,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     "/api/lastfm"
   ]));
   expect(apiRequests).not.toContain("/api/lastfm-now-playing");
+  expect(apiRequests).not.toContain("/api/lastfm-track-details");
 
   const intervalCalls = await page.evaluate(() => window.__codexIntervalCalls || []);
   expect(intervalCalls).toEqual(expect.arrayContaining([
@@ -359,4 +360,264 @@ test("josie shows loved, monthly rank, and discovery context for Last.fm tracks"
   expect(heartStyles.boxShadow).toBe("none");
   expect(monthlyBadgeStyles.color).toBe("rgb(255, 255, 255)");
   expect(monthlyBadgeStyles.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("josie opens a track details panel for Last.fm rows and reuses it for related tracks", async ({ page }) => {
+  const apiRequests = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    apiRequests.push(url);
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "One Time",
+              artist: { name: "beabadoobee" },
+              album: { "#text": "This Is How Tomorrow Moves" },
+              image: [{ "#text": "https://example.com/one-time-art.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: { artist: [] },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    const url = new URL(route.request().url());
+    const track = url.searchParams.get("track");
+    const artist = url.searchParams.get("artist");
+    if (track === "One Time") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sourceStatus: "OK",
+          stale: false,
+          fetchedAt: new Date().toISOString(),
+          query: { artist, track, album: "This Is How Tomorrow Moves" },
+          track: {
+            title: "One Time",
+            artist: "beabadoobee",
+            album: "This Is How Tomorrow Moves",
+            durationMs: 184000,
+            durationLabel: "3:04",
+            artworkUrl: "https://example.com/one-time-detail.jpg",
+            lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time",
+            artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+            userPlaycount: 3,
+            userLoved: true,
+            globalPlaycount: 2740015,
+            listeners: 285055,
+            summary: "A bright and clipped single.",
+            publishedAt: null,
+            topTags: [
+              { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
+              { name: "bedroom pop", url: "https://www.last.fm/tag/bedroom+pop" }
+            ]
+          },
+          spotify: {
+            matchStatus: "matched",
+            embedUrl: "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator",
+            openUrl: "https://open.spotify.com/track/spotify-track-1",
+            searchUrl: "https://open.spotify.com/search/One%20Time%20beabadoobee",
+            title: "One Time",
+            artist: "beabadoobee",
+            album: "This Is How Tomorrow Moves",
+            artworkUrl: "https://i.scdn.co/image/one-time.jpg"
+          },
+          scrobbles: {
+            total: 3,
+            items: [
+              {
+                playedAtIso: "2026-03-23T07:21:00.000Z",
+                playedAtLabel: "23 Mar 2026, 07:21",
+                album: "This Is How Tomorrow Moves",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time"
+              }
+            ]
+          },
+          artistTopTracks: {
+            artist: "beabadoobee",
+            items: [
+              {
+                title: "the perfect pair",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+                artworkUrl: "https://example.com/perfect-pair.jpg",
+                userPlaycount: 0,
+                userLoved: false,
+                globalPlaycount: 29424507,
+                listeners: 1452743
+              }
+            ]
+          }
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "PARTIAL",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist, track, album: "" },
+        track: {
+          title: "the perfect pair",
+          artist: "beabadoobee",
+          album: "Beatopia",
+          durationMs: 193000,
+          durationLabel: "3:13",
+          artworkUrl: "https://example.com/perfect-pair.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          userPlaycount: 0,
+          userLoved: false,
+          globalPlaycount: 29424507,
+          listeners: 1452743,
+          summary: "",
+          publishedAt: null,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "unmatched",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/the%20perfect%20pair%20beabadoobee",
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: ""
+        },
+        scrobbles: { total: 0, items: [] },
+        artistTopTracks: { artist: "beabadoobee", items: [] }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  const sourceRow = page.locator(".lastfm-recent-button").first();
+  await sourceRow.click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time");
+  await expect(page.locator(".lastfm-track-panel-stat-label")).toContainText(["Your plays", "Global plays", "Listeners", "Scrobbles"]);
+  await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveAttribute("src", /open\.spotify\.com\/embed\/track/);
+  await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(1);
+  await page.locator(".lastfm-track-panel-related-button").click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("the perfect pair");
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+  await expect(sourceRow).toBeFocused();
+
+  expect(apiRequests.filter((url) => url.includes("/api/lastfm-track-details")).length).toBe(2);
+  expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
+  expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
+});
+
+test("josie track details panel falls back to spotify search when no embed match exists", async ({ page }) => {
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "glue trap",
+              artist: { name: "Monty.Pk" },
+              album: { "#text": "deadbeat" },
+              image: [],
+              url: "https://www.last.fm/music/Monty.Pk/_/glue+trap",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: { artist: [] },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "PARTIAL",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "Monty.Pk", track: "glue trap", album: "deadbeat" },
+        track: {
+          title: "glue trap",
+          artist: "Monty.Pk",
+          album: "deadbeat",
+          durationMs: 0,
+          durationLabel: "",
+          artworkUrl: "",
+          lastfmUrl: "https://www.last.fm/music/Monty.Pk/_/glue+trap",
+          artistLastFmUrl: "https://www.last.fm/music/Monty.Pk",
+          userPlaycount: 1,
+          userLoved: false,
+          globalPlaycount: 10,
+          listeners: 5,
+          summary: "",
+          publishedAt: null,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "unmatched",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/glue%20trap%20Monty.Pk",
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: ""
+        },
+        scrobbles: { total: 1, items: [] },
+        artistTopTracks: { artist: "Monty.Pk", items: [] }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator(".lastfm-recent-button").first().click();
+
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-spotify .lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
+  await page.locator(".lastfm-track-panel-spotify .lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 });

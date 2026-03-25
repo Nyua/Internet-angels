@@ -73,7 +73,7 @@ export function pickLastFmImageUrl(images) {
   return "";
 }
 
-function isLastFmGenericImageUrl(url) {
+export function isLastFmGenericImageUrl(url) {
   return String(url || "").includes(LASTFM_GENERIC_IMAGE_TOKEN);
 }
 
@@ -92,7 +92,7 @@ function toLastFmList(value) {
   return value ? [value] : [];
 }
 
-function normalizeTrackKey(artist, title) {
+export function normalizeTrackKey(artist, title) {
   const safeArtist = String(artist || "").trim().toLowerCase();
   const safeTitle = String(title || "").trim().toLowerCase();
   if (!safeArtist || !safeTitle) {
@@ -101,11 +101,11 @@ function normalizeTrackKey(artist, title) {
   return `${safeArtist}::${safeTitle}`;
 }
 
-function getTrackArtistName(trackEntry) {
+export function getTrackArtistName(trackEntry) {
   return String(trackEntry?.artist?.name || trackEntry?.artist?.["#text"] || "").trim();
 }
 
-function getTrackTitle(trackEntry) {
+export function getTrackTitle(trackEntry) {
   return String(trackEntry?.name || "").trim();
 }
 
