@@ -137,6 +137,25 @@ function stripHtml(value) {
     .trim();
 }
 
+function normalizeWikiExcerpt(summary, content) {
+  const rawSummary = String(summary || "");
+  const rawContent = String(content || "");
+  const summaryText = stripHtml(rawSummary);
+  const contentText = stripHtml(rawContent);
+  const hasReadMoreMarker = /Read more on Last\.fm/i.test(rawSummary) || /Read more on Last\.fm/i.test(rawContent);
+  const normalizedText = summaryText || contentText || "";
+  const hasMore = Boolean(
+    normalizedText && (
+      hasReadMoreMarker ||
+      (contentText && contentText !== normalizedText && contentText.length > normalizedText.length)
+    )
+  );
+  return {
+    text: normalizedText || null,
+    hasMore
+  };
+}
+
 function getTrackAlbumName(trackEntry) {
   return String(trackEntry?.album?.title || trackEntry?.album?.["#text"] || "").trim();
 }
@@ -486,6 +505,7 @@ async function buildArtistTopAlbumsDetailed(apiKey, artist, nowMs = Date.now(), 
 function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks = []) {
   const artworkUrl = pickLastFmImageUrl(trackInfo?.album?.image) || String(spotifyMatch?.artworkUrl || "").trim() || fallbackArtworkUrl;
   const userPlaycount = Math.max(parseInteger(trackInfo?.userplaycount), parseInteger(scrobbleTotal));
+  const wikiExcerpt = normalizeWikiExcerpt(trackInfo?.wiki?.summary, trackInfo?.wiki?.content);
   return {
     title: getTrackTitle(trackInfo),
     artist: getTrackArtistName(trackInfo),
@@ -499,7 +519,8 @@ function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal
     userLoved: parseUserLoved(trackInfo?.userloved),
     globalPlaycount: parseInteger(trackInfo?.playcount),
     listeners: parseInteger(trackInfo?.listeners),
-    summary: stripHtml(trackInfo?.wiki?.summary) || null,
+    summary: wikiExcerpt.text,
+    summaryHasMore: wikiExcerpt.hasMore,
     publishedAt: String(trackInfo?.wiki?.published || "").trim() || null,
     topTags,
     similarTracks: Array.isArray(similarTracks) ? similarTracks.slice(0, 3) : []
@@ -521,11 +542,13 @@ function normalizeTagList(tagSection, limit = 4) {
 }
 
 function buildArtistSummary(artistInfo, artworkUrl, topTracks = []) {
+  const wikiExcerpt = normalizeWikiExcerpt(artistInfo?.bio?.summary, artistInfo?.bio?.content);
   return {
     name: getArtistName(artistInfo),
     artworkUrl: String(artworkUrl || "").trim(),
     lastfmUrl: getArtistUrlFromEntry(artistInfo),
-    summary: stripHtml(artistInfo?.bio?.summary) || null,
+    summary: wikiExcerpt.text,
+    summaryHasMore: wikiExcerpt.hasMore,
     listeners: parseInteger(artistInfo?.stats?.listeners),
     playcount: parseInteger(artistInfo?.stats?.playcount),
     topTags: normalizeTagList(artistInfo?.tags?.tag, 4),
@@ -569,13 +592,15 @@ async function buildAlbumTrackItems(apiKey, artist, rawTracks, artistLastFmUrl, 
 
 function buildAlbumSummary(albumInfo, artistInfo, trackItems) {
   const runtimeMs = trackItems.reduce((total, entry) => total + normalizeDurationMsValue(entry?.durationMs), 0);
+  const wikiExcerpt = normalizeWikiExcerpt(albumInfo?.wiki?.summary, albumInfo?.wiki?.content);
   return {
     title: getAlbumTitle(albumInfo),
     artist: getAlbumArtistName(albumInfo),
     artworkUrl: pickLastFmImageUrl(albumInfo?.image),
     lastfmUrl: getAlbumUrl(albumInfo),
     artistLastFmUrl: getArtistUrlFromEntry(artistInfo),
-    summary: stripHtml(albumInfo?.wiki?.summary) || null,
+    summary: wikiExcerpt.text,
+    summaryHasMore: wikiExcerpt.hasMore,
     listeners: parseInteger(albumInfo?.listeners),
     playcount: parseInteger(albumInfo?.playcount),
     releasedAt: normalizeReleaseLabel(albumInfo?.releasedate || albumInfo?.wiki?.published),

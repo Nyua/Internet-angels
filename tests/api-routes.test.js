@@ -477,7 +477,8 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
               userplaycount: "3",
               userloved: "1",
               wiki: {
-                summary: "A bright and clipped single.<a href=\"https://www.last.fm/music/beabadoobee/_/One+Time\">Read more on Last.fm</a>"
+                summary: "A bright and clipped single.<a href=\"https://www.last.fm/music/beabadoobee/_/One+Time\">Read more on Last.fm</a>",
+                content: "A bright and clipped single with a fuller write-up beyond the summary."
               }
             }
           });
@@ -623,6 +624,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.track.similarTracks[0].title, "California");
     assert.equal(payload.track.topTags.length, 2);
     assert.equal(payload.track.summary, "A bright and clipped single.");
+    assert.equal(payload.track.summaryHasMore, true);
     assert.equal(payload.spotify.matchStatus, "matched");
     assert.equal(payload.spotify.embedUrl, "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator");
     assert.equal(payload.spotify.previewUrl, "https://p.scdn.co/mp3-preview/one-time-preview.mp3");
@@ -795,7 +797,8 @@ test("lastfm artist details route validates query params and assembles artist de
             url: "https://www.last.fm/music/beabadoobee",
             image: [{ "#text": "" }],
             bio: {
-              summary: "Filipino-British indie artist.<a href=\"https://www.last.fm/music/beabadoobee\">Read more on Last.fm</a>"
+              summary: "Filipino-British indie artist.<a href=\"https://www.last.fm/music/beabadoobee\">Read more on Last.fm</a>",
+              content: "Filipino-British indie artist with a much longer article body."
             },
             stats: {
               listeners: "285055",
@@ -908,6 +911,7 @@ test("lastfm artist details route validates query params and assembles artist de
     assert.equal(payload.artist.name, "beabadoobee");
     assert.equal(payload.artist.artworkUrl, "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg");
     assert.equal(payload.artist.summary, "Filipino-British indie artist.");
+    assert.equal(payload.artist.summaryHasMore, true);
     assert.equal(payload.artist.topTags.length, 2);
     assert.equal(payload.topTracks.items[0].title, "Talk");
     assert.equal(payload.topTracks.items[0].userPlaycount, 9);
@@ -944,7 +948,8 @@ test("lastfm album details route assembles album detail data and track popularit
             listeners: "500123",
             releasedate: "15 Jul 2022, 00:00",
             wiki: {
-              summary: "A dreamy sophomore album.<a href=\"https://www.last.fm/music/beabadoobee/Beatopia\">Read more on Last.fm</a>"
+              summary: "A dreamy sophomore album.<a href=\"https://www.last.fm/music/beabadoobee/Beatopia\">Read more on Last.fm</a>",
+              content: "A dreamy sophomore album with a much longer article body."
             },
             tags: {
               tag: [
@@ -1014,6 +1019,8 @@ test("lastfm album details route assembles album detail data and track popularit
     assert.equal(response.status, 200);
     assert.equal(payload.album.title, "Beatopia");
     assert.equal(payload.album.artist, "beabadoobee");
+    assert.equal(payload.album.summary, "A dreamy sophomore album.");
+    assert.equal(payload.album.summaryHasMore, true);
     assert.equal(payload.album.releasedAt, "15 Jul 2022");
     assert.equal(payload.album.runtimeLabel, "5:08");
     assert.equal(payload.album.topTags.length, 2);
