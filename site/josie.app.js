@@ -2656,7 +2656,6 @@
   function renderHero(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const hero = pickHeroPayload(payloadById, sites);
-    const themeState = getThemeRenderState();
     const avatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL) || sanitizeUrl(hero?.profile?.avatarUrl || payloadById.get("steam")?.profile?.avatarUrl || "");
     const decorationUrl = sanitizeUrl(
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
@@ -2666,7 +2665,6 @@
     const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
     return `
     <section class="steam-hero-shell" aria-label="Profile hero">
-      ${compact ? "" : `<div class="steam-hero-toolbar">${renderThemeToggleMarkup(themeState)}</div>`}
       <div class="steam-hero-content">
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
           ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
@@ -5800,62 +5798,62 @@ uniform vec2 u_resolution;
 uniform float u_time;
 uniform float u_seed;
 uniform float u_motion_enabled;`;
-      const footer = useWebGl2 ? "outColor = vec4(vec3(gray), 1.0);" : "gl_FragColor = vec4(vec3(gray), 1.0);";
+      const footer = useWebGl2 ? "outColor = vec4(smokeColor, alpha);" : "gl_FragColor = vec4(smokeColor, alpha);";
       return `${header}
 
-float hash21(vec2 p) {
-  p += u_seed * 19.618;
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
+float finiteComponent(float value) {
+  return (value != value || abs(value) > 1.0e6) ? 0.0 : value;
 }
 
-float noise2(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  float a = hash21(i);
-  float b = hash21(i + vec2(1.0, 0.0));
-  float c = hash21(i + vec2(0.0, 1.0));
-  float d = hash21(i + vec2(1.0, 1.0));
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+vec3 sanitize(vec3 color) {
+  return vec3(
+    finiteComponent(color.r),
+    finiteComponent(color.g),
+    finiteComponent(color.b)
+  );
 }
 
-float fbm(vec2 p) {
-  float value = 0.0;
-  float amplitude = 0.5;
-  mat2 rotation = mat2(1.72, 1.18, -1.18, 1.72);
-  for (int octave = 0; octave < 5; octave += 1) {
-    value += amplitude * noise2(p);
-    p = rotation * p * 1.08 + 0.17;
-    amplitude *= 0.54;
+void mainImage(out vec4 outputColor, vec2 fragCoord) {
+  vec2 center = u_resolution.xy * 0.5;
+  fragCoord = (fragCoord - center) / 1.1 + center;
+  float timeValue = u_time * 0.2 * step(0.5, u_motion_enabled);
+  float depth = 0.0;
+  vec3 accumulation = vec3(0.0);
+
+  for (float stepIndex = 1.0; stepIndex < 60.0; stepIndex += 1.0) {
+    vec3 ray = depth * normalize(vec3(fragCoord - 0.5 * u_resolution.xy, u_resolution.y));
+    ray.z -= 4.0;
+
+    vec3 origin = ray;
+    float waveTime = ray.y - timeValue;
+    ray.x += 0.4 * (1.0 + ray.y) * sin(waveTime + ray.x * 0.1) * cos(0.34 * waveTime + ray.x * 0.05);
+
+    vec4 twistCos = cos(ray.y + vec4(0.0, 11.0, 33.0, 0.0) - timeValue);
+    mat2 twist = mat2(twistCos.x, twistCos.y, twistCos.z, twistCos.w);
+    vec2 ribbon = twist * ray.xz;
+    ray.xz = ribbon;
+
+    float distanceSample = abs(length(ribbon) - 0.25 * (5.0 + origin.y)) / 3.0 + 0.0008;
+    depth += distanceSample;
+
+    vec4 pulse = 1.0 + sin(origin.y + ray.z * 0.5 + origin.z - length(origin - ray) + vec4(2.0, 1.0, 0.0, 8.0));
+    accumulation += pulse.w / max(distanceSample, 0.00025) * pulse.xyz;
   }
-  return value;
+  outputColor = vec4(tanh(accumulation / 10000.0), 1.0);
 }
 
 void main() {
-  vec2 centered = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
-  float time = u_time * mix(0.0, 0.048, u_motion_enabled);
-  vec2 base = centered * vec2(2.15, 2.35);
-  vec2 warpA = vec2(
-    fbm(base * 0.92 + vec2(0.0, time * 0.72)),
-    fbm(base * 0.84 + vec2(4.3, -time * 0.58))
-  );
-  vec2 warpB = vec2(
-    fbm(base * 1.28 - warpA * 1.14 + vec2(time * 0.23, -time * 0.16)),
-    fbm(base * 1.12 + warpA * 1.08 + vec2(-time * 0.19, time * 0.14))
-  );
-  vec2 plasmaUv = base + (warpA - 0.5) * 1.24 + (warpB - 0.5) * 0.82;
-  float body = fbm(plasmaUv * 1.28 + vec2(time * 0.28, -time * 0.22));
-  float secondary = fbm(plasmaUv * 1.74 - vec2(time * 0.16, time * 0.11));
-  float tertiary = fbm((plasmaUv + secondary) * 2.12 + 6.7);
-  float field = mix(body, secondary, 0.42) + tertiary * 0.17;
-  field = smoothstep(0.24, 0.84, field);
-  float edgeFade = 1.0 - smoothstep(0.22, 1.12, length(centered * vec2(0.92, 1.06)));
-  float cloud = smoothstep(0.18, 0.86, field + fbm(plasmaUv * 0.76) * 0.12 - 0.05);
-  float density = mix(0.14, 0.54, cloud) * mix(0.78, 1.02, edgeFade);
-  float grain = (noise2(gl_FragCoord.xy * 0.27 + 0.071) - 0.5) * 0.018;
-  float gray = clamp(mix(0.043, 0.165, density) + grain, 0.043, 0.17);
+  vec4 plasma = vec4(0.0);
+  mainImage(plasma, gl_FragCoord.xy);
+  vec3 rgb = sanitize(plasma.rgb);
+  float intensity = clamp(length(rgb), 0.0, 1.0);
+  float shell = smoothstep(0.018, 0.16, intensity);
+  float body = smoothstep(0.09, 0.42, intensity);
+  float core = smoothstep(0.22, 0.72, intensity);
+  vec3 smokeColor = mix(vec3(0.74, 0.75, 0.78), vec3(0.46, 0.47, 0.51), body);
+  smokeColor = mix(smokeColor, vec3(0.26, 0.27, 0.3), core * 0.72);
+  smokeColor = mix(vec3(0.88, 0.88, 0.9), smokeColor, shell);
+  float alpha = clamp(shell * 0.12 + body * 0.1 + core * 0.08, 0.0, 0.28);
   ${footer}
 }`;
     }

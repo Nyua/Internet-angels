@@ -199,7 +199,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
   await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
-  await expect(page.locator(".steam-theme-toggle")).toHaveCount(1);
+  await expect(page.locator(".steam-theme-toggle")).toHaveCount(0);
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
@@ -213,7 +213,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       color: styles.color
     };
   });
-  expect(smallCopyStyles.color).toBe("rgb(255, 0, 122)");
+  expect(smallCopyStyles.color).toBe("rgb(240, 144, 194)");
   const firstProfileLinkWeight = await page.locator(".steam-sidebar-link").first().evaluate((node) => window.getComputedStyle(node).fontWeight);
   expect(Number.parseInt(firstProfileLinkWeight, 10)).toBeGreaterThanOrEqual(700);
   const lastFmVisualStyles = await page.evaluate(() => {
@@ -266,9 +266,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     nowPlayingBadgeProbe.remove();
     return result;
   });
-  expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(255, 255, 255)");
-  expect(lastFmVisualStyles.artistTitleColor).toBe("rgb(255, 255, 255)");
-  expect(lastFmVisualStyles.albumTitleColor).toBe("rgb(255, 255, 255)");
+  expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(210, 214, 223)");
+  expect(lastFmVisualStyles.artistTitleColor).toBe("rgb(210, 214, 223)");
+  expect(lastFmVisualStyles.albumTitleColor).toBe("rgb(210, 214, 223)");
   expect(lastFmVisualStyles.lastFmSectionBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.lastFmShowcaseContentBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.lastFmShowcaseBeforeDisplay).toBe("none");
@@ -280,9 +280,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(lastFmVisualStyles.nowPlayingBadgeBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.steamActivityBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.steamActivityBeforeDisplay).toBe("none");
-  expect(lastFmVisualStyles.steamHoursColor).toBe("rgb(255, 0, 122)");
-  expect(lastFmVisualStyles.steamHoursOnRecordColor).toBe("rgb(255, 0, 122)");
-  expect(lastFmVisualStyles.steamLastPlayedColor).toBe("rgb(255, 0, 122)");
+  expect(lastFmVisualStyles.steamHoursColor).toBe("rgb(240, 144, 194)");
+  expect(lastFmVisualStyles.steamHoursOnRecordColor).toBe("rgb(240, 144, 194)");
+  expect(lastFmVisualStyles.steamLastPlayedColor).toBe("rgb(240, 144, 194)");
   await expect(page.locator(".lastfm-profile-total")).toHaveCount(0);
   const heroShellStyles = await page.locator(".steam-hero-shell").evaluate((node) => {
     const styles = window.getComputedStyle(node);
@@ -391,7 +391,7 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-  await expect(page.locator(".steam-theme-toggle-button.is-active")).toHaveText("Auto");
+  await expect(page.locator(".steam-theme-toggle")).toHaveCount(0);
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
   await expect(page.locator(".discord-presence-meta")).toContainText("by idkwhyy");
@@ -431,17 +431,14 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   });
   expect(dayThemeColors.heroName).toBe("rgb(46, 46, 52)");
   expect(dayThemeColors.activityTitle).toBe("rgb(46, 46, 52)");
-  expect(dayThemeColors.accentTitle).toBe("rgb(255, 0, 122)");
-  expect(dayThemeColors.pageBg).toBe("#0a0a0a");
+  expect(dayThemeColors.accentTitle).toBe("rgb(240, 144, 194)");
+  expect(dayThemeColors.pageBg).toBe("#d0d0d4");
   expect(["webgl", "static"]).toContain(dayThemeColors.ambientRenderer);
   expect(["running", "frozen"]).toContain(dayThemeColors.ambientMotion);
 
-  await page.getByRole("button", { name: "Night" }).click();
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
-
+  await page.evaluate(() => {
+    window.localStorage.setItem("josieThemeMode", "night");
+  });
   await page.reload();
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
@@ -449,7 +446,11 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
 
-  await page.getByRole("button", { name: "Auto" }).click();
+  await page.evaluate(() => {
+    window.localStorage.setItem("josieThemeMode", "auto");
+  });
+  await page.reload();
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
@@ -846,10 +847,10 @@ test("josie shows loved, monthly rank, and discovery context for Last.fm tracks"
       backgroundColor: styles.backgroundColor
     };
   });
-  expect(heartStyles.color).toBe("rgb(255, 0, 122)");
+  expect(heartStyles.color).toBe("rgb(240, 144, 194)");
   expect(heartStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(heartStyles.boxShadow).toBe("none");
-  expect(monthlyBadgeStyles.color).toBe("rgb(255, 255, 255)");
+  expect(monthlyBadgeStyles.color).toBe("rgb(210, 214, 223)");
   expect(monthlyBadgeStyles.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
 });
 
@@ -1154,7 +1155,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
   await page.locator(".lastfm-track-panel-related-button").first().click();
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Talk");
-  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await page.keyboard.press("Escape");
