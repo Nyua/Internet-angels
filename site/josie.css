@@ -678,7 +678,7 @@ body.lastfm-track-panel-open {
   z-index: 320;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 8px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
@@ -699,8 +699,8 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-shell {
   position: relative;
-  width: min(832px, calc(100vw - 48px));
-  max-height: calc(100vh - 48px);
+  width: min(848px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
 }
 
 .lastfm-track-panel-window {
@@ -708,7 +708,7 @@ body.lastfm-track-panel-open {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   background: #000000;
@@ -806,8 +806,8 @@ body.lastfm-track-panel-open {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .lastfm-track-panel-layout {
@@ -825,12 +825,12 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-layout--top-heavy .lastfm-track-panel-secondary {
-  gap: 8px;
+  gap: 6px;
 }
 
 .lastfm-track-panel-stack {
   display: grid;
-  gap: 9px;
+  gap: 7px;
 }
 
 .lastfm-track-panel-stack--split {
@@ -852,7 +852,7 @@ body.lastfm-track-panel-open {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-primary {
@@ -952,6 +952,8 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-badge--loved {
   border-color: rgba(255, 0, 122, 0.26);
   color: #ff7ab5;
+  min-width: 28px;
+  padding: 0 7px;
 }
 
 .lastfm-track-panel-kicker {
@@ -966,7 +968,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-title {
   margin: 6px 0 0;
   font-family: var(--hub-font);
-  font-size: clamp(20px, 2vw, 26px);
+  font-size: 64px;
   line-height: 0.96;
   letter-spacing: -0.03em;
   color: #ffffff;
@@ -992,6 +994,11 @@ body.lastfm-track-panel-open {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+.lastfm-track-panel-stats--with-spotify {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.09fr) minmax(0, 1.09fr);
+  align-items: stretch;
 }
 
 .lastfm-track-panel-stat {
@@ -1024,6 +1031,85 @@ body.lastfm-track-panel-open {
   font-size: 16px;
   line-height: 1;
   font-weight: 700;
+}
+
+.lastfm-track-panel-spotify-slot {
+  grid-column: 2 / 4;
+  min-height: 52px;
+  padding: 0 8px 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.9);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.lastfm-track-panel-spotify-slot-head {
+  display: inline-flex;
+  align-items: center;
+}
+
+.lastfm-track-panel-spotify-slot-label {
+  color: #ff007a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lastfm-track-panel-spotify-slot-body {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.lastfm-track-panel-spotify-disabled {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.lastfm-track-panel-spotify-disabled-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.lastfm-track-panel-spotify-disabled-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.lastfm-track-panel-spotify-disabled-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lastfm-track-panel-spotify-disabled-title {
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.lastfm-track-panel-spotify-disabled-meta {
+  color: #ff007a;
+  font-size: 9px;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
 }
 
 .lastfm-track-panel-tags,
@@ -1240,7 +1326,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-similar-title {
   color: #ffffff;
   font-family: var(--hub-font);
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1.15;
 }
 
@@ -1258,25 +1344,23 @@ body.lastfm-track-panel-open {
   cursor: pointer;
 }
 
-.lastfm-track-panel-spotify-embed-wrap {
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: #000000;
-}
-
 .lastfm-track-panel-spotify-embed-host {
   width: 100%;
-  min-height: 152px;
+  min-height: 52px;
+  height: 52px;
   background: #000000;
+  border-radius: 999px;
+  overflow: hidden;
 }
 
+.lastfm-track-panel-spotify-embed-host > iframe,
 .lastfm-track-panel-spotify-embed {
   width: 100%;
-  height: 152px;
+  height: 80px;
   display: block;
   border: 0;
   background: #000000;
+  transform: translateY(-14px);
 }
 
 .lastfm-track-panel-history-list,
@@ -1327,11 +1411,17 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-related-title {
   color: #ffffff;
   font-family: var(--hub-font);
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.lastfm-track-panel-badge--loved .lastfm-loved-indicator {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
 }
 
 .lastfm-track-panel-related-status {
@@ -1462,10 +1552,6 @@ body.lastfm-track-panel-open {
   width: clamp(156px, 15vw, 184px);
 }
 
-.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-title {
-  font-size: clamp(18px, 1.6vw, 22px);
-}
-
 .lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-meta,
 .lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-summary-text,
 .lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-empty,
@@ -1479,6 +1565,32 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-stat {
   min-height: 44px;
   padding: 7px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-slot {
+  min-height: 48px;
+  padding: 0 7px 0 9px;
+  gap: 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-disabled-title {
+  font-size: 10px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-disabled-meta,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-slot-label {
+  font-size: 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-embed-host {
+  min-height: 48px;
+  height: 48px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-embed-host > iframe,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-spotify-embed {
+  height: 72px;
+  transform: translateY(-12px);
 }
 
 .lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-stat-value {
@@ -1521,12 +1633,10 @@ body.lastfm-track-panel-open {
   width: clamp(132px, 14vw, 156px);
 }
 
-.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-title {
-  font-size: clamp(17px, 1.45vw, 20px);
-}
-
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-kicker,
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat-label,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-slot-label,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-disabled-meta,
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-meta,
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-time,
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-volume-label,
@@ -1545,15 +1655,34 @@ body.lastfm-track-panel-open {
   line-height: 1.15;
 }
 
-.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-track-title-button,
-.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-related-title,
-.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-similar-title {
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-track-title-button {
   font-size: 14px;
 }
 
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat {
   min-height: 40px;
   padding: 6px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-slot {
+  min-height: 44px;
+  padding: 0 6px 0 8px;
+  gap: 7px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-disabled-title {
+  font-size: 9px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-embed-host {
+  min-height: 44px;
+  height: 44px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-embed-host > iframe,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-spotify-embed {
+  height: 68px;
+  transform: translateY(-12px);
 }
 
 .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat-value {
@@ -1676,6 +1805,14 @@ body.lastfm-track-panel-open {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .lastfm-track-panel-stats--with-spotify {
+    grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
+  }
+
+  .lastfm-track-panel-spotify-slot {
+    grid-column: 2 / 3;
+  }
+
   .lastfm-track-panel-history-list,
   .lastfm-track-panel-related-list,
   .lastfm-track-panel-tracklist {
@@ -1702,7 +1839,7 @@ body.lastfm-track-panel-open {
   }
 
   .lastfm-track-panel-title {
-    font-size: 20px;
+    font-size: 64px;
   }
 
   .lastfm-track-panel-history-item {
@@ -1712,6 +1849,14 @@ body.lastfm-track-panel-open {
 
   .lastfm-track-panel-stats {
     grid-template-columns: 1fr;
+  }
+
+  .lastfm-track-panel-stats--with-spotify {
+    grid-template-columns: 1fr;
+  }
+
+  .lastfm-track-panel-spotify-slot {
+    grid-column: auto;
   }
 
   .lastfm-track-panel-preview {
@@ -3877,12 +4022,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 0;
   max-height: none;
   overflow: visible;
-  border-top: 0;
+  border-top: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-item {
   margin: 0;
-  border-bottom: 0;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-button {
@@ -4271,7 +4416,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  border-bottom: 0;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-media-image {

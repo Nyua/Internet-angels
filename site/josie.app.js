@@ -2700,6 +2700,21 @@
       </div>
     `;
   }
+  function renderLastFmTrackPanelSpotifyDisabled(title = "Unavailable", meta = "Spotify player unavailable for this track.") {
+    return `
+      <div class="lastfm-track-panel-spotify-disabled" aria-hidden="true">
+        <span class="lastfm-track-panel-spotify-disabled-icon">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M12 1.5A10.5 10.5 0 1 0 22.5 12 10.51 10.51 0 0 0 12 1.5Zm4.83 15.15a.78.78 0 0 1-1.08.26 9.54 9.54 0 0 0-8.92-.77.78.78 0 1 1-.62-1.44 11.1 11.1 0 0 1 10.42.91.78.78 0 0 1 .2 1.04Zm1.54-3.19a.98.98 0 0 1-1.33.35 11.83 11.83 0 0 0-11.33-.93.98.98 0 1 1-.83-1.77 13.8 13.8 0 0 1 13.23 1.08.98.98 0 0 1 .26 1.27Zm.13-3.46a1.18 1.18 0 0 1-1.6.39 14.21 14.21 0 0 0-13.91-1.04 1.18 1.18 0 1 1-.95-2.15 16.57 16.57 0 0 1 16.19 1.24 1.18 1.18 0 0 1 .27 1.56Z" fill="currentColor"></path>
+          </svg>
+        </span>
+        <span class="lastfm-track-panel-spotify-disabled-copy">
+          <span class="lastfm-track-panel-spotify-disabled-title">${escapeHtml(title)}</span>
+          <span class="lastfm-track-panel-spotify-disabled-meta">${escapeHtml(meta)}</span>
+        </span>
+      </div>
+    `;
+  }
   function renderLastFmPanelAmbientAttributes(imageUrl) {
     const safeImageUrl = sanitizeUrl(imageUrl);
     if (!safeImageUrl) return "";
@@ -2737,7 +2752,6 @@
         <div class="lastfm-track-panel-layout">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art lastfm-track-panel-skeleton" aria-hidden="true"></div>
-            <div class="lastfm-track-panel-preview lastfm-track-panel-skeleton" aria-hidden="true"></div>
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
@@ -2745,11 +2759,9 @@
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(firstNonEmpty(query.track, "Track details"))}</h3>
               <p class="lastfm-track-panel-meta">${escapeHtml(firstNonEmpty(query.artist, "Last.fm"))}</p>
             </header>
-            <div class="lastfm-track-panel-stats" aria-hidden="true">
+            <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify" aria-hidden="true">
               <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-              <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-              <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-              <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+              <div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton"></div>
             </div>
             <div class="lastfm-track-panel-history lastfm-track-panel-skeleton" aria-hidden="true"></div>
             <div class="lastfm-track-panel-related lastfm-track-panel-skeleton" aria-hidden="true"></div>
@@ -2777,6 +2789,12 @@
     const artistTopTracks = detail?.artistTopTracks || {};
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
+    const spotifyMatchStatus = String(spotify.matchStatus || "").trim().toLowerCase();
+    const spotifyEmbedUrl = sanitizeUrl(firstNonEmpty(
+      spotify.embedUrl,
+      buildSpotifyTrackEmbedUrlFromUrl(spotify.openUrl)
+    ));
+    const spotifyCanRenderEmbed = spotifyMatchStatus === "matched" && Boolean(spotifyEmbedUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
     const scrobbleItems = Array.isArray(scrobbles.items) ? scrobbles.items.slice(0, 3) : [];
@@ -2822,6 +2840,23 @@
         </label>
       </div>
     ` : "";
+    const spotifySlotMarkup = `
+      <div class="lastfm-track-panel-spotify-slot${spotifyCanRenderEmbed ? "" : " is-disabled"}" data-spotify-track-embed-slot aria-label="Spotify player">
+        <div class="lastfm-track-panel-spotify-slot-head">
+          <span class="lastfm-track-panel-spotify-slot-label">Spotify</span>
+        </div>
+        <div class="lastfm-track-panel-spotify-slot-body">
+          ${spotifyCanRenderEmbed
+            ? `<div class="lastfm-track-panel-spotify-embed-host" data-spotify-track-embed-target aria-label="Spotify player for ${escapeHtml(track.title || spotify.title || "this track")}"></div>`
+            : renderLastFmTrackPanelSpotifyDisabled(
+              spotifyMatchStatus === "matched" ? "Unavailable" : "No Spotify match",
+              spotifyMatchStatus === "matched"
+                ? "Spotify player unavailable for this track."
+                : "No Spotify match available for this track."
+            )}
+        </div>
+      </div>
+    `;
     const soundsLikeMarkup = similarItems.length ? `
       <section class="lastfm-track-panel-similar">
         <div class="lastfm-track-panel-section-head">
@@ -2899,7 +2934,6 @@
               <div class="lastfm-track-panel-art">
                 ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
               </div>
-              ${spotifyPreviewMarkup}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
@@ -2910,12 +2944,11 @@
                   ${track.album ? `<span class="lastfm-track-panel-meta-separator">•</span><span>${escapeHtml(track.album)}</span>` : ""}
                   ${track.durationLabel ? `<span class="lastfm-track-panel-meta-separator">•</span><span>${escapeHtml(track.durationLabel)}</span>` : ""}
                 </p>
-                ${track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved">Loved</span></div>' : ""}
+                ${track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : ""}
               </header>
-              <div class="lastfm-track-panel-stats">
+              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
                 ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
-                ${renderLastFmTrackPanelStat("Global plays", formatCountNumber(track.globalPlaycount))}
-                ${renderLastFmTrackPanelStat("Listeners", formatCountNumber(track.listeners))}
+                ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
               <div class="lastfm-track-panel-actions">
@@ -3999,11 +4032,15 @@
         spotify?.embedUrl,
         buildSpotifyEmbedUrlFromUrl(spotify?.openUrl)
       ));
+      const embedSlot = embedTarget instanceof HTMLElement ? embedTarget.closest(".lastfm-track-panel-spotify-slot") : null;
       if (!(embedTarget instanceof HTMLElement)) return;
       if (!safeEmbedUrl) {
-        embedTarget.innerHTML = "";
-        return;
+        embedSlot?.classList.add("is-disabled");
+        embedTarget.innerHTML = renderLastFmTrackPanelSpotifyDisabled();
+        scheduleLastFmTrackPanelFit();
+        return false;
       }
+      embedSlot?.classList.remove("is-disabled");
       embedTarget.innerHTML = `
         <iframe
           class="lastfm-track-panel-spotify-embed"
@@ -4013,24 +4050,31 @@
           allow="autoplay; clipboard-write; fullscreen; picture-in-picture"
         ></iframe>
       `;
+      scheduleLastFmTrackPanelFit();
+      return true;
     }
     async function mountSpotifyEmbedController(detail, cacheKey) {
       const spotify = detail?.spotify || {};
-      const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
       const embedTarget = getSpotifyEmbedTarget();
       if (String(spotify.matchStatus || "").trim().toLowerCase() !== "matched" || !(embedTarget instanceof HTMLElement)) {
         await destroySpotifyEmbedController({ resumeShuffle: true });
         return;
       }
-      if (spotifyPreviewUrl) {
+      const spotifyUri = resolveTrackDetailsSpotifyUri(spotify);
+      const fallbackEmbedUrl = sanitizeUrl(firstNonEmpty(
+        spotify?.embedUrl,
+        buildSpotifyEmbedUrlFromUrl(spotify?.openUrl)
+      ));
+      if (!spotifyUri && !fallbackEmbedUrl) {
         await destroySpotifyEmbedController({ resumeShuffle: true });
         return;
       }
-      const spotifyUri = resolveTrackDetailsSpotifyUri(spotify);
       if (!spotifyUri) {
         await destroySpotifyEmbedController({ resumeShuffle: true });
+        mountFallbackSpotifyEmbed(spotify, embedTarget, detail?.track?.title || spotify.title);
         return;
       }
+      embedTarget.closest(".lastfm-track-panel-spotify-slot")?.classList.remove("is-disabled");
       await destroySpotifyEmbedController({ resumeShuffle: true });
       const loadToken = ++lastFmSpotifyEmbedLoadToken;
       try {
@@ -4044,7 +4088,7 @@
             iframeApi.createController(embedTarget, {
               uri: spotifyUri,
               width: "100%",
-              height: 352
+              height: 80
             }, (controller) => {
               if (loadToken !== lastFmSpotifyEmbedLoadToken) {
                 try {
@@ -4067,6 +4111,7 @@
                 }
                 pauseShuffleForTrackPreview();
               });
+              scheduleLastFmTrackPanelFit();
               resolve();
             });
           } catch (error) {
@@ -4343,7 +4388,7 @@
         const payload = await loadLastFmTrackDetails(normalizedQuery);
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         setLastFmTrackDetailsContent(renderLastFmTrackPanelContent(payload));
-        hydrateTrackPreview(payload);
+        void mountSpotifyEmbedController(payload, cacheKey);
         const nextFocusTarget = panel.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });

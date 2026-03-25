@@ -23,6 +23,56 @@ function createSilentWavBuffer(durationSeconds = 4, sampleRate = 8_000) {
 
 const SPOTIFY_PREVIEW_AUDIO_BUFFER = createSilentWavBuffer();
 
+async function stubSpotifyIframeApi(page) {
+  await page.addInitScript(() => {
+    window.__spotifyEmbedControllers = [];
+    const createController = (target, options, callback) => {
+      const listeners = new Map();
+      if (target instanceof HTMLElement) {
+        target.innerHTML = "";
+        const iframe = document.createElement("iframe");
+        iframe.className = "lastfm-track-panel-spotify-embed";
+        iframe.src = "about:blank";
+        iframe.title = "Stub Spotify embed";
+        iframe.setAttribute("aria-hidden", "true");
+        target.appendChild(iframe);
+      }
+      const emit = (eventName, payload) => {
+        const handlers = listeners.get(eventName) || [];
+        handlers.forEach((handler) => {
+          try {
+            handler(payload);
+          } catch {
+          }
+        });
+      };
+      const controller = {
+        addListener(eventName, handler) {
+          const handlers = listeners.get(eventName) || [];
+          handlers.push(handler);
+          listeners.set(eventName, handlers);
+        },
+        pause() {
+          emit("playback_update", { data: { isPaused: true } });
+        },
+        destroy() {
+          if (target instanceof HTMLElement) {
+            target.innerHTML = "";
+          }
+        },
+        __emit: emit
+      };
+      window.__spotifyEmbedControllers.push({ controller, options });
+      callback?.(controller);
+    };
+    window.__internetAngelSpotifyIframeApi = { createController };
+    window.__emitSpotifyIframeEvent = (index, eventName, payload) => {
+      const entry = window.__spotifyEmbedControllers?.[index];
+      entry?.controller?.__emit?.(eventName, payload);
+    };
+  });
+}
+
 test("root loads the intro page", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
@@ -524,6 +574,8 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     apiRequests.push(url);
   });
 
+  await stubSpotifyIframeApi(page);
+
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
       status: 200,
@@ -701,7 +753,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await sourceRow.click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time");
-  await expect(page.locator(".lastfm-track-panel-stat-label")).toContainText(["Scrobbles", "Global plays", "Listeners"]);
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Scrobbles" })).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Global plays" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Listeners" })).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Your plays" })).toHaveCount(0);
   const panelBox = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
@@ -738,43 +792,49 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const title = document.querySelector(".lastfm-track-panel-title");
     const meta = document.querySelector(".lastfm-track-panel-meta");
     const relatedTitle = document.querySelector(".lastfm-track-panel-related-title");
+    const similarTitle = document.querySelector(".lastfm-track-panel-similar-title");
+    const lovedBadge = document.querySelector(".lastfm-track-panel-badge--loved");
     return {
       titleFont: title ? window.getComputedStyle(title).fontFamily : "",
+      titleSize: title ? window.getComputedStyle(title).fontSize : "",
       metaFont: meta ? window.getComputedStyle(meta).fontFamily : "",
-      relatedTitleFont: relatedTitle ? window.getComputedStyle(relatedTitle).fontFamily : ""
+      relatedTitleFont: relatedTitle ? window.getComputedStyle(relatedTitle).fontFamily : "",
+      relatedTitleSize: relatedTitle ? window.getComputedStyle(relatedTitle).fontSize : "",
+      similarTitleSize: similarTitle ? window.getComputedStyle(similarTitle).fontSize : "",
+      lovedBadgeText: lovedBadge ? lovedBadge.textContent.trim() : "",
+      lovedBadgeIconCount: lovedBadge ? lovedBadge.querySelectorAll(".lastfm-loved-indicator").length : 0
     };
   });
   expect(panelTypography.metaFont.toLowerCase()).toContain("open sans");
   expect(panelTypography.titleFont).not.toBe(panelTypography.metaFont);
   expect(panelTypography.relatedTitleFont).not.toBe(panelTypography.metaFont);
+  expect(panelTypography.titleSize).toBe("64px");
+  expect(panelTypography.relatedTitleSize).toBe("20px");
+  expect(panelTypography.similarTitleSize).toBe("20px");
+  expect(panelTypography.lovedBadgeText).toBe("");
+  expect(panelTypography.lovedBadgeIconCount).toBe(1);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
-  const previewPlayer = page.locator("[data-track-preview-player]");
-  await expect(previewPlayer).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-secondary [data-track-preview-player]")).toHaveCount(0);
+  const spotifySlot = page.locator(".lastfm-track-panel-spotify-slot");
+  await expect(spotifySlot).toHaveCount(1);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-similar")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-stack .lastfm-track-panel-similar")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-similar")).toContainText("Sounds like");
   await expect(page.locator(".lastfm-track-panel-similar-chip").first()).toContainText("California");
   const summaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(summaryLink).toBeVisible();
-  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host iframe")).toHaveCount(0);
-  await expect(page.locator("[data-track-preview-volume]")).toHaveValue("0.2");
+  const spotifyEmbedHost = page.locator(".lastfm-track-panel-spotify-slot .lastfm-track-panel-spotify-embed-host");
+  await expect(page.locator(".lastfm-track-panel-spotify-slot.is-disabled")).toHaveCount(0);
+  await expect(spotifyEmbedHost).toHaveCount(1);
+  await expect(spotifyEmbedHost.locator("iframe")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
-  const previewToggle = page.locator("[data-track-preview-toggle]");
-  await previewToggle.click();
-  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "playing");
-  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
-  const previewVolume = page.locator("[data-track-preview-volume]");
-  await previewVolume.evaluate((element) => {
-    element.value = "0.35";
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+  await page.evaluate(() => {
+    window.__emitSpotifyIframeEvent?.(0, "playback_started");
   });
-  await expect(previewPlayer).toHaveAttribute("data-track-preview-volume-value", "0.35");
-  await previewToggle.click();
-  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "paused");
+  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } });
+  });
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
   const trackCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" });
   const artistCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" });
@@ -809,8 +869,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
   await page.locator(".lastfm-track-panel-related-button").first().click();
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Talk");
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host iframe")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot.is-disabled")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host iframe")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
@@ -821,7 +882,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
 });
 
-test("josie track details panel falls back to spotify search when no preview match exists", async ({ page }) => {
+test("josie track details panel shows a disabled spotify shell when no spotify match exists", async ({ page }) => {
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
       status: 200,
@@ -900,8 +961,11 @@ test("josie track details panel falls back to spotify search when no preview mat
   await page.locator(".lastfm-recent-button").first().click();
 
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot.is-disabled")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-disabled-title")).toContainText("No Spotify match");
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
   await page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
@@ -1263,7 +1327,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
 });
 
-test("josie does not mount a spotify player when the detail track has no preview clip", async ({ page }) => {
+test("josie mounts the spotify embed slot even when the detail track has no preview clip", async ({ page }) => {
   const apiRequests = [];
   page.on("request", (outboundRequest) => {
     const url = outboundRequest.url();
@@ -1271,6 +1335,8 @@ test("josie does not mount a spotify player when the detail track has no preview
       apiRequests.push(url);
     }
   });
+
+  await stubSpotifyIframeApi(page);
 
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
@@ -1354,9 +1420,17 @@ test("josie does not mount a spotify player when the detail track has no preview
   await page.locator(".lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-embed-host iframe")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot.is-disabled")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host iframe")).toHaveCount(1);
+  await page.evaluate(() => {
+    window.__emitSpotifyIframeEvent?.(0, "playback_started");
+  });
+  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } });
+  });
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
   await page.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" }).click();
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
