@@ -320,7 +320,8 @@ export function buildEmptyLastFmTrackDetailsPayload(nowMs = Date.now(), sourceSt
       title: "",
       artist: "",
       album: "",
-      artworkUrl: ""
+      artworkUrl: "",
+      previewUrl: ""
     },
     scrobbles: {
       total: 0,
@@ -377,7 +378,8 @@ export async function fetchLastFmTrackDetails({
       title: "",
       artist: "",
       album: "",
-      artworkUrl: ""
+      artworkUrl: "",
+      previewUrl: ""
     }))
   ]);
 
@@ -404,7 +406,8 @@ export async function fetchLastFmTrackDetails({
       title: String(spotifyMatch?.title || "").trim(),
       artist: String(spotifyMatch?.artist || "").trim(),
       album: String(spotifyMatch?.album || "").trim(),
-      artworkUrl: String(spotifyMatch?.artworkUrl || "").trim()
+      artworkUrl: String(spotifyMatch?.artworkUrl || "").trim(),
+      previewUrl: String(spotifyMatch?.previewUrl || "").trim()
     },
     scrobbles: {
       total: scrobbleTotal || trackSummary.userPlaycount,

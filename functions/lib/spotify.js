@@ -165,6 +165,7 @@ function formatSpotifyMatch(candidate, searchUrl) {
   const trackId = String(candidate?.id || "").trim();
   const artists = Array.isArray(candidate?.artists) ? candidate.artists.map((artist) => String(artist?.name || "").trim()).filter(Boolean) : [];
   const openUrl = String(candidate?.external_urls?.spotify || buildSpotifyTrackOpenUrl(trackId)).trim();
+  const previewUrl = String(candidate?.preview_url || "").trim();
   return {
     matchStatus: "matched",
     embedUrl: buildSpotifyTrackEmbedUrl(trackId),
@@ -173,7 +174,8 @@ function formatSpotifyMatch(candidate, searchUrl) {
     title: String(candidate?.name || "").trim(),
     artist: artists.join(", "),
     album: String(candidate?.album?.name || "").trim(),
-    artworkUrl: pickSpotifyImageUrl(candidate?.album?.images)
+    artworkUrl: pickSpotifyImageUrl(candidate?.album?.images),
+    previewUrl
   };
 }
 
@@ -200,7 +202,8 @@ export async function findSpotifyTrackMatch({
       title: "",
       artist: "",
       album: "",
-      artworkUrl: ""
+      artworkUrl: "",
+      previewUrl: ""
     };
   }
 
@@ -239,7 +242,8 @@ export async function findSpotifyTrackMatch({
           title: "",
           artist: "",
           album: "",
-          artworkUrl: ""
+          artworkUrl: "",
+          previewUrl: ""
         };
       }
       const normalizedTrack = normalizeMatchText(safeTrack);
@@ -259,7 +263,8 @@ export async function findSpotifyTrackMatch({
           title: "",
           artist: "",
           album: "",
-          artworkUrl: ""
+          artworkUrl: "",
+          previewUrl: ""
         };
       }
       return formatSpotifyMatch(best.candidate, searchUrl);
@@ -275,7 +280,8 @@ export async function findSpotifyTrackMatch({
       title: "",
       artist: "",
       album: "",
-      artworkUrl: ""
+      artworkUrl: "",
+      previewUrl: ""
     };
   }
 
@@ -287,6 +293,7 @@ export async function findSpotifyTrackMatch({
     title: String(cachedValue.title || "").trim(),
     artist: String(cachedValue.artist || "").trim(),
     album: String(cachedValue.album || "").trim(),
-    artworkUrl: String(cachedValue.artworkUrl || "").trim()
+    artworkUrl: String(cachedValue.artworkUrl || "").trim(),
+    previewUrl: String(cachedValue.previewUrl || "").trim()
   };
 }

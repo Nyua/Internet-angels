@@ -439,6 +439,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
               {
                 id: "spotify-track-1",
                 name: "One Time",
+                preview_url: "https://p.scdn.co/mp3-preview/one-time-preview.mp3",
                 artists: [{ name: "beabadoobee" }],
                 album: {
                   name: "This Is How Tomorrow Moves",
@@ -575,6 +576,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.track.summary, "A bright and clipped single.");
     assert.equal(payload.spotify.matchStatus, "matched");
     assert.equal(payload.spotify.embedUrl, "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator");
+    assert.equal(payload.spotify.previewUrl, "https://p.scdn.co/mp3-preview/one-time-preview.mp3");
     assert.equal(payload.scrobbles.total, 3);
     assert.equal(payload.scrobbles.items[0].playedAtLabel, "23 Mar 2026, 07:21");
     assert.equal(payload.artistTopTracks.artist, "beabadoobee");

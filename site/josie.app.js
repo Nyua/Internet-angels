@@ -712,7 +712,8 @@
         title: firstNonEmpty(safeSpotify.title, ""),
         artist: firstNonEmpty(safeSpotify.artist, ""),
         album: firstNonEmpty(safeSpotify.album, ""),
-        artworkUrl: sanitizeUrl(safeSpotify.artworkUrl)
+        artworkUrl: sanitizeUrl(safeSpotify.artworkUrl),
+        previewUrl: sanitizeUrl(safeSpotify.previewUrl)
       },
       scrobbles: {
         total: Number.isFinite(Number(safeScrobbles.total)) ? Number(safeScrobbles.total) : 0,
@@ -1270,6 +1271,13 @@
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
     return `-${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+  function formatAudioTime(value) {
+    const safeValue = Number.isFinite(value) && value >= 0 ? value : 0;
+    const roundedSeconds = Math.floor(safeValue);
+    const minutes = Math.floor(roundedSeconds / 60);
+    const seconds = roundedSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
   function sourceClass(sourceStatus) {
     const normalized = String(sourceStatus || "PARTIAL").toLowerCase();
@@ -2052,6 +2060,19 @@
         bindRoot(root2);
       }
     }
+    function pauseForExternalAudio() {
+      if (disposed || !currentTrack || audioEl.paused) return false;
+      audioEl.pause();
+      return true;
+    }
+    async function resumeAfterExternalAudio() {
+      if (disposed || !currentTrack || !audioEl.paused || loadState === "error") return false;
+      await attemptPlay();
+      return !audioEl.paused;
+    }
+    function isPlaying() {
+      return Boolean(!disposed && currentTrack && !audioEl.paused);
+    }
     function dispose() {
       if (disposed) return;
       disposed = true;
@@ -2103,7 +2124,10 @@
     });
     return {
       attach,
-      dispose
+      dispose,
+      isPlaying,
+      pauseForExternalAudio,
+      resumeAfterExternalAudio
     };
   }
   function ensurePayload(site, payload) {
@@ -2575,6 +2599,7 @@
     const artistTopTracks = detail?.artistTopTracks || {};
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const showSpotifyBlock = spotify.matchStatus !== "not_configured";
+    const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
     const freshnessLabel = detail?.stale ? "Cloudflare cache" : "Cloudflare edge";
@@ -2586,16 +2611,45 @@
         ${track.topTags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}
       </div>
     ` : "";
+    const spotifyPreviewMarkup = spotify.matchStatus === "matched" && spotifyPreviewUrl ? `
+      <div
+        class="lastfm-track-panel-preview"
+        data-track-preview-player
+        data-track-preview-url="${escapeHtml(spotifyPreviewUrl)}"
+        data-track-preview-title="${escapeHtml(track.title || spotify.title || "Track preview")}"
+      >
+        <div class="lastfm-track-panel-preview-head">
+          <button class="lastfm-track-panel-preview-toggle" type="button" data-track-preview-toggle aria-label="Play Spotify preview">
+            <span class="lastfm-track-panel-preview-toggle-icon" data-track-preview-toggle-icon aria-hidden="true">▶</span>
+          </button>
+          <div class="lastfm-track-panel-preview-copy">
+            <p class="lastfm-track-panel-preview-title">${escapeHtml(track.title || spotify.title || "Track preview")}</p>
+            <p class="lastfm-track-panel-preview-meta">Spotify preview clip</p>
+          </div>
+          <span class="lastfm-track-panel-preview-time" data-track-preview-time>0:00 / 0:30</span>
+        </div>
+        <div class="lastfm-track-panel-preview-progress" aria-hidden="true">
+          <span class="lastfm-track-panel-preview-progress-fill" data-track-preview-progress></span>
+        </div>
+        <label class="lastfm-track-panel-preview-volume">
+          <span class="lastfm-track-panel-preview-volume-label">Volume</span>
+          <input class="lastfm-track-panel-preview-volume-slider" data-track-preview-volume type="range" min="0" max="1" step="0.01" value="0.78" aria-label="Spotify preview volume" />
+        </label>
+      </div>
+    ` : "";
     const spotifyMarkup = showSpotifyBlock ? `
       <section class="lastfm-track-panel-spotify">
         <div class="lastfm-track-panel-section-head">
           <h4 class="lastfm-track-panel-section-title">Spotify</h4>
           ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}">${escapeHtml(spotifyButtonLabel)}</button>` : ""}
         </div>
-        ${spotify.matchStatus === "matched" && spotify.embedUrl ? `
+        ${spotifyPreviewMarkup || spotify.matchStatus === "matched" && spotify.embedUrl ? `
+          ${spotifyPreviewMarkup || ""}
+          ${!spotifyPreviewMarkup ? `
           <div class="lastfm-track-panel-spotify-embed-wrap">
             <iframe class="lastfm-track-panel-spotify-embed" src="${escapeHtml(spotify.embedUrl)}" title="Spotify preview for ${escapeHtml(track.title || "track")}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
           </div>
+          ` : ""}
         ` : `
           <p class="lastfm-track-panel-empty">Spotify preview unavailable for this track right now.</p>
         `}
@@ -2685,10 +2739,9 @@
               </p>
             </header>
             <div class="lastfm-track-panel-stats">
-              ${renderLastFmTrackPanelStat("Your plays", formatCountNumber(track.userPlaycount))}
+              ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
               ${renderLastFmTrackPanelStat("Global plays", formatCountNumber(track.globalPlaycount))}
               ${renderLastFmTrackPanelStat("Listeners", formatCountNumber(track.listeners))}
-              ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
             </div>
             ${tagsMarkup}
             ${summaryMarkup}
@@ -2991,6 +3044,10 @@
     let lastFmTrackPanelOriginTrigger = null;
     let lastFmTrackPanelAbortController = null;
     const lastFmTrackDetailsCache = /* @__PURE__ */ new Map();
+    let lastFmTrackPreviewAudio = null;
+    let lastFmTrackPreviewPausedShuffle = false;
+    let lastFmTrackPreviewSyncQueued = false;
+    let lastFmTrackPreviewSuppressAutoResume = false;
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -3124,9 +3181,180 @@
       const normalized = normalizeTrackDetailsQuery(query);
       return `${normalized.artist.toLowerCase()}::${normalized.track.toLowerCase()}`;
     }
+    function getTrackPreviewPlayer() {
+      if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return null;
+      const player = lastFmTrackPanelRoot.querySelector("[data-track-preview-player]");
+      return player instanceof HTMLElement ? player : null;
+    }
+    function queueTrackPreviewUiSync() {
+      if (lastFmTrackPreviewSyncQueued) return;
+      lastFmTrackPreviewSyncQueued = true;
+      window.requestAnimationFrame(() => {
+        lastFmTrackPreviewSyncQueued = false;
+        syncTrackPreviewUi();
+      });
+    }
+    function syncTrackPreviewUi() {
+      const player = getTrackPreviewPlayer();
+      if (!(player instanceof HTMLElement)) return;
+      const audio = lastFmTrackPreviewAudio instanceof HTMLAudioElement ? lastFmTrackPreviewAudio : null;
+      const sourceUrl = sanitizeUrl(player.getAttribute("data-track-preview-url"));
+      const activeSource = sanitizeUrl(audio?.currentSrc || audio?.src);
+      const isBoundToPlayer = Boolean(audio && sourceUrl && activeSource === sourceUrl);
+      const isPlaying = Boolean(isBoundToPlayer && !audio.paused && !audio.ended);
+      const currentTime = isBoundToPlayer && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const duration = isBoundToPlayer && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 30;
+      const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
+      player.classList.toggle("is-playing", isPlaying);
+      player.dataset.trackPreviewState = isPlaying ? "playing" : "paused";
+      const toggleButton = player.querySelector("[data-track-preview-toggle]");
+      if (toggleButton instanceof HTMLButtonElement) {
+        toggleButton.setAttribute("aria-label", `${isPlaying ? "Pause" : "Play"} Spotify preview`);
+        toggleButton.disabled = !sourceUrl;
+      }
+      const toggleIcon = player.querySelector("[data-track-preview-toggle-icon]");
+      if (toggleIcon instanceof HTMLElement) {
+        toggleIcon.textContent = isPlaying ? "II" : "▶";
+      }
+      const progressFill = player.querySelector("[data-track-preview-progress]");
+      if (progressFill instanceof HTMLElement) {
+        progressFill.style.transform = `scaleX(${progress.toFixed(4)})`;
+      }
+      const timeLabel = player.querySelector("[data-track-preview-time]");
+      if (timeLabel instanceof HTMLElement) {
+        timeLabel.textContent = `${formatAudioTime(currentTime)} / ${formatAudioTime(duration)}`;
+      }
+      const volumeSlider = player.querySelector("[data-track-preview-volume]");
+      if (volumeSlider instanceof HTMLInputElement) {
+        const targetVolume = audio ? clamp2(audio.volume, 0, 1) : 0.78;
+        volumeSlider.value = targetVolume.toFixed(2);
+        player.dataset.trackPreviewVolumeValue = targetVolume.toFixed(2);
+      }
+    }
+    function pauseShuffleForTrackPreview() {
+      if (lastFmTrackPreviewPausedShuffle) return;
+      lastFmTrackPreviewPausedShuffle = Boolean(shufflePlayerController?.pauseForExternalAudio?.());
+    }
+    async function resumeShuffleAfterTrackPreview() {
+      if (!lastFmTrackPreviewPausedShuffle) return;
+      lastFmTrackPreviewPausedShuffle = false;
+      try {
+        await shufflePlayerController?.resumeAfterExternalAudio?.();
+      } catch {
+      }
+    }
+    function ensureTrackPreviewAudio() {
+      if (lastFmTrackPreviewAudio instanceof HTMLAudioElement) {
+        return lastFmTrackPreviewAudio;
+      }
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.crossOrigin = "anonymous";
+      audio.playsInline = true;
+      audio.volume = 0.78;
+      audio.addEventListener("loadedmetadata", queueTrackPreviewUiSync);
+      audio.addEventListener("durationchange", queueTrackPreviewUiSync);
+      audio.addEventListener("timeupdate", queueTrackPreviewUiSync);
+      audio.addEventListener("volumechange", queueTrackPreviewUiSync);
+      audio.addEventListener("play", queueTrackPreviewUiSync);
+      audio.addEventListener("pause", () => {
+        queueTrackPreviewUiSync();
+        if (!lastFmTrackPreviewSuppressAutoResume && !audio.ended) {
+          void resumeShuffleAfterTrackPreview();
+        }
+      });
+      audio.addEventListener("ended", () => {
+        queueTrackPreviewUiSync();
+        if (!lastFmTrackPreviewSuppressAutoResume) {
+          void resumeShuffleAfterTrackPreview();
+        }
+      });
+      audio.addEventListener("emptied", queueTrackPreviewUiSync);
+      audio.addEventListener("error", () => {
+        queueTrackPreviewUiSync();
+        if (!lastFmTrackPreviewSuppressAutoResume) {
+          void resumeShuffleAfterTrackPreview();
+        }
+      });
+      lastFmTrackPreviewAudio = audio;
+      return audio;
+    }
+    async function stopTrackPreview({ resumeShuffle = true, resetSource = false } = {}) {
+      const audio = lastFmTrackPreviewAudio instanceof HTMLAudioElement ? lastFmTrackPreviewAudio : null;
+      if (audio) {
+        lastFmTrackPreviewSuppressAutoResume = true;
+        audio.pause();
+        if (resetSource) {
+          audio.removeAttribute("src");
+          audio.load();
+        }
+        lastFmTrackPreviewSuppressAutoResume = false;
+      }
+      if (resumeShuffle) {
+        await resumeShuffleAfterTrackPreview();
+      }
+      queueTrackPreviewUiSync();
+    }
+    async function playTrackPreview(sourceUrl) {
+      const safeSourceUrl = sanitizeUrl(sourceUrl);
+      if (!safeSourceUrl) return;
+      const audio = ensureTrackPreviewAudio();
+      const currentSource = sanitizeUrl(audio.currentSrc || audio.src);
+      if (currentSource !== safeSourceUrl) {
+        lastFmTrackPreviewSuppressAutoResume = true;
+        audio.pause();
+        audio.src = safeSourceUrl;
+        audio.load();
+        lastFmTrackPreviewSuppressAutoResume = false;
+      }
+      pauseShuffleForTrackPreview();
+      try {
+        await audio.play();
+      } catch {
+        await resumeShuffleAfterTrackPreview();
+      }
+      queueTrackPreviewUiSync();
+    }
+    async function toggleTrackPreview(player) {
+      const previewPlayer = player instanceof HTMLElement ? player : getTrackPreviewPlayer();
+      if (!(previewPlayer instanceof HTMLElement)) return;
+      const sourceUrl = sanitizeUrl(previewPlayer.getAttribute("data-track-preview-url"));
+      if (!sourceUrl) return;
+      const audio = ensureTrackPreviewAudio();
+      const currentSource = sanitizeUrl(audio.currentSrc || audio.src);
+      const isSameSource = currentSource === sourceUrl;
+      if (isSameSource && !audio.paused && !audio.ended) {
+        await stopTrackPreview({ resumeShuffle: true, resetSource: false });
+        return;
+      }
+      await playTrackPreview(sourceUrl);
+    }
+    function setTrackPreviewVolume(value) {
+      const audio = ensureTrackPreviewAudio();
+      const numericValue = Number(value);
+      audio.volume = clamp2(Number.isFinite(numericValue) ? numericValue : 0.78, 0, 1);
+      queueTrackPreviewUiSync();
+    }
+    function hydrateTrackPreview(detail) {
+      const previewUrl = sanitizeUrl(detail?.spotify?.previewUrl);
+      if (!previewUrl) {
+        void stopTrackPreview({ resumeShuffle: true, resetSource: true });
+        return;
+      }
+      const audio = ensureTrackPreviewAudio();
+      const currentSource = sanitizeUrl(audio.currentSrc || audio.src);
+      if (currentSource !== previewUrl) {
+        lastFmTrackPreviewSuppressAutoResume = true;
+        audio.pause();
+        audio.src = previewUrl;
+        audio.load();
+        lastFmTrackPreviewSuppressAutoResume = false;
+      }
+      queueTrackPreviewUiSync();
+    }
     function getTrackPanelFocusableElements() {
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return [];
-      return Array.from(lastFmTrackPanelRoot.querySelectorAll('button:not([disabled]), [href], iframe, [tabindex]:not([tabindex="-1"])')).filter((element) => element instanceof HTMLElement);
+      return Array.from(lastFmTrackPanelRoot.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], iframe, [tabindex]:not([tabindex="-1"])')).filter((element) => element instanceof HTMLElement);
     }
     function setTrackPanelOpenState(isOpen) {
       document.body?.classList.toggle("lastfm-track-panel-open", isOpen);
@@ -3151,6 +3379,12 @@
           hideLastFmTrackDetails();
           return;
         }
+        const previewToggle = target.closest("[data-track-preview-toggle]");
+        if (previewToggle instanceof HTMLElement) {
+          event.preventDefault();
+          void toggleTrackPreview(previewToggle.closest("[data-track-preview-player]"));
+          return;
+        }
         const relatedTrackButton = target.closest("[data-lastfm-track-title]");
         if (relatedTrackButton instanceof HTMLElement) {
           event.preventDefault();
@@ -3166,6 +3400,13 @@
         if (openButton instanceof HTMLElement) {
           event.preventDefault();
           showExternalPrompt(openButton.getAttribute("data-open-url") || "", openButton);
+        }
+      });
+      overlay.addEventListener("input", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (target.matches("[data-track-preview-volume]")) {
+          setTrackPreviewVolume(target.value);
         }
       });
       overlay.addEventListener("keydown", (event) => {
@@ -3203,6 +3444,7 @@
     function hideLastFmTrackDetails() {
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
+      void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
       lastFmTrackPanelActiveKey = "";
       lastFmTrackPanelRoot.classList.remove("is-open");
@@ -3249,6 +3491,7 @@
         lastFmTrackPanelOriginTrigger = trigger;
       }
       lastFmTrackPanelActiveKey = cacheKey;
+      void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       setLastFmTrackDetailsContent(renderLastFmTrackPanelSkeleton(normalizedQuery));
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
@@ -3262,12 +3505,14 @@
         const payload = await loadLastFmTrackDetails(normalizedQuery);
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         setLastFmTrackDetailsContent(renderLastFmTrackPanelContent(payload));
+        hydrateTrackPreview(payload);
         const nextFocusTarget = panel.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
         }
       } catch {
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
+        void stopTrackPreview({ resumeShuffle: true, resetSource: true });
         setLastFmTrackDetailsContent(renderLastFmTrackPanelError(normalizedQuery));
       }
     }
@@ -3369,6 +3614,17 @@
       lastFmTrackPanelOriginTrigger = null;
       lastFmTrackPanelAbortController = null;
       lastFmTrackDetailsCache.clear();
+      if (lastFmTrackPreviewAudio instanceof HTMLAudioElement) {
+        lastFmTrackPreviewSuppressAutoResume = true;
+        lastFmTrackPreviewAudio.pause();
+        lastFmTrackPreviewAudio.removeAttribute("src");
+        lastFmTrackPreviewAudio.load();
+        lastFmTrackPreviewSuppressAutoResume = false;
+      }
+      lastFmTrackPreviewAudio = null;
+      lastFmTrackPreviewPausedShuffle = false;
+      lastFmTrackPreviewSyncQueued = false;
+      lastFmTrackPreviewSuppressAutoResume = false;
       cinnaMobileGifController?.dispose?.();
       cinnaMobileGifController = null;
       mobileAudioDock?.remove();

@@ -1,5 +1,28 @@
 import { test, expect } from "@playwright/test";
 
+function createSilentWavBuffer(durationSeconds = 4, sampleRate = 8_000) {
+  const sampleCount = Math.max(1, Math.floor(durationSeconds * sampleRate));
+  const dataSize = sampleCount;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate, 28);
+  buffer.writeUInt16LE(1, 32);
+  buffer.writeUInt16LE(8, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  buffer.fill(128, 44);
+  return buffer;
+}
+
+const SPOTIFY_PREVIEW_AUDIO_BUFFER = createSilentWavBuffer();
+
 test("root loads the intro page", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
@@ -438,6 +461,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
             embedUrl: "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator",
             openUrl: "https://open.spotify.com/track/spotify-track-1",
             searchUrl: "https://open.spotify.com/search/One%20Time%20beabadoobee",
+            previewUrl: "https://p.scdn.co/mp3-preview/one-time-preview.mp3",
             title: "One Time",
             artist: "beabadoobee",
             album: "This Is How Tomorrow Moves",
@@ -502,6 +526,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
           embedUrl: "",
           openUrl: "",
           searchUrl: "https://open.spotify.com/search/the%20perfect%20pair%20beabadoobee",
+          previewUrl: "",
           title: "",
           artist: "",
           album: "",
@@ -512,17 +537,55 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       })
     });
   });
+  await page.route("https://p.scdn.co/mp3-preview/one-time-preview.mp3", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "audio/wav",
+      body: SPOTIFY_PREVIEW_AUDIO_BUFFER
+    });
+  });
 
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator("[data-shuffle-surface]").first().click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
   await sourceRow.click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time");
-  await expect(page.locator(".lastfm-track-panel-stat-label")).toContainText(["Your plays", "Global plays", "Listeners", "Scrobbles"]);
+  await expect(page.locator(".lastfm-track-panel-stat-label")).toContainText(["Scrobbles", "Global plays", "Listeners"]);
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Your plays" })).toHaveCount(0);
+  const panelTypography = await page.evaluate(() => {
+    const title = document.querySelector(".lastfm-track-panel-title");
+    const meta = document.querySelector(".lastfm-track-panel-meta");
+    const relatedTitle = document.querySelector(".lastfm-track-panel-related-title");
+    return {
+      titleFont: title ? window.getComputedStyle(title).fontFamily : "",
+      metaFont: meta ? window.getComputedStyle(meta).fontFamily : "",
+      relatedTitleFont: relatedTitle ? window.getComputedStyle(relatedTitle).fontFamily : ""
+    };
+  });
+  expect(panelTypography.metaFont.toLowerCase()).toContain("open sans");
+  expect(panelTypography.titleFont).not.toBe(panelTypography.metaFont);
+  expect(panelTypography.relatedTitleFont).not.toBe(panelTypography.metaFont);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
-  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveAttribute("src", /open\.spotify\.com\/embed\/track/);
+  const previewPlayer = page.locator("[data-track-preview-player]");
+  await expect(previewPlayer).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
+  const previewToggle = page.locator("[data-track-preview-toggle]");
+  await previewToggle.click();
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "playing");
+  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  const previewVolume = page.locator("[data-track-preview-volume]");
+  await previewVolume.evaluate((element) => {
+    element.value = "0.35";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-volume-value", "0.35");
+  await previewToggle.click();
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "paused");
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(1);
   await page.locator(".lastfm-track-panel-related-button").click();
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("the perfect pair");
