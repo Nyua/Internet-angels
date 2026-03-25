@@ -678,7 +678,7 @@ body.lastfm-track-panel-open {
   z-index: 320;
   display: grid;
   place-items: center;
-  padding: 52px;
+  padding: 24px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
@@ -699,14 +699,16 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-shell {
   position: relative;
-  width: min(586px, calc(100vw - 132px));
-  max-height: calc(100vh - 132px);
+  width: min(832px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
 }
 
 .lastfm-track-panel-window {
   position: relative;
-  overflow: auto;
-  max-height: calc(100vh - 132px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   background: #000000;
@@ -716,6 +718,7 @@ body.lastfm-track-panel-open {
     0 0 42px rgba(255, 0, 122, 0.05);
   font-family: var(--lastfm-font);
   isolation: isolate;
+  contain: paint;
   transform: translateY(14px) scale(0.985);
   opacity: 0;
   transition: transform 220ms ease, opacity 220ms ease;
@@ -742,15 +745,16 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window::before {
-  inset: -18%;
+  inset: 0;
   opacity: 0;
   background-image: var(--lastfm-track-panel-ambient-image);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(58px) saturate(1.7) brightness(1.08);
+  filter: blur(38px) saturate(1.4) brightness(1.02);
   mix-blend-mode: screen;
-  transform: scale(1.18);
+  transform: none;
+  border-radius: inherit;
   transition: opacity 240ms ease, transform 240ms ease;
 }
 
@@ -798,19 +802,49 @@ body.lastfm-track-panel-open {
   color: #ffffff;
 }
 
+.lastfm-track-panel-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
 .lastfm-track-panel-layout {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(164px, 184px) minmax(0, 1fr);
-  gap: 8px;
-  padding: 10px;
+  grid-template-columns: minmax(180px, 216px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 0;
   z-index: 1;
+  align-items: start;
 }
 
 .lastfm-track-panel-layout--compact-primary {
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+}
+
+.lastfm-track-panel-layout--top-heavy .lastfm-track-panel-secondary {
+  gap: 8px;
+}
+
+.lastfm-track-panel-stack {
+  display: grid;
+  gap: 9px;
+}
+
+.lastfm-track-panel-stack--split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lastfm-track-panel-stack--split .lastfm-track-panel-summary,
+.lastfm-track-panel-stack--split .lastfm-track-panel-similar {
+  grid-column: 1 / -1;
+}
+
+.lastfm-track-panel-stack--split .lastfm-track-panel-history-list,
+.lastfm-track-panel-stack--split .lastfm-track-panel-related-list {
+  grid-template-columns: 1fr;
 }
 
 .lastfm-track-panel-primary,
@@ -818,11 +852,11 @@ body.lastfm-track-panel-open {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
 }
 
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-primary {
-  gap: 0;
+  gap: 8px;
   align-items: flex-start;
 }
 
@@ -838,7 +872,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art {
-  width: clamp(188px, 17vw, 216px);
+  width: clamp(184px, 18vw, 228px);
   max-width: none;
   justify-self: start;
   background: transparent;
@@ -961,8 +995,8 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-stat {
-  min-height: 52px;
-  padding: 8px 9px;
+  min-height: 48px;
+  padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.84);
@@ -1019,7 +1053,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-history-time,
 .lastfm-track-panel-related-meta {
   font-size: 12px;
-  line-height: 1.24;
+  line-height: 1.22;
 }
 
 .lastfm-track-panel-summary-text,
@@ -1075,7 +1109,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-preview {
   width: min(100%, 208px);
-  align-self: center;
+  align-self: flex-start;
   display: grid;
   gap: 8px;
   padding: 9px 10px;
@@ -1252,6 +1286,7 @@ body.lastfm-track-panel-open {
   padding: 0;
   display: grid;
   gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .lastfm-track-panel-history-item,
@@ -1265,8 +1300,9 @@ body.lastfm-track-panel-open {
   padding: 7px 9px;
   display: flex;
   justify-content: space-between;
-  gap: 14px;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-start;
+  flex-direction: column;
 }
 
 .lastfm-track-panel-related-button {
@@ -1348,6 +1384,7 @@ body.lastfm-track-panel-open {
   padding: 0;
   display: grid;
   gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .lastfm-track-panel-track-item {
@@ -1355,7 +1392,7 @@ body.lastfm-track-panel-open {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 7px 9px;
+  padding: 7px 8px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.02);
@@ -1405,6 +1442,150 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-window--error {
   min-height: 260px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-body {
+  gap: 7px;
+  padding: 10px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-layout {
+  grid-template-columns: minmax(156px, 184px) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-layout--compact-primary {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art {
+  width: clamp(156px, 15vw, 184px);
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-title {
+  font-size: clamp(18px, 1.6vw, 22px);
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-meta,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-summary-text,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-empty,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-history-time,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-history-album,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-related-meta,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-track-meta {
+  font-size: 11px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-stat {
+  min-height: 44px;
+  padding: 7px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-stat-value {
+  font-size: 14px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-preview {
+  width: min(100%, 190px);
+  padding: 8px 9px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-history-list,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-related-list,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-tracklist {
+  gap: 3px;
+}
+
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-track-item,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-related-button,
+.lastfm-track-panel-window[data-panel-density="dense"] .lastfm-track-panel-history-item {
+  border-radius: 12px;
+  padding: 6px 7px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-body {
+  gap: 6px;
+  padding: 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-layout {
+  grid-template-columns: minmax(132px, 156px) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-layout--compact-primary {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art {
+  width: clamp(132px, 14vw, 156px);
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-title {
+  font-size: clamp(17px, 1.45vw, 20px);
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-kicker,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat-label,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-meta,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-time,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview-volume-label,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-similar-artist {
+  font-size: 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-meta,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-summary-text,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-empty,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-history-time,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-history-album,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-related-meta,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-track-meta {
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-track-title-button,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-related-title,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-similar-title {
+  font-size: 14px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat {
+  min-height: 40px;
+  padding: 6px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-stat-value {
+  font-size: 13px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-preview {
+  width: min(100%, 176px);
+  padding: 7px 8px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-cta {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-history-list,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-related-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-tracklist {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-track-item,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-related-button,
+.lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-history-item {
+  border-radius: 10px;
+  padding: 5px 6px;
 }
 
 .lastfm-track-panel-error {
@@ -1471,8 +1652,16 @@ body.lastfm-track-panel-open {
     max-height: calc(100vh - 36px);
   }
 
+  .lastfm-track-panel-body {
+    padding: 10px;
+  }
+
   .lastfm-track-panel-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lastfm-track-panel-stack--split {
+    grid-template-columns: 1fr;
   }
 
   .lastfm-track-panel-primary {
@@ -1485,6 +1674,12 @@ body.lastfm-track-panel-open {
 
   .lastfm-track-panel-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lastfm-track-panel-history-list,
+  .lastfm-track-panel-related-list,
+  .lastfm-track-panel-tracklist {
+    grid-template-columns: 1fr;
   }
 
   .lastfm-track-panel-preview-head {
@@ -1504,11 +1699,6 @@ body.lastfm-track-panel-open {
 
   .lastfm-track-panel-window {
     border-radius: 16px;
-  }
-
-  .lastfm-track-panel-layout {
-    padding: 12px;
-    gap: 10px;
   }
 
   .lastfm-track-panel-title {
@@ -1536,6 +1726,10 @@ body.lastfm-track-panel-open {
   .lastfm-track-panel-track-status {
     grid-column: 2;
     justify-content: flex-start;
+  }
+
+  .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-tracklist {
+    grid-template-columns: 1fr;
   }
 }
 

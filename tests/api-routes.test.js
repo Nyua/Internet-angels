@@ -869,6 +869,18 @@ test("lastfm artist details route validates query params and assembles artist de
           }
         });
       }
+      if (method === "artist.gettoptracks") {
+        return Response.json({
+          toptracks: {
+            track: [
+              { name: "Talk", artist: { name: "beabadoobee" }, url: "https://www.last.fm/music/beabadoobee/_/Talk", playcount: "1820011", listeners: "942304" },
+              { name: "the perfect pair", artist: { name: "beabadoobee" }, url: "https://www.last.fm/music/beabadoobee/_/the+perfect+pair", playcount: "29424507", listeners: "1452743" },
+              { name: "See you Soon", artist: { name: "beabadoobee" }, url: "https://www.last.fm/music/beabadoobee/_/See+you+Soon", playcount: "541102", listeners: "301204" },
+              { name: "Cologne", artist: { name: "beabadoobee" }, url: "https://www.last.fm/music/beabadoobee/_/Cologne", playcount: "902210", listeners: "411002" }
+            ]
+          }
+        });
+      }
       if (method === "track.getInfo") {
         const trackName = requestUrl.searchParams.get("track");
         if (trackName === "Talk") {
@@ -881,6 +893,34 @@ test("lastfm artist details route validates query params and assembles artist de
               playcount: "1820011",
               listeners: "942304",
               userplaycount: "9",
+              userloved: "1"
+            }
+          });
+        }
+        if (trackName === "See you Soon") {
+          return Response.json({
+            track: {
+              name: "See you Soon",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              url: "https://www.last.fm/music/beabadoobee/_/See+you+Soon",
+              duration: "181000",
+              playcount: "541102",
+              listeners: "301204",
+              userplaycount: "4",
+              userloved: "0"
+            }
+          });
+        }
+        if (trackName === "Cologne") {
+          return Response.json({
+            track: {
+              name: "Cologne",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              url: "https://www.last.fm/music/beabadoobee/_/Cologne",
+              duration: "206000",
+              playcount: "902210",
+              listeners: "411002",
+              userplaycount: "3",
               userloved: "1"
             }
           });
@@ -1029,6 +1069,8 @@ test("lastfm album details route assembles album detail data and track popularit
     assert.equal(payload.tracks.items[0].userPlaycount, 9);
     assert.equal(payload.tracks.items[0].artistLastFmUrl, "https://www.last.fm/music/beabadoobee");
     assert.equal(payload.tracks.items[1].globalPlaycount, 29424507);
+    assert.equal(payload.relatedTracks.artist, "beabadoobee");
+    assert.ok(Array.isArray(payload.relatedTracks.items));
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

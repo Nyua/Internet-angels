@@ -837,8 +837,12 @@ export async function fetchLastFmAlbumDetails({
     getArtistUrlFromEntry(artistInfo),
     nowMs
   );
+  const albumTrackKeys = new Set(trackItems.map((entry) => normalizeTrackKey(entry.artist, entry.title)));
+  const relatedTracks = (await buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 8 }))
+    .filter((entry) => !albumTrackKeys.has(normalizeTrackKey(entry.artist, entry.title)))
+    .slice(0, 4);
   const albumSummary = buildAlbumSummary(albumInfo, artistInfo, trackItems);
-  const sourceStatus = trackItems.length || albumSummary.summary || albumSummary.topTags.length
+  const sourceStatus = trackItems.length || relatedTracks.length || albumSummary.summary || albumSummary.topTags.length
     ? "OK"
     : "PARTIAL";
   return {
@@ -852,6 +856,10 @@ export async function fetchLastFmAlbumDetails({
     album: albumSummary,
     tracks: {
       items: trackItems
+    },
+    relatedTracks: {
+      artist: canonicalArtist,
+      items: relatedTracks
     }
   };
 }
