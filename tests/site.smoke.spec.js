@@ -390,6 +390,7 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
 
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
   await expect(page.locator(".steam-theme-toggle-button.is-active")).toHaveText("Auto");
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
@@ -417,29 +418,41 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
     const heroName = document.querySelector(".steam-hero-name");
     const activityTitle = document.querySelector(".steam-activity-header-title");
     const accentTitle = document.querySelector(".steam-sidebar-row-title");
+    const ambientBackdrop = document.querySelector("#os-ambient-backdrop");
     const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
     return {
       heroName: colorOf(heroName),
       activityTitle: colorOf(activityTitle),
-      accentTitle: colorOf(accentTitle)
+      accentTitle: colorOf(accentTitle),
+      pageBg: window.getComputedStyle(document.body).getPropertyValue("--page-bg").trim(),
+      ambientRenderer: ambientBackdrop?.getAttribute("data-ambient-renderer") || "",
+      ambientMotion: ambientBackdrop?.getAttribute("data-ambient-motion") || ""
     };
   });
   expect(dayThemeColors.heroName).toBe("rgb(46, 46, 52)");
   expect(dayThemeColors.activityTitle).toBe("rgb(46, 46, 52)");
   expect(dayThemeColors.accentTitle).toBe("rgb(255, 0, 122)");
+  expect(dayThemeColors.pageBg).toBe("#0a0a0a");
+  expect(["webgl", "static"]).toContain(dayThemeColors.ambientRenderer);
+  expect(["running", "frozen"]).toContain(dayThemeColors.ambientMotion);
 
   await page.getByRole("button", { name: "Night" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
 
   await page.reload();
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
 
   await page.getByRole("button", { name: "Auto" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
 
   expect(requests.some((url) => url.includes("/api/discord"))).toBe(true);
   expect(requests.some((url) => url.includes("api.lanyard.rest"))).toBe(false);
@@ -451,6 +464,75 @@ test("josie defaults to auto night theme from the local clock", async ({ page })
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
+});
+
+test("josie day ambient freezes for reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("josieThemeMode", "day");
+    } catch {}
+  });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+
+  const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
+  expect(["webgl", "static"]).toContain(renderer);
+});
+
+test("josie day ambient falls back to the static plasma asset when WebGL is unavailable", async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("josieThemeMode", "day");
+    } catch {}
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function patchedGetContext(type, ...args) {
+      if (
+        this instanceof HTMLCanvasElement
+        && this.id === "os-ambient-canvas-base"
+        && (type === "webgl2" || type === "webgl" || type === "experimental-webgl")
+      ) {
+        return null;
+      }
+      return originalGetContext.call(this, type, ...args);
+    };
+  });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "static");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+
+  const backgroundImage = await page.locator("#os-ambient-backdrop").evaluate((node) => window.getComputedStyle(node).backgroundImage);
+  expect(backgroundImage).toContain("day-plasma-fallback.webp");
+});
+
+test("josie day ambient renders on mobile without overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("josieThemeMode", "day");
+    } catch {}
+  });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
+
+  const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
+  expect(["webgl", "static"]).toContain(renderer);
+
+  const overflowState = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth
+  }));
+  expect(overflowState.scrollWidth).toBeLessThanOrEqual(overflowState.viewportWidth + 1);
 });
 
 test("josie animates track and steam rows on hover and applies ambient artwork to track panels", async ({ page }) => {

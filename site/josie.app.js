@@ -5660,6 +5660,11 @@
     const bodyObserver = new MutationObserver(() => {
       syncController();
     });
+    function setBackdropState(variant, renderer, motion) {
+      osAmbientBackdrop.setAttribute("data-ambient-variant", variant);
+      osAmbientBackdrop.setAttribute("data-ambient-renderer", renderer);
+      osAmbientBackdrop.setAttribute("data-ambient-motion", motion);
+    }
     function disposeActiveController() {
       activeController?.dispose?.();
       activeController = null;
@@ -5667,14 +5672,22 @@
     function resolveVariant() {
       return document.body.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
     }
+    function resolveMotionState() {
+      return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "frozen" : "running";
+    }
     function syncController(force = false) {
       if (disposed) return;
       const nextVariant = resolveVariant();
       if (!force && nextVariant === activeVariant && activeController) return;
       disposeActiveController();
       activeVariant = nextVariant;
-      osAmbientBackdrop.setAttribute("data-ambient-variant", activeVariant);
-      activeController = activeVariant === "day" ? createFoundlifelessAmbientController() : createAmbientBackdropController();
+      if (activeVariant === "day") {
+        setBackdropState("day", "static", resolveMotionState());
+        activeController = createDayPlasmaBackdropController();
+        return;
+      }
+      setBackdropState("night", "legacy", resolveMotionState());
+      activeController = createAmbientBackdropController();
     }
     bodyObserver.observe(document.body, {
       attributes: true,
@@ -5690,14 +5703,13 @@
       }
     };
   }
-  function createFoundlifelessAmbientController() {
+  function createDayPlasmaBackdropController() {
     if (!(document.body instanceof HTMLElement)) return null;
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
     if (!(osAmbientCanvasBase instanceof HTMLCanvasElement)) return null;
-    if (!(osAmbientCanvasGlow instanceof HTMLCanvasElement)) return null;
-    const baseCtx = osAmbientCanvasBase.getContext("2d", { alpha: true, desynchronized: true });
-    const glowCtx = osAmbientCanvasGlow.getContext("2d", { alpha: true, desynchronized: true });
-    if (!baseCtx || !glowCtx) return null;
+    const baseCanvas = osAmbientCanvasBase;
+    const glowCanvas = osAmbientCanvasGlow instanceof HTMLCanvasElement ? osAmbientCanvasGlow : null;
+    const glowCtx = glowCanvas?.getContext("2d", { alpha: true, desynchronized: true }) || null;
     let disposed = false;
     let rafId = 0;
     let cssWidth = 0;
@@ -5705,212 +5717,369 @@
     let renderWidth = 0;
     let renderHeight = 0;
     let dpr = 1;
+    let gl = null;
+    let isWebGl2 = false;
+    let program = null;
+    let positionBuffer = null;
+    let positionLocation = -1;
+    let uniformResolutionLocation = null;
+    let uniformTimeLocation = null;
+    let uniformSeedLocation = null;
+    let uniformMotionEnabledLocation = null;
     let lastFrameMs = 0;
-    let particles = [];
-    let themeKey = "";
+    let startTimeMs = 0;
+    let usingStaticFallback = false;
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    const fixedSeed = 0.6180339887;
+    const frozenTimeSeconds = 24.6180339887;
     const bodyObserver = new MutationObserver(() => {
-      syncTheme(true);
+      sync();
     });
-    function createSeededRandom(seed) {
-      let state = seed >>> 0;
-      return () => {
-        state = Math.imul(1664525, state) + 1013904223;
-        return ((state >>> 0) & 4294967295) / 4294967296;
-      };
+    function setRendererState(renderer, motion) {
+      osAmbientBackdrop.setAttribute("data-ambient-variant", "day");
+      osAmbientBackdrop.setAttribute("data-ambient-renderer", renderer);
+      osAmbientBackdrop.setAttribute("data-ambient-motion", motion);
     }
-    function resolvePalette() {
-      const resolvedTheme = document.body?.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
-      if (resolvedTheme === "day") {
-        return {
-          key: "day",
-          bg: "#ffffff",
-          grid: "rgba(34, 34, 42, 0.08)",
-          link: "rgba(48, 48, 56, 0.18)",
-          point: "rgba(36, 36, 42, 0.82)",
-          glow: "rgba(255, 0, 122, 0.17)",
-          haze: "rgba(24, 24, 30, 0.07)"
-        };
+    function clearGlowCanvas() {
+      if (!(glowCanvas instanceof HTMLCanvasElement) || !glowCtx) return;
+      if (glowCanvas.width !== renderWidth || glowCanvas.height !== renderHeight) {
+        glowCanvas.width = renderWidth;
+        glowCanvas.height = renderHeight;
       }
-      return {
-        key: "night",
-        bg: "#000000",
-        grid: "rgba(255, 255, 255, 0.06)",
-        link: "rgba(255, 255, 255, 0.16)",
-        point: "rgba(255, 255, 255, 0.92)",
-        glow: "rgba(255, 0, 122, 0.22)",
-        haze: "rgba(255, 255, 255, 0.05)"
-      };
+      glowCtx.setTransform(1, 0, 0, 1, 0, 0);
+      glowCtx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
     }
-    function resizeCanvas(canvas) {
-      if (!(canvas instanceof HTMLCanvasElement)) return;
-      if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
-        canvas.width = renderWidth;
-        canvas.height = renderHeight;
+    function destroyRenderer() {
+      if (gl && positionBuffer) {
+        gl.deleteBuffer(positionBuffer);
       }
+      if (gl && program) {
+        gl.deleteProgram(program);
+      }
+      positionBuffer = null;
+      program = null;
+      positionLocation = -1;
+      uniformResolutionLocation = null;
+      uniformTimeLocation = null;
+      uniformSeedLocation = null;
+      uniformMotionEnabledLocation = null;
+      gl = null;
     }
-    function rebuildParticles() {
-      const compact = isCompactMobileLayout();
-      const rng = createSeededRandom((cssWidth * 73856093 ^ cssHeight * 19349663 ^ 2654435761) >>> 0);
-      const particleCount = compact ? Math.max(22, Math.min(42, Math.round(cssWidth * cssHeight / 42000))) : Math.max(56, Math.min(92, Math.round(cssWidth * cssHeight / 24000)));
-      particles = Array.from({ length: particleCount }, (_, index) => ({
-        x: rng() * renderWidth,
-        y: rng() * renderHeight,
-        baseX: rng() * renderWidth,
-        baseY: rng() * renderHeight,
-        driftX: (rng() - 0.5) * (compact ? 8 : 18),
-        driftY: (rng() - 0.5) * (compact ? 8 : 18),
-        speedX: (rng() - 0.5) * (compact ? 0.04 : 0.08),
-        speedY: (rng() - 0.5) * (compact ? 0.04 : 0.08),
-        size: 1 + rng() * (compact ? 1.25 : 1.8),
-        pulse: rng() * Math.PI * 2,
-        pulseSpeed: 0.6 + rng() * 1.3,
-        index
-      }));
+    function buildVertexShaderSource(useWebGl2) {
+      if (useWebGl2) {
+        return `#version 300 es
+in vec2 a_position;
+out vec2 v_uv;
+void main() {
+  v_uv = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+      }
+      return `
+attribute vec2 a_position;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+    }
+    function buildFragmentShaderSource(useWebGl2) {
+      const header = useWebGl2
+        ? `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_seed;
+uniform float u_motion_enabled;`
+        : `
+precision highp float;
+varying vec2 v_uv;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_seed;
+uniform float u_motion_enabled;`;
+      const footer = useWebGl2 ? "outColor = vec4(vec3(gray), 1.0);" : "gl_FragColor = vec4(vec3(gray), 1.0);";
+      return `${header}
+
+float hash21(vec2 p) {
+  p += u_seed * 19.618;
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise2(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+float fbm(vec2 p) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  mat2 rotation = mat2(1.72, 1.18, -1.18, 1.72);
+  for (int octave = 0; octave < 5; octave += 1) {
+    value += amplitude * noise2(p);
+    p = rotation * p * 1.08 + 0.17;
+    amplitude *= 0.54;
+  }
+  return value;
+}
+
+void main() {
+  vec2 centered = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+  float time = u_time * mix(0.0, 0.048, u_motion_enabled);
+  vec2 base = centered * vec2(2.15, 2.35);
+  vec2 warpA = vec2(
+    fbm(base * 0.92 + vec2(0.0, time * 0.72)),
+    fbm(base * 0.84 + vec2(4.3, -time * 0.58))
+  );
+  vec2 warpB = vec2(
+    fbm(base * 1.28 - warpA * 1.14 + vec2(time * 0.23, -time * 0.16)),
+    fbm(base * 1.12 + warpA * 1.08 + vec2(-time * 0.19, time * 0.14))
+  );
+  vec2 plasmaUv = base + (warpA - 0.5) * 1.24 + (warpB - 0.5) * 0.82;
+  float body = fbm(plasmaUv * 1.28 + vec2(time * 0.28, -time * 0.22));
+  float secondary = fbm(plasmaUv * 1.74 - vec2(time * 0.16, time * 0.11));
+  float tertiary = fbm((plasmaUv + secondary) * 2.12 + 6.7);
+  float field = mix(body, secondary, 0.42) + tertiary * 0.17;
+  field = smoothstep(0.24, 0.84, field);
+  float edgeFade = 1.0 - smoothstep(0.22, 1.12, length(centered * vec2(0.92, 1.06)));
+  float cloud = smoothstep(0.18, 0.86, field + fbm(plasmaUv * 0.76) * 0.12 - 0.05);
+  float density = mix(0.14, 0.54, cloud) * mix(0.78, 1.02, edgeFade);
+  float grain = (noise2(gl_FragCoord.xy * 0.27 + 0.071) - 0.5) * 0.018;
+  float gray = clamp(mix(0.043, 0.165, density) + grain, 0.043, 0.17);
+  ${footer}
+}`;
+    }
+    function compileShader(shaderType, source) {
+      if (!gl) return null;
+      const shader = gl.createShader(shaderType);
+      if (!shader) return null;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader;
+      }
+      gl.deleteShader(shader);
+      return null;
+    }
+    function initializeRenderer() {
+      const contextAttributes = {
+        alpha: true,
+        antialias: false,
+        premultipliedAlpha: false,
+        powerPreference: "high-performance"
+      };
+      const nextGl = baseCanvas.getContext("webgl2", contextAttributes)
+        || baseCanvas.getContext("webgl", contextAttributes)
+        || baseCanvas.getContext("experimental-webgl", contextAttributes);
+      if (!nextGl) {
+        return false;
+      }
+      gl = nextGl;
+      isWebGl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+      const vertexShader = compileShader(gl.VERTEX_SHADER, buildVertexShaderSource(isWebGl2));
+      const fragmentShader = compileShader(gl.FRAGMENT_SHADER, buildFragmentShaderSource(isWebGl2));
+      if (!vertexShader || !fragmentShader) {
+        if (vertexShader) gl.deleteShader(vertexShader);
+        if (fragmentShader) gl.deleteShader(fragmentShader);
+        destroyRenderer();
+        return false;
+      }
+      const nextProgram = gl.createProgram();
+      if (!nextProgram) {
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        destroyRenderer();
+        return false;
+      }
+      gl.attachShader(nextProgram, vertexShader);
+      gl.attachShader(nextProgram, fragmentShader);
+      gl.linkProgram(nextProgram);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      if (!gl.getProgramParameter(nextProgram, gl.LINK_STATUS)) {
+        gl.deleteProgram(nextProgram);
+        destroyRenderer();
+        return false;
+      }
+      program = nextProgram;
+      positionBuffer = gl.createBuffer();
+      if (!positionBuffer) {
+        destroyRenderer();
+        return false;
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+        3, -1,
+        -1, 3
+      ]), gl.STATIC_DRAW);
+      positionLocation = gl.getAttribLocation(program, "a_position");
+      uniformResolutionLocation = gl.getUniformLocation(program, "u_resolution");
+      uniformTimeLocation = gl.getUniformLocation(program, "u_time");
+      uniformSeedLocation = gl.getUniformLocation(program, "u_seed");
+      uniformMotionEnabledLocation = gl.getUniformLocation(program, "u_motion_enabled");
+      gl.clearColor(0, 0, 0, 0);
+      return true;
+    }
+    function applyStaticFallback() {
+      if (usingStaticFallback) {
+        setRendererState("static", "frozen");
+        clearGlowCanvas();
+        return;
+      }
+      usingStaticFallback = true;
+      stop();
+      destroyRenderer();
+      clearGlowCanvas();
+      setRendererState("static", "frozen");
+    }
+    function handleContextLost(event) {
+      event.preventDefault();
+      applyStaticFallback();
+    }
+    function drawFrame(nowMs, { frozen = false } = {}) {
+      if (disposed || usingStaticFallback || !gl || !program || !positionBuffer) return;
+      if (!startTimeMs) {
+        startTimeMs = nowMs;
+      }
+      const elapsedSeconds = frozen ? frozenTimeSeconds : Math.max(0, (nowMs - startTimeMs) * 0.001);
+      gl.viewport(0, 0, renderWidth, renderHeight);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      if (positionLocation >= 0) {
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+      }
+      if (uniformResolutionLocation) {
+        gl.uniform2f(uniformResolutionLocation, renderWidth, renderHeight);
+      }
+      if (uniformTimeLocation) {
+        gl.uniform1f(uniformTimeLocation, elapsedSeconds);
+      }
+      if (uniformSeedLocation) {
+        gl.uniform1f(uniformSeedLocation, fixedSeed);
+      }
+      if (uniformMotionEnabledLocation) {
+        gl.uniform1f(uniformMotionEnabledLocation, frozen ? 0 : 1);
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      clearGlowCanvas();
     }
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
-      dpr = Math.max(1, Math.min(1.8, window.devicePixelRatio || 1));
+      const compactMobile = isCompactMobileLayout();
+      dpr = Math.max(1, Math.min(compactMobile ? 1 : 1.25, window.devicePixelRatio || 1));
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
-      resizeCanvas(osAmbientCanvasBase);
-      resizeCanvas(osAmbientCanvasGlow);
-      rebuildParticles();
-      drawFrame(performance.now(), true);
-    }
-    function clearLayer(ctx, palette) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, renderWidth, renderHeight);
-      ctx.fillStyle = palette.bg;
-      ctx.fillRect(0, 0, renderWidth, renderHeight);
-    }
-    function drawGrid(ctx, palette) {
-      const step = Math.max(32, Math.round(Math.min(renderWidth, renderHeight) / 18));
-      ctx.save();
-      ctx.strokeStyle = palette.grid;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = 0; x <= renderWidth; x += step) {
-        ctx.moveTo(x + 0.5, 0);
-        ctx.lineTo(x + 0.5, renderHeight);
+      if (baseCanvas.width !== renderWidth || baseCanvas.height !== renderHeight) {
+        baseCanvas.width = renderWidth;
+        baseCanvas.height = renderHeight;
       }
-      for (let y = 0; y <= renderHeight; y += step) {
-        ctx.moveTo(0, y + 0.5);
-        ctx.lineTo(renderWidth, y + 0.5);
+      clearGlowCanvas();
+      if (gl) {
+        gl.viewport(0, 0, renderWidth, renderHeight);
       }
-      ctx.stroke();
-      ctx.restore();
-    }
-    function updateParticles(deltaSec, timeSec) {
-      const motionScale = prefersReducedMotion ? 0.15 : 1;
-      for (const particle of particles) {
-        particle.x += particle.speedX * deltaSec * 120 * motionScale;
-        particle.y += particle.speedY * deltaSec * 120 * motionScale;
-        const orbitX = Math.sin(timeSec * 0.3 + particle.pulse) * particle.driftX;
-        const orbitY = Math.cos(timeSec * 0.26 + particle.pulse * 0.78) * particle.driftY;
-        if (particle.x < -40 || particle.x > renderWidth + 40) {
-          particle.x = particle.baseX = ((particle.x % renderWidth) + renderWidth) % renderWidth;
-        }
-        if (particle.y < -40 || particle.y > renderHeight + 40) {
-          particle.y = particle.baseY = ((particle.y % renderHeight) + renderHeight) % renderHeight;
-        }
-        particle.renderX = particle.x + orbitX;
-        particle.renderY = particle.y + orbitY;
-        particle.alpha = 0.5 + Math.sin(timeSec * particle.pulseSpeed + particle.pulse) * 0.25;
+      if (!usingStaticFallback) {
+        drawFrame(performance.now(), { frozen: prefersReducedMotion });
       }
     }
-    function drawLinks(ctx, palette) {
-      ctx.save();
-      ctx.lineWidth = 1;
-      for (let index = 0; index < particles.length; index += 1) {
-        const source = particles[index];
-        for (let next = index + 1; next < particles.length; next += 1) {
-          const target = particles[next];
-          const dx = source.renderX - target.renderX;
-          const dy = source.renderY - target.renderY;
-          const distance = Math.hypot(dx, dy);
-          if (distance > Math.min(renderWidth, renderHeight) * 0.18) continue;
-          const alpha = (1 - distance / (Math.min(renderWidth, renderHeight) * 0.18)) * 0.9;
-          ctx.strokeStyle = palette.link.replace(/[\d.]+\)$/u, `${(alpha * 0.9).toFixed(3)})`);
-          ctx.beginPath();
-          ctx.moveTo(source.renderX, source.renderY);
-          ctx.lineTo(target.renderX, target.renderY);
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-    }
-    function drawPoints(ctx, palette) {
-      ctx.save();
-      for (const particle of particles) {
-        ctx.beginPath();
-        ctx.fillStyle = palette.point.replace(/[\d.]+\)$/u, `${clamp(particle.alpha, 0.25, 0.95).toFixed(3)})`);
-        ctx.arc(particle.renderX, particle.renderY, particle.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-    function drawGlow(ctx, palette, timeSec) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, renderWidth, renderHeight);
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      for (const particle of particles) {
-        const glowRadius = 18 + particle.size * 16;
-        const gradient = ctx.createRadialGradient(particle.renderX, particle.renderY, 0, particle.renderX, particle.renderY, glowRadius);
-        const pulse = 0.32 + Math.sin(timeSec * particle.pulseSpeed + particle.pulse) * 0.14;
-        gradient.addColorStop(0, palette.glow.replace(/[\d.]+\)$/u, `${clamp(pulse, 0.08, 0.46).toFixed(3)})`));
-        gradient.addColorStop(0.45, palette.haze.replace(/[\d.]+\)$/u, `${clamp(pulse * 0.55, 0.04, 0.18).toFixed(3)})`));
-        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(particle.renderX, particle.renderY, glowRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-    function drawFrame(nowMs, force = false) {
-      if (disposed) return;
-      const palette = resolvePalette();
-      const deltaSec = force || !lastFrameMs ? 1 / 60 : Math.min(0.05, Math.max(1 / 240, (nowMs - lastFrameMs) * 0.001));
-      lastFrameMs = nowMs;
-      updateParticles(deltaSec, nowMs * 0.001);
-      clearLayer(baseCtx, palette);
-      drawGrid(baseCtx, palette);
-      drawLinks(baseCtx, palette);
-      drawPoints(baseCtx, palette);
-      drawGlow(glowCtx, palette, nowMs * 0.001);
-      themeKey = palette.key;
+    function shouldAnimate() {
+      return !usingStaticFallback
+        && !prefersReducedMotion
+        && !document.hidden
+        && !document.body.classList.contains("site-load-playing")
+        && Boolean(root?.classList.contains("state-os-ready"));
     }
     function tick(nowMs) {
-      if (disposed) return;
-      drawFrame(nowMs);
-      rafId = window.requestAnimationFrame(tick);
-    }
-    function syncTheme(force = false) {
-      const nextThemeKey = document.body?.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
-      if (force || nextThemeKey !== themeKey) {
-        drawFrame(performance.now(), true);
+      rafId = 0;
+      if (disposed || usingStaticFallback) return;
+      lastFrameMs = nowMs;
+      drawFrame(nowMs, { frozen: false });
+      if (shouldAnimate()) {
+        rafId = window.requestAnimationFrame(tick);
       }
     }
+    function stop() {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+    }
+    function start() {
+      if (rafId || !shouldAnimate()) return;
+      rafId = window.requestAnimationFrame(tick);
+    }
+    function sync() {
+      if (disposed) return;
+      if (usingStaticFallback) {
+        setRendererState("static", "frozen");
+        return;
+      }
+      const motionState = prefersReducedMotion ? "frozen" : "running";
+      setRendererState("webgl", motionState);
+      if (prefersReducedMotion) {
+        stop();
+        drawFrame(performance.now(), { frozen: true });
+        return;
+      }
+      if (shouldAnimate()) {
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (!initializeRenderer()) {
+      applyStaticFallback();
+      return {
+        dispose() {
+          disposed = true;
+        }
+      };
+    }
+    baseCanvas.addEventListener("webglcontextlost", handleContextLost, false);
     bodyObserver.observe(document.body, {
       attributes: true,
-      attributeFilter: ["data-theme-resolved"]
+      attributeFilter: ["class"]
     });
+    if (root instanceof HTMLElement) {
+      bodyObserver.observe(root, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
     window.addEventListener("resize", resize, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", resize);
+    }
+    document.addEventListener("visibilitychange", sync);
     resize();
-    rafId = window.requestAnimationFrame(tick);
+    sync();
     return {
       dispose() {
         if (disposed) return;
         disposed = true;
-        if (rafId) {
-          window.cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
+        stop();
+        baseCanvas.removeEventListener("webglcontextlost", handleContextLost, false);
         bodyObserver.disconnect();
         window.removeEventListener("resize", resize);
+        if (window.visualViewport) {
+          window.visualViewport.removeEventListener("resize", resize);
+        }
+        document.removeEventListener("visibilitychange", sync);
+        clearGlowCanvas();
+        destroyRenderer();
       }
     };
   }
