@@ -466,7 +466,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
               },
               album: {
                 title: "This Is How Tomorrow Moves [Explicit]",
-                image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/one-time-art.jpg" }]
+                image: [{ "#text": "" }]
               },
               url: "https://www.last.fm/music/beabadoobee/_/One+Time",
               duration: "184000",
@@ -572,6 +572,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.track.durationLabel, "3:04");
     assert.equal(payload.track.userPlaycount, 3);
     assert.equal(payload.track.userLoved, true);
+    assert.equal(payload.track.artworkUrl, "https://i.scdn.co/image/spotify-track-art.jpg");
     assert.equal(payload.track.topTags.length, 2);
     assert.equal(payload.track.summary, "A bright and clipped single.");
     assert.equal(payload.spotify.matchStatus, "matched");

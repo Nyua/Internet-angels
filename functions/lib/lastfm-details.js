@@ -253,7 +253,7 @@ async function loadArtistTopTracks(apiKey, artist, nowMs = Date.now()) {
 }
 
 function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch) {
-  const artworkUrl = pickLastFmImageUrl(trackInfo?.album?.image) || fallbackArtworkUrl || String(spotifyMatch?.artworkUrl || "").trim();
+  const artworkUrl = pickLastFmImageUrl(trackInfo?.album?.image) || String(spotifyMatch?.artworkUrl || "").trim() || fallbackArtworkUrl;
   const userPlaycount = Math.max(parseInteger(trackInfo?.userplaycount), parseInteger(scrobbleTotal));
   return {
     title: getTrackTitle(trackInfo),

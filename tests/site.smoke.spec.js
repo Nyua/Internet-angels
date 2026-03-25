@@ -442,7 +442,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
             album: "This Is How Tomorrow Moves",
             durationMs: 184000,
             durationLabel: "3:04",
-            artworkUrl: "https://example.com/one-time-detail.jpg",
+            artworkUrl: "",
             lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time",
             artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
             userPlaycount: 3,
@@ -572,7 +572,12 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
   const previewPlayer = page.locator("[data-track-preview-player]");
   await expect(previewPlayer).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-secondary [data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
+  await expect(page.locator("[data-track-preview-volume]")).toHaveValue("0.39");
+  await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
   const previewToggle = page.locator("[data-track-preview-toggle]");
   await previewToggle.click();
   await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "playing");
@@ -586,6 +591,31 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await previewToggle.click();
   await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "paused");
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
+  const trackCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" });
+  const artistCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" });
+  const spotifyCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" });
+  const cancelPrompt = page.locator("[data-external-confirm-cancel].external-link-confirm-button");
+  await trackCta.click();
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  const zLayers = await page.evaluate(() => {
+    const prompt = document.querySelector(".external-link-confirm");
+    const panel = document.querySelector(".lastfm-track-panel");
+    return {
+      prompt: Number.parseInt(window.getComputedStyle(prompt).zIndex || "0", 10),
+      panel: Number.parseInt(window.getComputedStyle(panel).zIndex || "0", 10)
+    };
+  });
+  expect(zLayers.prompt).toBeGreaterThan(zLayers.panel);
+  await cancelPrompt.click();
+  await expect(page.locator(".external-link-confirm")).not.toHaveClass(/is-open/);
+  await artistCta.click();
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  await cancelPrompt.click();
+  await expect(page.locator(".external-link-confirm")).not.toHaveClass(/is-open/);
+  await spotifyCta.click();
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  await cancelPrompt.click();
+  await expect(page.locator(".external-link-confirm")).not.toHaveClass(/is-open/);
   await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(1);
   await page.locator(".lastfm-track-panel-related-button").click();
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("the perfect pair");
@@ -600,7 +630,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
 });
 
-test("josie track details panel falls back to spotify search when no embed match exists", async ({ page }) => {
+test("josie track details panel falls back to spotify search when no preview match exists", async ({ page }) => {
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
       status: 200,
@@ -678,47 +708,16 @@ test("josie track details panel falls back to spotify search when no embed match
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await page.locator(".lastfm-recent-button").first().click();
 
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
-  await expect(page.locator(".lastfm-track-panel-spotify .lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
-  await page.locator(".lastfm-track-panel-spotify .lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
+  await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
+  await page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 });
 
-test("josie pauses site audio when a spotify embed starts playing", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__mockSpotifyEmbedEvents = [];
-    window.__internetAngelSpotifyIframeApi = {
-      createController(element, options, callback) {
-        const listeners = new Map();
-        const controller = {
-          addListener(eventName, handler) {
-            const current = listeners.get(eventName) || [];
-            current.push(handler);
-            listeners.set(eventName, current);
-          },
-          pause() {
-            window.__mockSpotifyEmbedEvents.push({ type: "pause-method" });
-          },
-          destroy() {
-            window.__mockSpotifyEmbedEvents.push({ type: "destroy-method" });
-            element.innerHTML = "";
-          },
-          __emit(eventName, data = {}) {
-            const handlers = listeners.get(eventName) || [];
-            for (const handler of handlers) {
-              handler({ data });
-            }
-          }
-        };
-        element.dataset.mockSpotifyMounted = String(options?.uri || "");
-        element.innerHTML = '<div class="mock-spotify-embed">Mock Spotify Embed</div>';
-        window.__mockSpotifyEmbedController = controller;
-        callback(controller);
-      }
-    };
-  });
-
+test("josie does not mount a spotify player when the detail track has no preview clip", async ({ page }) => {
   const apiRequests = [];
   page.on("request", (outboundRequest) => {
     const url = outboundRequest.url();
@@ -809,23 +808,12 @@ test("josie pauses site audio when a spotify embed starts playing", async ({ pag
   await page.locator(".lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await page.waitForFunction(() => Boolean(window.__mockSpotifyEmbedController));
-
-  await page.evaluate(() => {
-    window.__mockSpotifyEmbedController.__emit("playback_started", { playingURI: "spotify:track:spotify-track-1" });
-  });
-  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
-
-  await page.evaluate(() => {
-    window.__mockSpotifyEmbedController.__emit("playback_update", {
-      playingURI: "spotify:track:spotify-track-1",
-      isPaused: true,
-      isBuffering: false,
-      duration: 184000,
-      position: 24000
-    });
-  });
+  await expect(page.locator(".lastfm-track-panel-spotify")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed-host")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
+  await page.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" }).click();
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 
   expect(apiRequests.some((url) => url.includes("/api/lastfm-track-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);

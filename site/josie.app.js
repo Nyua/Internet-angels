@@ -2559,7 +2559,7 @@
         <div class="lastfm-track-panel-layout">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art lastfm-track-panel-skeleton" aria-hidden="true"></div>
-            <div class="lastfm-track-panel-spotify lastfm-track-panel-skeleton" aria-hidden="true"></div>
+            <div class="lastfm-track-panel-preview lastfm-track-panel-skeleton" aria-hidden="true"></div>
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
@@ -2598,7 +2598,6 @@
     const scrobbles = detail?.scrobbles || {};
     const artistTopTracks = detail?.artistTopTracks || {};
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
-    const showSpotifyBlock = spotify.matchStatus !== "not_configured";
     const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
@@ -2633,33 +2632,9 @@
         </div>
         <label class="lastfm-track-panel-preview-volume">
           <span class="lastfm-track-panel-preview-volume-label">Volume</span>
-          <input class="lastfm-track-panel-preview-volume-slider" data-track-preview-volume type="range" min="0" max="1" step="0.01" value="0.78" aria-label="Spotify preview volume" />
+          <input class="lastfm-track-panel-preview-volume-slider" data-track-preview-volume type="range" min="0" max="1" step="0.01" value="0.39" aria-label="Spotify preview volume" />
         </label>
       </div>
-    ` : "";
-    const spotifyMarkup = showSpotifyBlock ? `
-      <section class="lastfm-track-panel-spotify">
-        <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">Spotify</h4>
-          ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}">${escapeHtml(spotifyButtonLabel)}</button>` : ""}
-        </div>
-        ${spotifyPreviewMarkup || spotify.matchStatus === "matched" && spotify.embedUrl ? `
-          ${spotifyPreviewMarkup || ""}
-          ${!spotifyPreviewMarkup ? `
-          <div class="lastfm-track-panel-spotify-embed-wrap">
-            <div
-              class="lastfm-track-panel-spotify-embed-host"
-              data-spotify-track-embed-target
-              data-spotify-embed-url="${escapeHtml(spotify.embedUrl)}"
-              data-spotify-open-url="${escapeHtml(spotify.openUrl)}"
-              data-spotify-track-title="${escapeHtml(track.title || "track")}"
-            ></div>
-          </div>
-          ` : ""}
-        ` : `
-          <p class="lastfm-track-panel-empty">Spotify preview unavailable for this track right now.</p>
-        `}
-      </section>
     ` : "";
     const summaryMarkup = track.summary ? `
       <section class="lastfm-track-panel-summary">
@@ -2727,7 +2702,7 @@
             <div class="lastfm-track-panel-art">
               ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
             </div>
-            ${spotifyMarkup}
+            ${spotifyPreviewMarkup}
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
@@ -2754,7 +2729,7 @@
             <div class="lastfm-track-panel-actions">
               ${track.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : ""}
               ${track.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(track.artistLastFmUrl)}">Open Artist on Last.fm</button>` : ""}
-              ${spotify.matchStatus === "matched" && spotify.openUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotify.openUrl)}">Open in Spotify</button>` : ""}
+              ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}">${escapeHtml(spotifyButtonLabel)}</button>` : ""}
             </div>
             ${historyMarkup}
             ${relatedMarkup}
@@ -3311,7 +3286,7 @@
       }
       const volumeSlider = player.querySelector("[data-track-preview-volume]");
       if (volumeSlider instanceof HTMLInputElement) {
-        const targetVolume = audio ? clamp2(audio.volume, 0, 1) : 0.78;
+        const targetVolume = audio ? clamp2(audio.volume, 0, 1) : 0.39;
         volumeSlider.value = targetVolume.toFixed(2);
         player.dataset.trackPreviewVolumeValue = targetVolume.toFixed(2);
       }
@@ -3336,7 +3311,7 @@
       audio.preload = "metadata";
       audio.crossOrigin = "anonymous";
       audio.playsInline = true;
-      audio.volume = 0.78;
+      audio.volume = 0.39;
       audio.addEventListener("loadedmetadata", queueTrackPreviewUiSync);
       audio.addEventListener("durationchange", queueTrackPreviewUiSync);
       audio.addEventListener("timeupdate", queueTrackPreviewUiSync);
@@ -3417,7 +3392,7 @@
     function setTrackPreviewVolume(value) {
       const audio = ensureTrackPreviewAudio();
       const numericValue = Number(value);
-      audio.volume = clamp2(Number.isFinite(numericValue) ? numericValue : 0.78, 0, 1);
+      audio.volume = clamp2(Number.isFinite(numericValue) ? numericValue : 0.39, 0, 1);
       queueTrackPreviewUiSync();
     }
     function hydrateTrackPreview(detail) {
@@ -3690,7 +3665,6 @@
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         setLastFmTrackDetailsContent(renderLastFmTrackPanelContent(payload));
         hydrateTrackPreview(payload);
-        void mountSpotifyEmbedController(payload, cacheKey);
         const nextFocusTarget = panel.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });

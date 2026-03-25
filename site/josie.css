@@ -497,7 +497,7 @@ body.site-load-playing .os-ambient-backdrop {
   display: grid;
   place-items: center;
   padding: 24px;
-  z-index: 300;
+  z-index: 360;
   pointer-events: none;
   opacity: 0;
   transition: opacity 140ms ease;
@@ -809,7 +809,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-header,
 .lastfm-track-panel-stats,
 .lastfm-track-panel-summary,
-.lastfm-track-panel-spotify,
+.lastfm-track-panel-preview,
 .lastfm-track-panel-history,
 .lastfm-track-panel-related {
   animation: lastfmTrackPanelFadeIn 220ms ease both;
@@ -983,25 +983,27 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-preview {
+  width: min(100%, 276px);
+  align-self: center;
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 11px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(15, 19, 34, 0.96), rgba(9, 12, 24, 0.98));
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(15, 19, 34, 0.92), rgba(9, 12, 24, 0.96));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .lastfm-track-panel-preview-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
 .lastfm-track-panel-preview-toggle {
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border: 1px solid rgba(255, 0, 122, 0.26);
   border-radius: 999px;
   background: rgba(255, 0, 122, 0.12);
@@ -1023,7 +1025,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-preview-toggle-icon {
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1;
   letter-spacing: 0.08em;
 }
@@ -1040,7 +1042,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-preview-title {
   color: #ffffff;
   font-family: var(--hub-font);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -1049,7 +1051,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-preview-time,
 .lastfm-track-panel-preview-volume-label {
   color: #ff007a;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.2;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1061,7 +1063,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-preview-progress {
   position: relative;
-  height: 7px;
+  height: 5px;
   border-radius: 999px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.08);
@@ -1077,7 +1079,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-preview-volume {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .lastfm-track-panel-preview-volume-slider {
@@ -1289,7 +1291,8 @@ body.lastfm-track-panel-open {
   }
 
   .lastfm-track-panel-preview {
-    padding: 14px;
+    width: 100%;
+    padding: 11px 12px;
   }
 }
 
@@ -1299,7 +1302,7 @@ body.lastfm-track-panel-open {
   .lastfm-track-panel-header,
   .lastfm-track-panel-stats,
   .lastfm-track-panel-summary,
-  .lastfm-track-panel-spotify,
+.lastfm-track-panel-preview,
   .lastfm-track-panel-history,
   .lastfm-track-panel-related,
   .lastfm-track-panel-art-image,
