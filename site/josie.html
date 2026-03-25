@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260325-josie-51" />
+    <link rel="stylesheet" href="/josie.css?v=20260325-josie-54" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -147,11 +147,28 @@
     </style>
   </head>
   <body class="site-load-active site-load-playing">
+    <script>
+      (() => {
+        const key = "josieThemeMode";
+        let mode = "auto";
+        try {
+          const storedMode = String(window.localStorage.getItem(key) || "").trim().toLowerCase();
+          if (storedMode === "auto" || storedMode === "day" || storedMode === "night") {
+            mode = storedMode;
+          }
+        } catch (error) {}
+        const hour = new Date().getHours();
+        const resolved = mode === "auto" ? (hour >= 6 && hour < 18 ? "day" : "night") : mode;
+        document.body.setAttribute("data-theme-mode", mode);
+        document.body.setAttribute("data-theme-resolved", resolved);
+      })();
+    </script>
     <script>try { window.localStorage.setItem('hasSeenJosieIntro', 'true'); } catch (e) {}</script>
     <main class="corner-shell theme-chrome state-os-ready">
       <section id="os-stage" class="os-stage" aria-hidden="false">
         <div id="os-ambient-backdrop" class="os-ambient-backdrop" aria-hidden="true">
-          <canvas id="os-ambient-canvas" class="os-ambient-canvas" aria-hidden="true"></canvas>
+          <canvas id="os-ambient-canvas-base" class="os-ambient-canvas os-ambient-canvas--base" aria-hidden="true"></canvas>
+          <canvas id="os-ambient-canvas-glow" class="os-ambient-canvas os-ambient-canvas--glow" aria-hidden="true"></canvas>
         </div>
         <div id="social-hub-scale-frame" class="social-hub-scale-frame">
           <div id="social-hub-root" class="social-hub" aria-label="Josie social hub">
@@ -159,6 +176,7 @@
               <div id="social-hub-left-rail" class="social-hub-left-rail" aria-label="Profile rail">
                 <section id="social-hub-profile" class="social-hub-profile" aria-label="Profile header"></section>
                 <aside id="social-hub-sidebar" class="social-hub-sidebar" aria-label="Profile sidebar"></aside>
+                <section id="social-hub-profile-tagline" class="social-hub-profile-tagline" aria-label="Profile tagline"></section>
               </div>
               <section id="social-hub-showcases" class="social-hub-showcases" aria-label="Social showcases"></section>
             </div>
@@ -166,7 +184,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260325-josie-51"></script>
+    <script src="/josie.client.js?v=20260325-josie-54"></script>
     <script>
       (() => {
         const breakpointPx = 1120;

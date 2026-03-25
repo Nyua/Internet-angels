@@ -48,10 +48,64 @@
   --control-text: #15314f;
   --small-copy-accent: #ff007a;
 
+  --page-bg: #000000;
+  --page-bg-alt: #05070b;
+  --surface-bg: rgba(8, 10, 14, 0.84);
+  --surface-bg-strong: rgba(10, 12, 16, 0.94);
+  --surface-border: rgba(255, 255, 255, 0.1);
+  --surface-shadow: rgba(6, 21, 36, 0.5);
+  --text-primary: #eefbff;
+  --text-secondary: #d8ecfa;
+  --text-muted: #bfdcf0;
+  --icon-primary: #edf9ff;
+  --ambient-line: rgba(255, 255, 255, 0.008);
+  --ambient-glow: rgba(255, 0, 122, 0.2);
+  --ambient-scanline: rgba(255, 255, 255, 0.006);
+  --ambient-scanline-blend: screen;
+  --theme-control-bg: rgba(10, 10, 12, 0.84);
+  --theme-control-border: rgba(255, 255, 255, 0.1);
+  --theme-control-text: #eefbff;
+  --theme-control-active-bg: rgba(255, 0, 122, 0.14);
+  --theme-control-active-border: rgba(255, 0, 122, 0.32);
+  --theme-control-active-text: #fff5f9;
+  --discord-card-bg: rgba(9, 9, 12, 0.9);
+  --discord-card-border: rgba(255, 255, 255, 0.08);
+  --discord-card-shadow: rgba(0, 0, 0, 0.34);
+  --discord-status-online: #43d66d;
+  --discord-status-idle: #f0b232;
+  --discord-status-dnd: #f24f5c;
+  --discord-status-offline: #6f7684;
+
   --focus-ring: #78f2ff;
   --container-radius: 8px;
   --desktop-hub-design-width: 1300px;
   --desktop-hub-scale: 1;
+}
+
+body[data-theme-resolved="day"] {
+  --page-bg: #ffffff;
+  --page-bg-alt: #f7f7fb;
+  --surface-bg: rgba(255, 255, 255, 0.92);
+  --surface-bg-strong: rgba(255, 255, 255, 0.98);
+  --surface-border: rgba(26, 26, 32, 0.12);
+  --surface-shadow: rgba(68, 68, 82, 0.12);
+  --text-primary: #2e2e34;
+  --text-secondary: #4b4b55;
+  --text-muted: #6a6a75;
+  --icon-primary: #34343b;
+  --ambient-line: rgba(34, 34, 42, 0.06);
+  --ambient-glow: rgba(255, 0, 122, 0.12);
+  --ambient-scanline: rgba(30, 30, 38, 0.03);
+  --ambient-scanline-blend: multiply;
+  --theme-control-bg: rgba(255, 255, 255, 0.92);
+  --theme-control-border: rgba(26, 26, 32, 0.12);
+  --theme-control-text: #2e2e34;
+  --theme-control-active-bg: rgba(255, 0, 122, 0.08);
+  --theme-control-active-border: rgba(255, 0, 122, 0.24);
+  --theme-control-active-text: #b3135f;
+  --discord-card-bg: rgba(255, 255, 255, 0.88);
+  --discord-card-border: rgba(26, 26, 32, 0.12);
+  --discord-card-shadow: rgba(68, 68, 82, 0.12);
 }
 
 * {
@@ -64,8 +118,8 @@ body {
   width: 100%;
   min-height: 100%;
   overflow: hidden;
-  background: #000;
-  color: var(--steam-text);
+  background: var(--page-bg);
+  color: var(--text-primary);
   font-family: var(--hub-font);
 }
 
@@ -351,7 +405,7 @@ body.has-custom-cursor.has-system-pointer * {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  background: #000;
+  background: var(--page-bg);
 }
 
 .os-ambient-backdrop {
@@ -370,9 +424,18 @@ body.has-custom-cursor.has-system-pointer * {
   width: 100%;
   height: 100%;
   display: block;
-  opacity: 0.96;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  opacity: 1;
+  image-rendering: auto;
+}
+
+.os-ambient-canvas--base {
+  z-index: 0;
+}
+
+.os-ambient-canvas--glow {
+  z-index: 1;
+  opacity: 0.92;
+  filter: blur(10px);
 }
 
 body.site-load-playing .os-ambient-backdrop {
@@ -398,9 +461,9 @@ body.site-load-playing .os-ambient-backdrop {
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.006) 0 1px, rgba(255, 255, 255, 0) 1px 26px);
+  background: repeating-linear-gradient(to bottom, var(--ambient-scanline) 0 1px, rgba(255, 255, 255, 0) 1px 26px);
   opacity: 0.18;
-  mix-blend-mode: screen;
+  mix-blend-mode: var(--ambient-scanline-blend);
 }
 
 .social-hub-scale-frame {
@@ -519,12 +582,12 @@ body.site-load-playing .os-ambient-backdrop {
 .external-link-confirm-window {
   position: relative;
   width: min(468px, calc(100vw - 32px));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: rgba(18, 18, 18, 0.96);
+  background: var(--surface-bg-strong);
   box-shadow:
-    0 28px 56px rgba(0, 0, 0, 0.56),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 28px 56px color-mix(in srgb, var(--surface-shadow) 92%, rgba(0, 0, 0, 0.36)),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 8%, transparent);
   padding: 22px 22px 18px;
   display: flex;
   flex-direction: column;
@@ -542,7 +605,7 @@ body.site-load-playing .os-ambient-backdrop {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
   font-size: 28px;
   line-height: 1;
   display: inline-flex;
@@ -553,8 +616,8 @@ body.site-load-playing .os-ambient-backdrop {
 }
 
 .external-link-confirm-close:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .external-link-confirm-title {
@@ -564,12 +627,12 @@ body.site-load-playing .os-ambient-backdrop {
   line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .external-link-confirm-copy {
   margin: 22px 0 0;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
   font-size: 18px;
   line-height: 1.25;
   font-weight: 600;
@@ -579,10 +642,10 @@ body.site-load-playing .os-ambient-backdrop {
   margin: 12px 0 0;
   max-width: 100%;
   padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--surface-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface-bg) 86%, transparent);
+  color: var(--small-copy-accent);
   font-size: 14px;
   line-height: 1.25;
   font-weight: 500;
@@ -994,6 +1057,11 @@ body.lastfm-track-panel-open {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+.lastfm-track-panel-stats--single {
+  grid-template-columns: minmax(132px, 160px);
+  justify-content: flex-start;
 }
 
 .lastfm-track-panel-stats--with-spotify {
@@ -1805,6 +1873,10 @@ body.lastfm-track-panel-open {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .lastfm-track-panel-stats--single {
+    grid-template-columns: minmax(132px, 160px);
+  }
+
   .lastfm-track-panel-stats--with-spotify {
     grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
   }
@@ -1848,6 +1920,10 @@ body.lastfm-track-panel-open {
   }
 
   .lastfm-track-panel-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .lastfm-track-panel-stats--single {
     grid-template-columns: 1fr;
   }
 
@@ -1922,6 +1998,11 @@ body.lastfm-track-panel-open {
   gap: 10px;
 }
 
+.steam-hero-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
 body.site-load-active:not(.site-load-playing) .social-hub-profile,
 body.site-load-active:not(.site-load-playing) .steam-hero-shell,
 body.site-load-active:not(.site-load-playing) .steam-hero-content {
@@ -1969,10 +2050,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
-  border: 1px solid rgba(150, 205, 246, 0.72);
-  background: #0c1f30;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-bg-strong);
   object-fit: cover;
-  box-shadow: 0 12px 24px rgba(6, 21, 36, 0.5);
+  box-shadow: 0 12px 24px var(--surface-shadow);
 }
 
 .steam-hero-avatar,
@@ -1993,11 +2074,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #dff2ff;
+  color: var(--text-primary);
   font-size: 32px;
   font-weight: 700;
-  border: 1px solid rgba(150, 205, 246, 0.72);
-  background: rgba(10, 27, 42, 0.88);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-bg-strong);
 }
 
 .steam-hero-avatar-decoration {
@@ -2010,7 +2091,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   object-fit: contain;
   pointer-events: none;
   z-index: 3;
-  filter: drop-shadow(0 10px 18px rgba(12, 31, 48, 0.42));
+  filter: drop-shadow(0 10px 18px var(--surface-shadow));
 }
 
 .steam-hero-copy {
@@ -2035,7 +2116,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   font-size: clamp(34px, 3vw, 44px);
   line-height: 1;
   font-weight: 700;
-  color: #eefbff;
+  color: var(--text-primary);
   width: 100%;
 }
 
@@ -2054,7 +2135,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   margin: 1px 0 0;
   font-size: clamp(27px, 2.07vw, 32px);
   line-height: 1.35;
-  color: #d8ecfa;
+  color: var(--text-secondary);
   width: 100%;
 }
 
@@ -2066,7 +2147,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-hero-bio-sparkle {
-  color: rgba(226, 242, 252, 0.9);
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
   animation: heroSparkleDrift 3.8s ease-in-out infinite;
 }
 
@@ -2079,7 +2160,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-hero-bio-wing {
-  color: #e3f1fb;
+  color: var(--text-secondary);
   animation: heroWingFlap 2.9s ease-in-out infinite;
 }
 
@@ -2094,8 +2175,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-hero-bio-heart {
-  color: #f4fbff;
-  text-shadow: 0 0 8px rgba(235, 248, 255, 0.18);
+  color: var(--text-primary);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--text-primary) 18%, transparent);
   animation: heroHeartPulse 2.9s ease-in-out infinite;
 }
 
@@ -2218,6 +2299,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 12px;
 }
 
+.social-hub-profile-tagline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .social-hub-showcases {
   display: flex;
   flex-direction: column;
@@ -2248,7 +2335,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   font-size: 22px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #c2e4fb;
+  color: var(--text-secondary);
 }
 
 .steam-sidebar-list {
@@ -2316,7 +2403,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-row-title {
   font-size: 14px;
-  color: #ecf8ff;
+  color: var(--text-primary);
   line-height: 1.25;
   font-weight: 700;
 }
@@ -2363,7 +2450,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #edf9ff;
+  color: var(--icon-primary);
   opacity: 0.96;
   transform-origin: center;
   transition: transform 180ms ease, filter 180ms ease, color 180ms ease, opacity 180ms ease;
@@ -2394,11 +2481,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-row:hover .steam-sidebar-link,
 .steam-sidebar-row:focus-within .steam-sidebar-link {
-  color: #f8fdff;
+  color: var(--text-primary);
 }
 
 .steam-sidebar-link:hover {
-  color: #f5fbff;
+  color: var(--text-primary);
 }
 
 .steam-sidebar-link:focus-visible {
@@ -2469,7 +2556,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-sidebar-row--twitter .steam-sidebar-site-icon {
-  color: #f5fbff;
+  color: var(--icon-primary);
 }
 
 .steam-sidebar-row--steam .steam-sidebar-site-icon {
@@ -3895,7 +3982,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-showcase--lastfm-minimal {
-  border: 2px solid rgba(255, 255, 255, 0.18);
+  border: 0;
   border-radius: 3px !important;
   box-shadow: none;
   background: transparent;
@@ -3930,7 +4017,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   isolation: isolate;
   overflow: hidden;
   border: 0;
-  border-bottom: 0;
   background: transparent;
   padding: 10px 4px 8px;
   display: flex;
@@ -3940,8 +4026,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   -webkit-backdrop-filter: none;
 }
 
-.lastfm-section:first-child {
-  border-bottom: 0;
+.lastfm-section + .lastfm-section {
+  border-top: 2px solid rgba(255, 255, 255, 0.18);
+  padding-top: 12px;
 }
 
 .lastfm-section::before {
@@ -4186,10 +4273,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .lastfm-now-playing-badge {
   min-height: 18px;
-  padding: 0 8px 0 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 216, 225, 0.65);
-  background: rgba(30, 8, 16, 0.9);
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
   color: #fff4f7;
   display: inline-flex;
   align-items: center;
@@ -4648,6 +4735,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .social-hub-profile,
+  .social-hub-profile-tagline,
   .steam-sidebar-panel {
     width: min(100%, 430px);
     margin-inline: auto;
@@ -4668,6 +4756,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     gap: 10px;
     align-items: center;
     padding-top: 4px;
+  }
+
+  .steam-hero-toolbar {
+    display: none;
   }
 
   .steam-hero-avatar-wrap {
@@ -4723,7 +4815,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     font-size: clamp(18px, 5.2vw, 22px);
     text-align: center;
     letter-spacing: 0.18em;
-    color: #f5f6fb;
+    color: var(--text-primary);
     text-shadow: 0 0 16px rgba(244, 246, 251, 0.08);
     position: relative;
   }
@@ -4823,7 +4915,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(241, 245, 252, 0.94);
+    color: var(--text-primary);
   }
 
   .steam-sidebar-site-icon-shell {
@@ -4835,7 +4927,35 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     width: 42px;
     height: 42px;
     flex-basis: 42px;
-    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.08));
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--text-primary) 8%, transparent));
+  }
+
+  .steam-theme-toggle {
+    margin: 0 18px 12px;
+  }
+
+  .discord-presence-card {
+    min-height: 68px;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .discord-presence-headline {
+    font-size: 12.5px;
+  }
+
+  .discord-presence-meta {
+    font-size: 11px;
+  }
+
+  .steam-tagline-panel {
+    padding-top: 0;
+    width: min(100%, 430px);
+  }
+
+  .steam-tagline-text {
+    text-align: center;
+    font-size: clamp(24px, 6vw, 30px);
   }
 
   .steam-link-status-dot {
@@ -4998,4 +5118,274 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .steam-showcase-embed {
     height: 210px;
   }
+}
+.steam-theme-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-control-border);
+  background: var(--theme-control-bg);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--surface-shadow) 56%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.steam-theme-toggle--compact {
+  margin-bottom: 12px;
+}
+
+.steam-theme-toggle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.steam-theme-toggle-title,
+.steam-theme-toggle-state {
+  font-size: 12px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+}
+
+.steam-theme-toggle-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.steam-theme-toggle-button {
+  min-height: 32px;
+  border: 1px solid var(--theme-control-border);
+  background: transparent;
+  color: var(--theme-control-text);
+  font-family: var(--discord-font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.steam-theme-toggle-button:hover,
+.steam-theme-toggle-button:focus-visible {
+  background: color-mix(in srgb, var(--theme-control-active-bg) 48%, transparent);
+  border-color: var(--theme-control-active-border);
+  color: var(--theme-control-active-text);
+}
+
+.steam-theme-toggle-button.is-active {
+  background: var(--theme-control-active-bg);
+  border-color: var(--theme-control-active-border);
+  color: var(--theme-control-active-text);
+}
+
+.steam-tagline-panel {
+  padding: 8px 10px 0;
+}
+
+.steam-tagline-text {
+  margin: 0;
+  color: var(--text-primary);
+  text-align: center;
+  font-size: clamp(27px, 2.07vw, 32px);
+  line-height: 1.18;
+}
+
+.discord-presence-panel {
+  border: 1px solid var(--discord-card-border);
+  background: var(--discord-card-bg);
+  box-shadow: 0 18px 28px var(--discord-card-shadow);
+  overflow: hidden;
+}
+
+.discord-presence-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 12px;
+  font-family: var(--discord-font);
+}
+
+.discord-presence-avatar-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+
+.discord-presence-avatar,
+.discord-presence-avatar--fallback {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  background: var(--surface-bg-strong);
+}
+
+.discord-presence-avatar--fallback {
+  display: grid;
+  place-items: center;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.discord-presence-avatar-decoration {
+  position: absolute;
+  inset: -12%;
+  width: 124%;
+  height: 124%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.discord-presence-status-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--discord-card-bg);
+}
+
+.discord-presence-status-dot--online {
+  background: var(--discord-status-online);
+}
+
+.discord-presence-status-dot--idle {
+  background: var(--discord-status-idle);
+}
+
+.discord-presence-status-dot--dnd {
+  background: var(--discord-status-dnd);
+}
+
+.discord-presence-status-dot--offline,
+.discord-presence-status-dot--unknown {
+  background: var(--discord-status-offline);
+}
+
+.discord-presence-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.discord-presence-topline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.discord-presence-name {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discord-presence-nitro-badge {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.discord-presence-headline,
+.discord-presence-meta {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discord-presence-headline {
+  font-size: 13px;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.discord-presence-meta {
+  font-size: 11.5px;
+  line-height: 1.1;
+  color: var(--text-muted);
+}
+
+.discord-presence-album-art-wrap {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  overflow: hidden;
+}
+
+.discord-presence-album-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+body[data-theme-resolved="day"] :is(
+  .steam-hero-name,
+  .steam-tagline-text,
+  .steam-sidebar-title,
+  .steam-sidebar-row-title,
+  .steam-sidebar-link,
+  .steam-activity-header-title,
+  .steam-activity-game-title,
+  .lastfm-section-title,
+  .lastfm-track-panel-title,
+  .lastfm-track-panel-section-title,
+  .lastfm-track-panel-related-title,
+  .lastfm-track-panel-similar-title,
+  .lastfm-track-panel-summary,
+  .lastfm-track-panel-summary-link,
+  .lastfm-track-panel-meta,
+  .lastfm-track-panel-track-title,
+  .lastfm-track-panel-track-meta,
+  .external-link-confirm-title,
+  .external-link-confirm-copy,
+  .external-link-confirm-close
+) {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+body[data-theme-resolved="day"] :is(
+  .steam-activity-row-button,
+  .lastfm-track-panel-window,
+  .lastfm-track-panel-preview,
+  .lastfm-track-panel-history-item,
+  .lastfm-track-panel-related-button,
+  .lastfm-track-panel-track-item,
+  .external-link-confirm-window
+) {
+  background: var(--surface-bg-strong);
+  border-color: var(--surface-border);
+  box-shadow: 0 18px 28px var(--surface-shadow);
+}
+
+body[data-theme-resolved="day"] :is(
+  .steam-sidebar-site-icon,
+  .steam-activity-capsule-fallback,
+  .lastfm-track-panel-close
+) {
+  color: var(--icon-primary);
 }

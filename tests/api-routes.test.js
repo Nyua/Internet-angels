@@ -50,6 +50,40 @@ test("normalizeDiscordPayload returns PARTIAL for empty upstream data", () => {
   const payload = normalizeDiscordPayload({ data: {} }, Date.parse("2026-03-19T00:00:00.000Z"));
   assert.equal(payload.sourceStatus, "PARTIAL");
   assert.equal(payload.data.discord_status, "offline");
+  assert.equal(payload.presence.statusKey, "offline");
+  assert.equal(payload.presence.spotify.isListening, false);
+});
+
+test("normalizeDiscordPayload preserves spotify and nitro presence fields", () => {
+  const payload = normalizeDiscordPayload({
+    data: {
+      discord_user: {
+        id: "331350000154050560",
+        username: "foundlifeless",
+        global_name: "FoundLifeless",
+        premium_type: 2
+      },
+      discord_status: "online",
+      listening_to_spotify: true,
+      spotify: {
+        song: "up + down",
+        artist: "idkwhyy",
+        album: "Crush",
+        album_art_url: "https://i.scdn.co/image/example",
+        track_id: "spotify-track-123"
+      },
+      activities: [
+        { type: 4, state: "existing" }
+      ]
+    }
+  }, Date.parse("2026-03-25T00:00:00.000Z"));
+  assert.equal(payload.sourceStatus, "OK");
+  assert.equal(payload.data.listening_to_spotify, true);
+  assert.equal(payload.presence.hasNitro, true);
+  assert.equal(payload.presence.displayName, "FoundLifeless");
+  assert.equal(payload.presence.primaryActivity.label, "Listening to");
+  assert.equal(payload.presence.spotify.albumArtUrl, "https://i.scdn.co/image/example");
+  assert.equal(payload.presence.spotify.trackUrl, "https://open.spotify.com/track/spotify-track-123");
 });
 
 test("lastfm route returns retained stale payload when upstream fails", async () => {

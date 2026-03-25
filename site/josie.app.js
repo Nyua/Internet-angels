@@ -5,10 +5,13 @@
   var osStage = document.querySelector("#os-stage");
   var osAmbientBackdrop = document.querySelector("#os-ambient-backdrop");
   var osAmbientCanvas = document.querySelector("#os-ambient-canvas");
+  var osAmbientCanvasBase = document.querySelector("#os-ambient-canvas-base");
+  var osAmbientCanvasGlow = document.querySelector("#os-ambient-canvas-glow");
   var socialHubRoot = document.querySelector("#social-hub-root");
   var socialHubProfile = document.querySelector("#social-hub-profile");
   var socialHubShowcases = document.querySelector("#social-hub-showcases");
   var socialHubSidebar = document.querySelector("#social-hub-sidebar");
+  var socialHubProfileTagline = document.querySelector("#social-hub-profile-tagline");
   var CUSTOM_CURSOR_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button:not([disabled])",
@@ -25,8 +28,121 @@
   var socialHubState = null;
   var ambientBackdropController = null;
   var siteCursorController = null;
+  var themeController = null;
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+  var JOSIE_THEME_STORAGE_KEY = "josieThemeMode";
+  var THEME_MODE_VALUES = /* @__PURE__ */ new Set(["auto", "day", "night"]);
+  function normalizeThemeMode(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return THEME_MODE_VALUES.has(normalized) ? normalized : "auto";
+  }
+  function resolveAutoTheme(now = new Date()) {
+    const hour = now instanceof Date ? now.getHours() : new Date().getHours();
+    return hour >= 6 && hour < 18 ? "day" : "night";
+  }
+  function resolveThemeModeFromStorage() {
+    try {
+      return normalizeThemeMode(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY));
+    } catch {
+      return "auto";
+    }
+  }
+  function persistThemeMode(mode) {
+    try {
+      if (mode === "auto") {
+        window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(JOSIE_THEME_STORAGE_KEY, mode);
+      }
+    } catch {
+    }
+  }
+  function applyResolvedTheme(mode, resolvedTheme) {
+    if (!(document.body instanceof HTMLElement)) return;
+    document.body.setAttribute("data-theme-mode", mode);
+    document.body.setAttribute("data-theme-resolved", resolvedTheme);
+  }
+  function createThemeController({ onChange } = {}) {
+    if (!(document.body instanceof HTMLElement)) return null;
+    let mode = resolveThemeModeFromStorage();
+    let resolvedTheme = mode === "auto" ? resolveAutoTheme() : mode;
+    let intervalId = 0;
+    let disposed = false;
+    function emitChange() {
+      onChange?.({
+        mode,
+        resolvedTheme
+      });
+    }
+    function syncResolvedTheme({ force = false } = {}) {
+      if (disposed) return;
+      const nextResolvedTheme = mode === "auto" ? resolveAutoTheme() : mode;
+      const changed = force || nextResolvedTheme !== resolvedTheme || document.body.getAttribute("data-theme-mode") !== mode || document.body.getAttribute("data-theme-resolved") !== nextResolvedTheme;
+      resolvedTheme = nextResolvedTheme;
+      applyResolvedTheme(mode, resolvedTheme);
+      if (changed) {
+        emitChange();
+      }
+    }
+    function clearAutoTick() {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+        intervalId = 0;
+      }
+    }
+    function ensureAutoTick() {
+      clearAutoTick();
+      if (mode !== "auto") return;
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          syncResolvedTheme();
+        }
+      }, 60 * 1e3);
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible" && mode === "auto") {
+        syncResolvedTheme();
+      }
+    }
+    function setMode(nextMode) {
+      const normalizedMode = normalizeThemeMode(nextMode);
+      if (normalizedMode === mode) {
+        syncResolvedTheme();
+        return;
+      }
+      mode = normalizedMode;
+      persistThemeMode(mode);
+      syncResolvedTheme({ force: true });
+      ensureAutoTick();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    syncResolvedTheme({ force: true });
+    ensureAutoTick();
+    return {
+      getMode() {
+        return mode;
+      },
+      getResolvedTheme() {
+        return resolvedTheme;
+      },
+      setMode,
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        clearAutoTick();
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
+  }
+  function getThemeRenderState() {
+    const mode = themeController?.getMode?.() || "auto";
+    const resolvedTheme = themeController?.getResolvedTheme?.() || resolveAutoTheme();
+    return {
+      mode,
+      resolvedTheme
+    };
   }
   // src/josie/social-hub/config.js
   var SOCIAL_HUB_SITES = [
@@ -229,6 +345,27 @@
       items: [
         { id: "seed-discord-1", title: "Activity unavailable", meta: "Awaiting live presence feed" }
       ],
+      presence: {
+        displayName: "foundlifeless",
+        username: "foundlifeless",
+        statusKey: "unknown",
+        statusLabel: "Unknown",
+        avatarUrl: "",
+        avatarDecorationUrl: overrideDecoration,
+        bannerUrl: overrideBanner,
+        hasNitro: false,
+        nitroBadgeIconUrl: "",
+        customStatusText: "",
+        primaryActivity: null,
+        spotify: {
+          isListening: false,
+          song: "",
+          artist: "",
+          album: "",
+          albumArtUrl: "",
+          trackUrl: ""
+        }
+      },
       embeds: {},
       updatedAt: BASE_SEED_AT,
       freshnessStatus: "STATIC",
@@ -1135,6 +1272,39 @@
     if (!safeAsset) return "";
     return `https://cdn.discordapp.com/avatar-decoration-presets/${safeAsset}.png?size=160&passthrough=true`;
   }
+  function mapDiscordPresenceFromProxy(proxyPayload, discordUser, profile, userId) {
+    const safePresence = proxyPayload?.presence && typeof proxyPayload.presence === "object" ? proxyPayload.presence : {};
+    const safeSpotify = safePresence.spotify && typeof safePresence.spotify === "object" ? safePresence.spotify : {};
+    return {
+      ...safePresence,
+      displayName: firstNonEmpty(safePresence.displayName, profile?.name, discordUser?.display_name, discordUser?.global_name, discordUser?.username, "foundlifeless"),
+      username: firstNonEmpty(safePresence.username, discordUser?.username, discordUser?.global_name, discordUser?.display_name, "foundlifeless"),
+      statusKey: firstNonEmpty(safePresence.statusKey, profile?.statusKey, "unknown"),
+      statusLabel: firstNonEmpty(safePresence.statusLabel, profile?.statusText, "Unknown"),
+      avatarUrl: firstNonEmpty(
+        safePresence.avatarUrl,
+        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
+        profile?.avatarUrl
+      ),
+      avatarDecorationUrl: firstNonEmpty(
+        safePresence.avatarDecorationUrl,
+        profile?.decorationUrl
+      ),
+      bannerUrl: firstNonEmpty(
+        safePresence.bannerUrl,
+        profile?.bannerUrl
+      ),
+      spotify: {
+        ...safeSpotify,
+        isListening: Boolean(safeSpotify.isListening),
+        song: firstNonEmpty(safeSpotify.song),
+        artist: firstNonEmpty(safeSpotify.artist),
+        album: firstNonEmpty(safeSpotify.album),
+        albumArtUrl: firstNonEmpty(safeSpotify.albumArtUrl),
+        trackUrl: firstNonEmpty(safeSpotify.trackUrl)
+      }
+    };
+  }
   function extractDiscordProfileBio(discordUser, activities, fallbackMetaDescription, previousBio = "") {
     const list = Array.isArray(activities) ? activities : [];
     const custom = list.find((activity) => Number(activity?.type) === 4) || null;
@@ -1224,38 +1394,40 @@
       const activityItems = mapLanyardActivities(activities, site.url);
       const statusSource = Boolean(discordUser || activities.length);
       const overrideSource = Boolean(overrideBio || overrideBannerUrl || overrideDecorationUrl);
+      const profilePatch = {
+        name: displayName,
+        handle,
+        url: resolveUrl(site.url),
+        avatarUrl: firstNonEmpty(
+          buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
+          previous.profile.avatarUrl
+        ),
+        statusText: firstNonEmpty(statusText, previous.profile.statusText, "Unknown"),
+        statusKey,
+        bannerUrl: firstNonEmpty(
+          overrideBannerUrl,
+          buildDiscordBannerUrl(discordUser?.id || userId, discordUser?.banner),
+          previous.profile.bannerUrl
+        ),
+        decorationUrl: firstNonEmpty(
+          overrideDecorationUrl,
+          buildDiscordDecorationUrl(discordUser?.avatar_decoration_data?.asset),
+          previous.profile.decorationUrl
+        ),
+        bio: firstNonEmpty(
+          overrideBio,
+          extractDiscordProfileBio(discordUser, activities, "", previous.profile.bio),
+          previous.profile.bio
+        )
+      };
       return mergePayload(previous, now, {
-        profile: {
-          name: displayName,
-          handle,
-          url: resolveUrl(site.url),
-          avatarUrl: firstNonEmpty(
-            buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
-            previous.profile.avatarUrl
-          ),
-          statusText: firstNonEmpty(statusText, previous.profile.statusText, "Unknown"),
-          statusKey,
-          bannerUrl: firstNonEmpty(
-            overrideBannerUrl,
-            buildDiscordBannerUrl(discordUser?.id || userId, discordUser?.banner),
-            previous.profile.bannerUrl
-          ),
-          decorationUrl: firstNonEmpty(
-            overrideDecorationUrl,
-            buildDiscordDecorationUrl(discordUser?.avatar_decoration_data?.asset),
-            previous.profile.decorationUrl
-          ),
-          bio: firstNonEmpty(
-            overrideBio,
-            extractDiscordProfileBio(discordUser, activities, "", previous.profile.bio),
-            previous.profile.bio
-          )
-        },
+        profile: profilePatch,
         stats: [
           { label: "Status", value: firstNonEmpty(statusText, "Unknown") },
           { label: "Presence Source", value: statusSource ? presenceSource : "Unavailable" },
           { label: "Activities", value: String(activityItems.length || activities.length || 0) }
         ],
+        presence: mapDiscordPresenceFromProxy(discordPayload, discordUser, profilePatch, userId),
         items: activityItems.length ? activityItems : [
           {
             id: `discord-item-${hashText(displayName).slice(0, 8)}`,
@@ -2406,21 +2578,98 @@
       <span class="steam-hero-bio-sparkle steam-hero-bio-sparkle--right" aria-hidden="true">‧₊˚</span>
     `;
   }
-  function renderHeroDescriptionMarkup(bioText) {
-    return escapeHtml(HERO_DESCRIPTION_TEXT);
+  function renderThemeToggleMarkup(options = {}) {
+    const mode = normalizeThemeMode(options?.mode);
+    const resolvedTheme = String(options?.resolvedTheme || "night").trim().toLowerCase() === "day" ? "day" : "night";
+    const compact = Boolean(options?.compact);
+    const stateLabel = mode === "auto"
+      ? `Auto · ${resolvedTheme === "day" ? "Day" : "Night"}`
+      : `Pinned · ${mode === "day" ? "Day" : "Night"}`;
+    return `
+      <section class="steam-theme-toggle${compact ? " steam-theme-toggle--compact" : ""}" data-theme-toggle data-theme-mode="${escapeHtml(mode)}" data-theme-resolved="${escapeHtml(resolvedTheme)}" aria-label="Theme controls">
+        <div class="steam-theme-toggle-head">
+          <span class="steam-theme-toggle-title">Theme</span>
+          <span class="steam-theme-toggle-state">${escapeHtml(stateLabel)}</span>
+        </div>
+        <div class="steam-theme-toggle-group" role="group" aria-label="Theme mode">
+          ${["auto", "day", "night"].map((themeMode) => {
+      const active = themeMode === mode;
+      const label = themeMode === "auto" ? "Auto" : themeMode === "day" ? "Day" : "Night";
+      return `<button class="steam-theme-toggle-button${active ? " is-active" : ""}" type="button" data-theme-mode-choice="${themeMode}" aria-pressed="${active ? "true" : "false"}">${label}</button>`;
+    }).join("")}
+        </div>
+      </section>
+    `;
+  }
+  function renderHeroTaglinePanel() {
+    return `
+      <section class="steam-tagline-panel" aria-label="Profile tagline">
+        <p class="steam-tagline-text">${escapeHtml(HERO_DESCRIPTION_TEXT)}</p>
+      </section>
+    `;
+  }
+  function renderDiscordPresencePanel(payload) {
+    const safePayload = payload && typeof payload === "object" ? payload : null;
+    const presence = safePayload?.presence && typeof safePayload.presence === "object" ? safePayload.presence : null;
+    const profile = safePayload?.profile && typeof safePayload.profile === "object" ? safePayload.profile : {};
+    const displayName = firstNonEmpty(presence?.displayName, profile.name, "foundlifeless");
+    const statusKey = firstNonEmpty(presence?.statusKey, profile.statusKey, "offline").toLowerCase();
+    const avatarUrl = sanitizeUrl(firstNonEmpty(presence?.avatarUrl, profile.avatarUrl));
+    const avatarDecorationUrl = sanitizeUrl(firstNonEmpty(presence?.avatarDecorationUrl, profile.decorationUrl));
+    const nitroBadgeIconUrl = sanitizeUrl(presence?.hasNitro ? presence?.nitroBadgeIconUrl : "");
+    const spotify = presence?.spotify && typeof presence.spotify === "object" ? presence.spotify : {};
+    const isListeningToSpotify = Boolean(spotify?.isListening);
+    const albumArtUrl = sanitizeUrl(spotify?.albumArtUrl);
+    const headline = isListeningToSpotify
+      ? `Listening to ${firstNonEmpty(spotify?.song, "Unknown track")}`
+      : firstNonEmpty(
+        presence?.customStatusText,
+        presence?.primaryActivity?.name ? `${firstNonEmpty(presence?.primaryActivity?.label, "Active in")} ${presence.primaryActivity.name}` : "",
+        presence?.statusLabel,
+        profile.statusText,
+        "Discord presence unavailable"
+      );
+    const metaLine = isListeningToSpotify
+      ? firstNonEmpty(spotify?.artist ? `by ${spotify.artist}` : "", spotify?.album)
+      : firstNonEmpty(
+        presence?.primaryActivity?.subtitle,
+        presence?.statusLabel,
+        profile.statusText
+      );
+    return `
+      <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
+        <div class="discord-presence-card">
+          <div class="discord-presence-avatar-wrap discord-presence-avatar-wrap--${escapeHtml(statusKey || "offline")}">
+            ${avatarUrl ? `<img class="discord-presence-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="discord-presence-avatar discord-presence-avatar--fallback">D</div>'}
+            ${avatarDecorationUrl ? `<img class="discord-presence-avatar-decoration" src="${escapeHtml(avatarDecorationUrl)}" alt="" loading="lazy" decoding="async" aria-hidden="true" />` : ""}
+            <span class="discord-presence-status-dot discord-presence-status-dot--${escapeHtml(statusKey || "offline")}" aria-hidden="true"></span>
+          </div>
+          <div class="discord-presence-copy">
+            <div class="discord-presence-topline">
+              <span class="discord-presence-name">${escapeHtml(displayName)}</span>
+              ${nitroBadgeIconUrl ? `<img class="discord-presence-nitro-badge" src="${escapeHtml(nitroBadgeIconUrl)}" alt="Discord Nitro" loading="lazy" decoding="async" />` : ""}
+            </div>
+            <p class="discord-presence-headline">${escapeHtml(headline)}</p>
+            ${metaLine ? `<p class="discord-presence-meta">${escapeHtml(metaLine)}</p>` : ""}
+          </div>
+          ${albumArtUrl ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
+        </div>
+      </section>
+    `;
   }
   function renderHero(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const hero = pickHeroPayload(payloadById, sites);
+    const themeState = getThemeRenderState();
     const avatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL) || sanitizeUrl(hero?.profile?.avatarUrl || payloadById.get("steam")?.profile?.avatarUrl || "");
     const decorationUrl = sanitizeUrl(
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
     );
     const heroName = escapeHtml(hero?.profile?.name || "FoundLifeless");
     const heroOrnament = renderHeroOrnamentMarkup();
-    const heroDescription = compact ? "" : renderHeroDescriptionMarkup(hero?.profile?.bio);
     return `
     <section class="steam-hero-shell" aria-label="Profile hero">
+      ${compact ? "" : `<div class="steam-hero-toolbar">${renderThemeToggleMarkup(themeState)}</div>`}
       <div class="steam-hero-content">
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
           ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
@@ -2429,7 +2678,6 @@
         <div class="steam-hero-copy">
           <h2 class="steam-hero-name">${heroName}</h2>
           <div class="steam-hero-ornament" aria-hidden="true">${heroOrnament}</div>
-          ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
     </section>
@@ -2630,14 +2878,12 @@
     const recentTracks = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
     const topArtists = Array.isArray(sections.topArtists) ? sections.topArtists : [];
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
-    const profileTotals = sections.profileTotals && typeof sections.profileTotals === "object" ? sections.profileTotals : {};
     return `
     <article class="steam-showcase steam-showcase--${escapeHtml(site.id)} steam-showcase--lastfm-chart steam-showcase--lastfm-minimal" data-site-id="${escapeHtml(site.id)}" data-showcase-variant="lastfm-sections">
       <div class="steam-showcase-body steam-showcase-body--single steam-showcase-body--lastfm-minimal">
         <section class="steam-showcase-content steam-showcase-content--full steam-showcase-content--lastfm-minimal">
           <div class="lastfm-sections">
             <section class="lastfm-section">
-              ${renderLastFmProfileTotals(profileTotals)}
               <h4 class="lastfm-section-title">Recent Tracks</h4>
               ${renderLastFmRecentTracks(recentTracks, currentlyListening)}
             </section>
@@ -2745,6 +2991,23 @@
       return "";
     }
   }
+  function buildSpotifyTrackAppUrlFromUrl(rawUrl) {
+    const safeUrl = sanitizeUrl(rawUrl);
+    if (!safeUrl) return "";
+    try {
+      const parsed = new URL(safeUrl);
+      const match = parsed.pathname.match(/\/(?:embed\/)?track\/([A-Za-z0-9_-]+)(?:\/|$)/i);
+      return match?.[1] ? `spotify:track:${match[1]}` : "";
+    } catch {
+      return "";
+    }
+  }
+  function resolveSpotifyTrackAppUrl(spotify) {
+    return firstNonEmpty(
+      buildSpotifyTrackAppUrlFromUrl(spotify?.embedUrl),
+      buildSpotifyTrackAppUrlFromUrl(spotify?.openUrl)
+    );
+  }
   function renderLastFmTrackPanelSkeleton(query = {}) {
     return `
       <div class="lastfm-track-panel-window is-loading" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
@@ -2752,6 +3015,7 @@
         <div class="lastfm-track-panel-layout">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art lastfm-track-panel-skeleton" aria-hidden="true"></div>
+            <div class="lastfm-track-panel-preview lastfm-track-panel-skeleton" aria-hidden="true"></div>
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
@@ -2759,9 +3023,8 @@
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(firstNonEmpty(query.track, "Track details"))}</h3>
               <p class="lastfm-track-panel-meta">${escapeHtml(firstNonEmpty(query.artist, "Last.fm"))}</p>
             </header>
-            <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify" aria-hidden="true">
+            <div class="lastfm-track-panel-stats lastfm-track-panel-stats--single" aria-hidden="true">
               <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-              <div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton"></div>
             </div>
             <div class="lastfm-track-panel-history lastfm-track-panel-skeleton" aria-hidden="true"></div>
             <div class="lastfm-track-panel-related lastfm-track-panel-skeleton" aria-hidden="true"></div>
@@ -2789,14 +3052,9 @@
     const artistTopTracks = detail?.artistTopTracks || {};
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
-    const spotifyMatchStatus = String(spotify.matchStatus || "").trim().toLowerCase();
-    const spotifyEmbedUrl = sanitizeUrl(firstNonEmpty(
-      spotify.embedUrl,
-      buildSpotifyTrackEmbedUrlFromUrl(spotify.openUrl)
-    ));
-    const spotifyCanRenderEmbed = spotifyMatchStatus === "matched" && Boolean(spotifyEmbedUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
+    const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
     const scrobbleItems = Array.isArray(scrobbles.items) ? scrobbles.items.slice(0, 3) : [];
     const relatedItems = Array.isArray(artistTopTracks.items)
       ? [...artistTopTracks.items].sort((left, right) => {
@@ -2840,23 +3098,6 @@
         </label>
       </div>
     ` : "";
-    const spotifySlotMarkup = `
-      <div class="lastfm-track-panel-spotify-slot${spotifyCanRenderEmbed ? "" : " is-disabled"}" data-spotify-track-embed-slot aria-label="Spotify player">
-        <div class="lastfm-track-panel-spotify-slot-head">
-          <span class="lastfm-track-panel-spotify-slot-label">Spotify</span>
-        </div>
-        <div class="lastfm-track-panel-spotify-slot-body">
-          ${spotifyCanRenderEmbed
-            ? `<div class="lastfm-track-panel-spotify-embed-host" data-spotify-track-embed-target aria-label="Spotify player for ${escapeHtml(track.title || spotify.title || "this track")}"></div>`
-            : renderLastFmTrackPanelSpotifyDisabled(
-              spotifyMatchStatus === "matched" ? "Unavailable" : "No Spotify match",
-              spotifyMatchStatus === "matched"
-                ? "Spotify player unavailable for this track."
-                : "No Spotify match available for this track."
-            )}
-        </div>
-      </div>
-    `;
     const soundsLikeMarkup = similarItems.length ? `
       <section class="lastfm-track-panel-similar">
         <div class="lastfm-track-panel-section-head">
@@ -2876,7 +3117,7 @@
     const historyMarkup = `
       <section class="lastfm-track-panel-history">
         <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">Your recent plays</h4>
+          <h4 class="lastfm-track-panel-section-title">My recent plays</h4>
           <span class="lastfm-track-panel-section-meta">${escapeHtml(formatCountNumber(scrobbles.total || track.userPlaycount, "0"))} total</span>
         </div>
         ${scrobbleItems.length ? `
@@ -2934,6 +3175,7 @@
               <div class="lastfm-track-panel-art">
                 ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
               </div>
+              ${spotifyPreviewMarkup}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
@@ -2946,15 +3188,14 @@
                 </p>
                 ${track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : ""}
               </header>
-              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
+              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--single">
                 ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
-                ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
               <div class="lastfm-track-panel-actions">
                 ${track.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : ""}
                 ${track.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(track.artistLastFmUrl)}">Open Artist on Last.fm</button>` : ""}
-                ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}">${escapeHtml(spotifyButtonLabel)}</button>` : ""}
+                ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""}
               </div>
             </div>
           </div>
@@ -3523,7 +3764,9 @@
     });
     return { dispose };
   }
-  function renderSidebar(payloadById, sites) {
+  function renderSidebar(payloadById, sites, options = {}) {
+    const compact = Boolean(options?.compact);
+    const themeState = getThemeRenderState();
     const rows = sites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
@@ -3549,8 +3792,13 @@
     }).join("");
     const cinnaGifs = ['cinna_sleep.gif', 'cinna_wink.gif'];
     const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
+    const discordPayload = ensurePayload(
+      sites.find((site) => site.id === "discord") || { id: "discord", label: "Discord", url: "https://discord.com/users/331350000154050560" },
+      payloadById.get("discord")
+    );
     return `
     <section class="steam-sidebar-panel">
+      ${compact ? renderThemeToggleMarkup({ ...themeState, compact: true }) : ""}
       <h3 class="steam-sidebar-title">Profile Links:</h3>
       <ul class="steam-sidebar-list">
         ${rows}
@@ -3559,6 +3807,7 @@
         <img class="cinna-mobile-gif" src="/${randomCinna}" data-cinna-gif-src="/${randomCinna}" alt="" loading="eager" decoding="async" />
       </div>
     </section>
+    ${renderDiscordPresencePanel(discordPayload)}
   `;
   }
   function createSocialHubRenderer({
@@ -3567,6 +3816,7 @@
     profile,
     showcases,
     sidebar,
+    profileTagline,
     lastRefreshLabel,
     refreshButton,
     onRefreshRequested
@@ -3627,6 +3877,19 @@
         window.open(safeUrl, "_blank", "noopener,noreferrer");
       } else {
         window.location.href = safeUrl;
+      }
+    }
+    function launchPanelExternal(url, { appUrl = "" } = {}) {
+      const safeUrl = sanitizeUrl(url);
+      const safeAppUrl = typeof appUrl === "string" && /^spotify:track:[A-Za-z0-9_-]+$/i.test(appUrl.trim())
+        ? appUrl.trim()
+        : "";
+      if (safeAppUrl) {
+        window.open(safeAppUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (safeUrl) {
+        window.open(safeUrl, "_blank", "noopener,noreferrer");
       }
     }
     function ensureExternalPrompt() {
@@ -4060,7 +4323,7 @@
         await destroySpotifyEmbedController({ resumeShuffle: true });
         return;
       }
-      const spotifyUri = resolveTrackDetailsSpotifyUri(spotify);
+      const spotifyUri = resolveSpotifyTrackAppUrl(spotify);
       const fallbackEmbedUrl = sanitizeUrl(firstNonEmpty(
         spotify?.embedUrl,
         buildSpotifyEmbedUrlFromUrl(spotify?.openUrl)
@@ -4214,7 +4477,11 @@
         const openButton = target.closest("[data-open-url]");
         if (openButton instanceof HTMLElement) {
           event.preventDefault();
-          showExternalPrompt(openButton.getAttribute("data-open-url") || "", openButton);
+          launchPanelExternal(
+            openButton.getAttribute("data-open-url") || "",
+            { appUrl: openButton.getAttribute("data-open-app-url") || "" }
+          );
+          return;
         }
       });
       overlay.addEventListener("input", (event) => {
@@ -4472,6 +4739,12 @@
       if (disposed) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
+      const themeToggleButton = target.closest("[data-theme-mode-choice]");
+      if (themeToggleButton instanceof HTMLButtonElement) {
+        event.preventDefault();
+        themeController?.setMode?.(themeToggleButton.getAttribute("data-theme-mode-choice") || "auto");
+        return;
+      }
       const lastFmArtistButton = target.closest(".lastfm-media-button[data-lastfm-artist-name]");
       if (lastFmArtistButton instanceof HTMLElement) {
         event.preventDefault();
@@ -4540,6 +4813,9 @@
         hideLastFmTrackDetails();
       }
       profile.innerHTML = renderHero(payloadById, sites, { compact: compactMobile });
+      if (profileTagline instanceof HTMLElement) {
+        profileTagline.innerHTML = renderHeroTaglinePanel();
+      }
       if (compactMobile) {
         showcases.innerHTML = "";
         showcases.hidden = true;
@@ -4552,7 +4828,7 @@
       }
       const shuffleRoot = compactMobile ? syncMobileAudioDock(true) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
       shufflePlayerController?.attach(shuffleRoot);
-      sidebar.innerHTML = renderSidebar(payloadById, sites);
+      sidebar.innerHTML = renderSidebar(payloadById, sites, { compact: compactMobile });
       syncCinnaMobileGif(compactMobile);
       if (lastRefreshLabel instanceof HTMLElement) {
         lastRefreshLabel.textContent = "";
@@ -5377,6 +5653,230 @@
       }
     };
   }
+  function createFoundlifelessAmbientController() {
+    if (!(document.body instanceof HTMLElement)) return null;
+    if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
+    if (!(osAmbientCanvasBase instanceof HTMLCanvasElement)) return null;
+    if (!(osAmbientCanvasGlow instanceof HTMLCanvasElement)) return null;
+    const baseCtx = osAmbientCanvasBase.getContext("2d", { alpha: true, desynchronized: true });
+    const glowCtx = osAmbientCanvasGlow.getContext("2d", { alpha: true, desynchronized: true });
+    if (!baseCtx || !glowCtx) return null;
+    let disposed = false;
+    let rafId = 0;
+    let cssWidth = 0;
+    let cssHeight = 0;
+    let renderWidth = 0;
+    let renderHeight = 0;
+    let dpr = 1;
+    let lastFrameMs = 0;
+    let particles = [];
+    let themeKey = "";
+    const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    const bodyObserver = new MutationObserver(() => {
+      syncTheme(true);
+    });
+    function createSeededRandom(seed) {
+      let state = seed >>> 0;
+      return () => {
+        state = Math.imul(1664525, state) + 1013904223;
+        return ((state >>> 0) & 4294967295) / 4294967296;
+      };
+    }
+    function resolvePalette() {
+      const resolvedTheme = document.body?.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
+      if (resolvedTheme === "day") {
+        return {
+          key: "day",
+          bg: "#ffffff",
+          grid: "rgba(34, 34, 42, 0.08)",
+          link: "rgba(48, 48, 56, 0.18)",
+          point: "rgba(36, 36, 42, 0.82)",
+          glow: "rgba(255, 0, 122, 0.17)",
+          haze: "rgba(24, 24, 30, 0.07)"
+        };
+      }
+      return {
+        key: "night",
+        bg: "#000000",
+        grid: "rgba(255, 255, 255, 0.06)",
+        link: "rgba(255, 255, 255, 0.16)",
+        point: "rgba(255, 255, 255, 0.92)",
+        glow: "rgba(255, 0, 122, 0.22)",
+        haze: "rgba(255, 255, 255, 0.05)"
+      };
+    }
+    function resizeCanvas(canvas) {
+      if (!(canvas instanceof HTMLCanvasElement)) return;
+      if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+        canvas.width = renderWidth;
+        canvas.height = renderHeight;
+      }
+    }
+    function rebuildParticles() {
+      const compact = isCompactMobileLayout();
+      const rng = createSeededRandom((cssWidth * 73856093 ^ cssHeight * 19349663 ^ 2654435761) >>> 0);
+      const particleCount = compact ? Math.max(22, Math.min(42, Math.round(cssWidth * cssHeight / 42000))) : Math.max(56, Math.min(92, Math.round(cssWidth * cssHeight / 24000)));
+      particles = Array.from({ length: particleCount }, (_, index) => ({
+        x: rng() * renderWidth,
+        y: rng() * renderHeight,
+        baseX: rng() * renderWidth,
+        baseY: rng() * renderHeight,
+        driftX: (rng() - 0.5) * (compact ? 8 : 18),
+        driftY: (rng() - 0.5) * (compact ? 8 : 18),
+        speedX: (rng() - 0.5) * (compact ? 0.04 : 0.08),
+        speedY: (rng() - 0.5) * (compact ? 0.04 : 0.08),
+        size: 1 + rng() * (compact ? 1.25 : 1.8),
+        pulse: rng() * Math.PI * 2,
+        pulseSpeed: 0.6 + rng() * 1.3,
+        index
+      }));
+    }
+    function resize() {
+      cssWidth = Math.max(1, Math.round(window.innerWidth));
+      cssHeight = Math.max(1, Math.round(window.innerHeight));
+      dpr = Math.max(1, Math.min(1.8, window.devicePixelRatio || 1));
+      renderWidth = Math.max(1, Math.round(cssWidth * dpr));
+      renderHeight = Math.max(1, Math.round(cssHeight * dpr));
+      resizeCanvas(osAmbientCanvasBase);
+      resizeCanvas(osAmbientCanvasGlow);
+      rebuildParticles();
+      drawFrame(performance.now(), true);
+    }
+    function clearLayer(ctx, palette) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, renderWidth, renderHeight);
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, renderWidth, renderHeight);
+    }
+    function drawGrid(ctx, palette) {
+      const step = Math.max(32, Math.round(Math.min(renderWidth, renderHeight) / 18));
+      ctx.save();
+      ctx.strokeStyle = palette.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x <= renderWidth; x += step) {
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, renderHeight);
+      }
+      for (let y = 0; y <= renderHeight; y += step) {
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(renderWidth, y + 0.5);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    function updateParticles(deltaSec, timeSec) {
+      const motionScale = prefersReducedMotion ? 0.15 : 1;
+      for (const particle of particles) {
+        particle.x += particle.speedX * deltaSec * 120 * motionScale;
+        particle.y += particle.speedY * deltaSec * 120 * motionScale;
+        const orbitX = Math.sin(timeSec * 0.3 + particle.pulse) * particle.driftX;
+        const orbitY = Math.cos(timeSec * 0.26 + particle.pulse * 0.78) * particle.driftY;
+        if (particle.x < -40 || particle.x > renderWidth + 40) {
+          particle.x = particle.baseX = ((particle.x % renderWidth) + renderWidth) % renderWidth;
+        }
+        if (particle.y < -40 || particle.y > renderHeight + 40) {
+          particle.y = particle.baseY = ((particle.y % renderHeight) + renderHeight) % renderHeight;
+        }
+        particle.renderX = particle.x + orbitX;
+        particle.renderY = particle.y + orbitY;
+        particle.alpha = 0.5 + Math.sin(timeSec * particle.pulseSpeed + particle.pulse) * 0.25;
+      }
+    }
+    function drawLinks(ctx, palette) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      for (let index = 0; index < particles.length; index += 1) {
+        const source = particles[index];
+        for (let next = index + 1; next < particles.length; next += 1) {
+          const target = particles[next];
+          const dx = source.renderX - target.renderX;
+          const dy = source.renderY - target.renderY;
+          const distance = Math.hypot(dx, dy);
+          if (distance > Math.min(renderWidth, renderHeight) * 0.18) continue;
+          const alpha = (1 - distance / (Math.min(renderWidth, renderHeight) * 0.18)) * 0.9;
+          ctx.strokeStyle = palette.link.replace(/[\d.]+\)$/u, `${(alpha * 0.9).toFixed(3)})`);
+          ctx.beginPath();
+          ctx.moveTo(source.renderX, source.renderY);
+          ctx.lineTo(target.renderX, target.renderY);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    function drawPoints(ctx, palette) {
+      ctx.save();
+      for (const particle of particles) {
+        ctx.beginPath();
+        ctx.fillStyle = palette.point.replace(/[\d.]+\)$/u, `${clamp(particle.alpha, 0.25, 0.95).toFixed(3)})`);
+        ctx.arc(particle.renderX, particle.renderY, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    function drawGlow(ctx, palette, timeSec) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, renderWidth, renderHeight);
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (const particle of particles) {
+        const glowRadius = 18 + particle.size * 16;
+        const gradient = ctx.createRadialGradient(particle.renderX, particle.renderY, 0, particle.renderX, particle.renderY, glowRadius);
+        const pulse = 0.32 + Math.sin(timeSec * particle.pulseSpeed + particle.pulse) * 0.14;
+        gradient.addColorStop(0, palette.glow.replace(/[\d.]+\)$/u, `${clamp(pulse, 0.08, 0.46).toFixed(3)})`));
+        gradient.addColorStop(0.45, palette.haze.replace(/[\d.]+\)$/u, `${clamp(pulse * 0.55, 0.04, 0.18).toFixed(3)})`));
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(particle.renderX, particle.renderY, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    function drawFrame(nowMs, force = false) {
+      if (disposed) return;
+      const palette = resolvePalette();
+      const deltaSec = force || !lastFrameMs ? 1 / 60 : Math.min(0.05, Math.max(1 / 240, (nowMs - lastFrameMs) * 0.001));
+      lastFrameMs = nowMs;
+      updateParticles(deltaSec, nowMs * 0.001);
+      clearLayer(baseCtx, palette);
+      drawGrid(baseCtx, palette);
+      drawLinks(baseCtx, palette);
+      drawPoints(baseCtx, palette);
+      drawGlow(glowCtx, palette, nowMs * 0.001);
+      themeKey = palette.key;
+    }
+    function tick(nowMs) {
+      if (disposed) return;
+      drawFrame(nowMs);
+      rafId = window.requestAnimationFrame(tick);
+    }
+    function syncTheme(force = false) {
+      const nextThemeKey = document.body?.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
+      if (force || nextThemeKey !== themeKey) {
+        drawFrame(performance.now(), true);
+      }
+    }
+    bodyObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-theme-resolved"]
+    });
+    window.addEventListener("resize", resize, { passive: true });
+    resize();
+    rafId = window.requestAnimationFrame(tick);
+    return {
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (rafId) {
+          window.cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+        bodyObserver.disconnect();
+        window.removeEventListener("resize", resize);
+      }
+    };
+  }
   function shouldEnableCustomCursor() {
     return Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
   }
@@ -5764,6 +6264,7 @@
     if (socialHubInitialized) return;
     if (!(socialHubRoot instanceof HTMLElement)) return;
     if (!(socialHubProfile instanceof HTMLElement)) return;
+    if (!(socialHubProfileTagline instanceof HTMLElement)) return;
     if (!(socialHubShowcases instanceof HTMLElement)) return;
     if (!(socialHubSidebar instanceof HTMLElement)) return;
     const dataSources = createSocialHubDataSources();
@@ -5773,6 +6274,7 @@
       profile: socialHubProfile,
       showcases: socialHubShowcases,
       sidebar: socialHubSidebar,
+      profileTagline: socialHubProfileTagline,
       onRefreshRequested: () => {
         if (!socialHubState) return;
         void socialHubState.refreshAll("manual");
@@ -5806,7 +6308,12 @@
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     setReadyState();
-    ambientBackdropController = createAmbientBackdropController();
+    themeController = createThemeController({
+      onChange: () => {
+        syncLayoutMode();
+      }
+    });
+    ambientBackdropController = createFoundlifelessAmbientController();
     siteCursorController = createSiteCursorController();
     await ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();
@@ -5835,6 +6342,8 @@
     }
     ambientBackdropController?.dispose?.();
     ambientBackdropController = null;
+    themeController?.dispose?.();
+    themeController = null;
     siteCursorController?.dispose?.();
     siteCursorController = null;
   });
