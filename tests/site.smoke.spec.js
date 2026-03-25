@@ -29,6 +29,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(lastfmResponse.status()).toBe(200);
   const lastfmPayload = await lastfmResponse.json();
   expect(lastfmPayload).toHaveProperty("nowPlaying");
+  expect(lastfmPayload).toHaveProperty("toptracks");
+  expect(lastfmPayload).toHaveProperty("discovery");
 
   const discordResponse = await request.get("/api/discord");
   expect(discordResponse.status()).toBe(200);
@@ -131,10 +133,19 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       valueOffset: centerOffset(value)
     };
   });
+  const totalLabelStyles = await page.locator(".lastfm-profile-total-label").first().evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      fontSize: styles.fontSize,
+      fontWeight: styles.fontWeight
+    };
+  });
   expect(totalAlignment.labelOffset).not.toBeNull();
   expect(totalAlignment.valueOffset).not.toBeNull();
   expect(totalAlignment.labelOffset).toBeLessThan(2);
   expect(totalAlignment.valueOffset).toBeLessThan(2);
+  expect(totalLabelStyles.fontSize).toBe("18px");
+  expect(Number.parseInt(totalLabelStyles.fontWeight, 10)).toBeGreaterThanOrEqual(700);
   const heroShellStyles = await page.locator(".steam-hero-shell").evaluate((node) => {
     const styles = window.getComputedStyle(node);
     return {
@@ -216,4 +227,136 @@ test("josie mobile uses the docked desktop player shell", async ({ page }) => {
     "/api/discord"
   ]));
   expect(apiRequests).not.toContain("/api/lastfm");
+});
+
+test("josie shows loved, monthly rank, and discovery context for Last.fm tracks", async ({ page }) => {
+  const nowIso = new Date().toISOString();
+  const oneHourAgoUts = String(Math.floor(Date.now() / 1000) - 60 * 60);
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        recenttracks: {
+          track: [
+            {
+              name: "Loved Track",
+              artist: { name: "Quadeca" },
+              album: { "#text": "Vanisher" },
+              image: [
+                { "#text": "", size: "small" },
+                { "#text": "https://example.com/loved-track-art.jpg", size: "large" }
+              ],
+              url: "https://www.last.fm/music/Quadeca/_/Loved+Track",
+              date: { uts: oneHourAgoUts },
+              isLoved: true,
+              monthlyTopRank: 3,
+              monthlyTopPlaycount: "18"
+            },
+            {
+              name: "Regular Track",
+              artist: { name: "Jane Remover" },
+              album: { "#text": "Ghostholding" },
+              image: [
+                { "#text": "", size: "small" },
+                { "#text": "https://example.com/regular-track-art.jpg", size: "large" }
+              ],
+              url: "https://www.last.fm/music/Jane+Remover/_/Regular+Track",
+              date: { uts: oneHourAgoUts }
+            }
+          ]
+        },
+        toptracks: {
+          track: [
+            {
+              name: "Loved Track",
+              artist: { name: "Quadeca" },
+              playcount: "18",
+              "@attr": { rank: "3" }
+            }
+          ]
+        },
+        topartists: { artist: [] },
+        topalbums: { album: [] },
+        user: {
+          playcount: "65188",
+          artist_count: "1234"
+        },
+        lovedtracks: {
+          "@attr": { total: "1197" }
+        },
+        discovery: {
+          referenceTrack: {
+            title: "Loved Track",
+            artist: "Quadeca",
+            similarTracks: [
+              {
+                title: "knowing we'll never know",
+                artist: "Quadeca",
+                url: "https://www.last.fm/music/Quadeca/_/knowing+we%27ll+never+know",
+                match: 0.91
+              },
+              {
+                title: "House Settling",
+                artist: "Jane Remover",
+                url: "https://www.last.fm/music/Jane+Remover/_/House+Settling",
+                match: 0.87
+              }
+            ],
+            topTags: [
+              { name: "digicore", url: "https://www.last.fm/tag/digicore" },
+              { name: "glitch pop", url: "https://www.last.fm/tag/glitch+pop" },
+              { name: "noise pop", url: "https://www.last.fm/tag/noise+pop" }
+            ]
+          }
+        },
+        nowPlaying: {
+          nowPlaying: false,
+          stale: false,
+          fetchedAt: nowIso,
+          track: null
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
+    timeout: 30_000
+  });
+
+  const lovedRow = page.locator(".lastfm-recent-item", {
+    has: page.locator(".lastfm-loved-indicator")
+  }).first();
+  await expect(lovedRow).toContainText("Loved Track");
+  await expect(page.locator(".lastfm-loved-indicator")).toHaveCount(1);
+  await expect(page.locator(".lastfm-monthly-rank-badge")).toHaveText("#3 month");
+  await expect(page.locator(".lastfm-recent-discovery")).toContainText("Sounds like:");
+  await expect(page.locator(".lastfm-recent-discovery")).toContainText("knowing we'll never know");
+  await expect(page.locator(".lastfm-recent-discovery")).toContainText("House Settling");
+  await expect(page.locator(".lastfm-track-tag")).toHaveCount(3);
+  const heartStyles = await page.locator(".lastfm-loved-indicator").first().evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      color: styles.color,
+      backgroundColor: styles.backgroundColor,
+      boxShadow: styles.boxShadow
+    };
+  });
+  const monthlyBadgeStyles = await page.locator(".lastfm-monthly-rank-badge").first().evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      color: styles.color,
+      backgroundColor: styles.backgroundColor
+    };
+  });
+  expect(heartStyles.color).toBe("rgb(255, 0, 122)");
+  expect(heartStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(heartStyles.boxShadow).toBe("none");
+  expect(monthlyBadgeStyles.color).toBe("rgb(255, 255, 255)");
+  expect(monthlyBadgeStyles.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
 });

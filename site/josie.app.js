@@ -574,12 +574,16 @@
     countLabel,
     imageUrl,
     itemUrl,
-    isNowPlaying = false
+    isNowPlaying = false,
+    isLoved = false,
+    monthlyTopRank = null,
+    monthlyTopPlaycount = null
   }) {
     const safeTitle = firstNonEmpty(title, "Unknown track");
     const safeArtist = firstNonEmpty(normalizeLastFmArtistLabel(artist), "Unknown artist");
     const safeCountLabel = firstNonEmpty(countLabel, "recent");
     const safeAlbum = String(album || "").replace(/\s+/g, " ").trim();
+    const parsedMonthlyRank = Number.parseInt(String(monthlyTopRank ?? "").trim(), 10);
     const meta = [safeArtist, safeCountLabel].filter(Boolean).join(" | ");
     return {
       id: `lastfm-recent-${index}-${hashText(`${safeTitle}-${safeArtist}-${safeCountLabel}`).slice(0, 12)}`,
@@ -590,6 +594,9 @@
       imageUrl: resolveLastFmImageUrl(imageUrl, "https://www.last.fm"),
       url: resolveUrl(itemUrl, "https://www.last.fm"),
       isNowPlaying: Boolean(isNowPlaying),
+      isLoved: Boolean(isLoved),
+      monthlyTopRank: Number.isFinite(parsedMonthlyRank) ? parsedMonthlyRank : null,
+      monthlyTopPlaycount: String(monthlyTopPlaycount || "").trim() || null,
       meta
     };
   }
@@ -612,7 +619,10 @@
         countLabel,
         imageUrl: pickLastFmImageUrl(entry?.image),
         itemUrl: entry?.url,
-        isNowPlaying: nowPlaying
+        isNowPlaying: nowPlaying,
+        isLoved: entry?.isLoved === true || String(entry?.userloved || "").trim() === "1",
+        monthlyTopRank: entry?.monthlyTopRank,
+        monthlyTopPlaycount: entry?.monthlyTopPlaycount
       });
     });
   }
@@ -628,8 +638,35 @@
       countLabel: "now playing",
       imageUrl: payload.track.artworkUrl,
       itemUrl: payload.track.url,
-      isNowPlaying: true
+      isNowPlaying: true,
+      isLoved: payload?.track?.isLoved === true || String(payload?.track?.userloved || "").trim() === "1",
+      monthlyTopRank: payload?.track?.monthlyTopRank,
+      monthlyTopPlaycount: payload?.track?.monthlyTopPlaycount
     });
+  }
+  function mapLastFmReferenceTrackDiscovery(payload) {
+    const referenceTrack = payload && typeof payload === "object" ? payload.referenceTrack : null;
+    if (!referenceTrack || typeof referenceTrack !== "object") {
+      return null;
+    }
+    const title = firstNonEmpty(referenceTrack.title, "Unknown track");
+    const artist = firstNonEmpty(referenceTrack.artist, "Unknown artist");
+    const similarTracks = Array.isArray(referenceTrack.similarTracks) ? referenceTrack.similarTracks.map((entry) => ({
+      title: firstNonEmpty(entry?.title, "Unknown track"),
+      artist: firstNonEmpty(entry?.artist, "Unknown artist"),
+      url: resolveUrl(entry?.url, "https://www.last.fm"),
+      match: Number.isFinite(Number(entry?.match)) ? Number(entry.match) : null
+    })).filter((entry) => entry.title && entry.artist) : [];
+    const topTags = Array.isArray(referenceTrack.topTags) ? referenceTrack.topTags.map((entry) => ({
+      name: firstNonEmpty(entry?.name, ""),
+      url: resolveUrl(entry?.url, "https://www.last.fm")
+    })).filter((entry) => entry.name).slice(0, 3) : [];
+    return {
+      title,
+      artist,
+      similarTracks: similarTracks.slice(0, 3),
+      topTags
+    };
   }
   function areLastFmTrackItemsSame(left, right) {
     const leftTitle = String(left?.title || "").trim().toLowerCase();
@@ -1000,6 +1037,7 @@
     let currentlyListening = previousSections.currentlyListening && typeof previousSections.currentlyListening === "object" ? previousSections.currentlyListening : null;
     let topArtists = Array.isArray(previousSections.topArtists) ? previousSections.topArtists : [];
     let topAlbums = Array.isArray(previousSections.topAlbums) ? previousSections.topAlbums : [];
+    let referenceTrackDiscovery = previousSections.referenceTrackDiscovery && typeof previousSections.referenceTrackDiscovery === "object" ? previousSections.referenceTrackDiscovery : null;
     let profileTotals = previousSections.profileTotals && typeof previousSections.profileTotals === "object" ? previousSections.profileTotals : {
       scrobbles: "",
       artists: "",
@@ -1025,6 +1063,7 @@
         artistArtworkIndex
       );
       const mappedNowPlaying = mapLastFmNowPlayingTrackFromProxy(proxyPayload?.nowPlaying);
+      const mappedReferenceDiscovery = mapLastFmReferenceTrackDiscovery(proxyPayload?.discovery);
       const listeningState = extractLastFmCurrentlyListeningItem(recentTracks);
       currentlyListening = mappedNowPlaying || listeningState.currentlyListening;
       recentTracks = listeningState.recentTracks;
@@ -1040,11 +1079,13 @@
       if (mappedArtists.length) {
         topArtists = mappedArtists;
       }
+      referenceTrackDiscovery = mappedReferenceDiscovery;
       const sections = {
         currentlyListening,
         recentTracks,
         topArtists,
         topAlbums,
+        referenceTrackDiscovery,
         profileTotals
       };
       const items = recentTracks.length ? recentTracks : currentlyListening ? [currentlyListening] : previous.items;
@@ -2187,11 +2228,16 @@
   function renderLastFmRecentTrackRow(item, options = {}) {
     const row = item && typeof item === "object" ? item : {};
     const isNowPlaying = Boolean(options?.isNowPlaying || row.isNowPlaying);
+    const isLoved = Boolean(row.isLoved);
+    const monthlyTopRank = Number.parseInt(String(row.monthlyTopRank ?? "").trim(), 10);
     const itemUrl = sanitizeUrl(row.url);
     const imageUrl = sanitizeUrl(row.imageUrl);
     const buttonAttrs = itemUrl ? ` data-item-url="${escapeHtml(itemUrl)}"` : "";
     const itemClass = isNowPlaying ? "lastfm-recent-item lastfm-recent-item--now-playing" : "lastfm-recent-item";
     const ageLabel = firstNonEmpty(row.countLabel, "--");
+    const lovedIconMarkup = isLoved ? '<span class="lastfm-loved-indicator" aria-label="Loved track" title="Loved track"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>' : "";
+    const monthlyBadgeMarkup = monthlyTopRank ? `<span class="lastfm-monthly-rank-badge" aria-label="Monthly top rank #${escapeHtml(monthlyTopRank)}">#${escapeHtml(monthlyTopRank)} month</span>` : "";
+    const statusMarkup = isNowPlaying ? '<span class="lastfm-now-playing-badge" aria-label="Now Playing"><span class="lastfm-now-playing-bars" aria-hidden="true"><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span></span><span class="lastfm-now-playing-label">Now Playing</span></span>' : `<span class="lastfm-recent-age">${escapeHtml(ageLabel)}</span>`;
     return `
         <li class="${itemClass}">
             <button class="social-item-button lastfm-recent-button" type="button"${buttonAttrs}>
@@ -2201,13 +2247,35 @@
               <span class="lastfm-recent-title">${escapeHtml(row.title || "Unknown track")}</span>
               <span class="lastfm-recent-meta">${escapeHtml(row.subtitle || row.meta || "Unknown artist")}</span>
               <span class="lastfm-recent-side">
-                ${isNowPlaying ? '<span class="lastfm-now-playing-badge" aria-label="Now Playing"><span class="lastfm-now-playing-bars" aria-hidden="true"><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span><span class="lastfm-now-playing-bar"></span></span><span class="lastfm-now-playing-label">Now Playing</span></span>' : `<span class="lastfm-recent-age">${escapeHtml(ageLabel)}</span>`}
+                <span class="lastfm-recent-status-row">
+                  ${statusMarkup}
+                  ${lovedIconMarkup}
+                  ${monthlyBadgeMarkup}
+                </span>
               </span>
             </button>
           </li>
         `;
   }
-  function renderLastFmRecentTracks(items, currentlyListening = null) {
+  function renderLastFmReferenceTrackDiscovery(discovery) {
+    const safeDiscovery = discovery && typeof discovery === "object" ? discovery : null;
+    if (!safeDiscovery) {
+      return "";
+    }
+    const similarTracks = Array.isArray(safeDiscovery.similarTracks) ? safeDiscovery.similarTracks : [];
+    const topTags = Array.isArray(safeDiscovery.topTags) ? safeDiscovery.topTags : [];
+    if (!similarTracks.length && !topTags.length) {
+      return "";
+    }
+    const similarTrackLabels = similarTracks.map((entry) => firstNonEmpty(entry?.title, "Unknown track")).filter(Boolean);
+    return `
+      <li class="lastfm-recent-discovery" aria-label="Track discovery">
+        ${similarTrackLabels.length ? `<p class="lastfm-discovery-line"><span class="lastfm-discovery-label">Sounds like:</span><span class="lastfm-discovery-value">${escapeHtml(similarTrackLabels.join(" · "))}</span></p>` : ""}
+        ${topTags.length ? `<div class="lastfm-track-tags" aria-label="Track tags">${topTags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}</div>` : ""}
+      </li>
+    `;
+  }
+  function renderLastFmRecentTracks(items, currentlyListening = null, referenceTrackDiscovery = null) {
     const maxVisibleRows = 10;
     const entries = Array.isArray(items) ? items.slice(0, maxVisibleRows) : [];
     const nowPlaying = currentlyListening && typeof currentlyListening === "object" ? currentlyListening : null;
@@ -2222,10 +2290,25 @@
     if (!filteredEntries.length && !nowPlaying) {
       return '<p class="social-card-empty">No recent Last.fm songs available.</p>';
     }
+    const discoveryMarkup = renderLastFmReferenceTrackDiscovery(referenceTrackDiscovery);
+    let listMarkup = "";
+    if (nowPlaying) {
+      listMarkup += renderLastFmRecentTrackRow(nowPlaying, { isNowPlaying: true });
+      if (discoveryMarkup) {
+        listMarkup += discoveryMarkup;
+      }
+      listMarkup += visibleEntries.map((item) => renderLastFmRecentTrackRow(item)).join("");
+    } else {
+      visibleEntries.forEach((item, index) => {
+        listMarkup += renderLastFmRecentTrackRow(item);
+        if (index === 0 && discoveryMarkup) {
+          listMarkup += discoveryMarkup;
+        }
+      });
+    }
     return `
     <ul class="lastfm-recent-list">
-      ${nowPlaying ? renderLastFmRecentTrackRow(nowPlaying, { isNowPlaying: true }) : ""}
-      ${visibleEntries.map((item) => renderLastFmRecentTrackRow(item)).join("")}
+      ${listMarkup}
     </ul>
   `;
   }
@@ -2282,6 +2365,7 @@
     const recentTracks = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
     const topArtists = Array.isArray(sections.topArtists) ? sections.topArtists : [];
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
+    const referenceTrackDiscovery = sections.referenceTrackDiscovery && typeof sections.referenceTrackDiscovery === "object" ? sections.referenceTrackDiscovery : null;
     const profileTotals = sections.profileTotals && typeof sections.profileTotals === "object" ? sections.profileTotals : {};
     return `
     <article class="steam-showcase steam-showcase--${escapeHtml(site.id)} steam-showcase--lastfm-chart steam-showcase--lastfm-minimal" data-site-id="${escapeHtml(site.id)}" data-showcase-variant="lastfm-sections">
@@ -2291,7 +2375,7 @@
             <section class="lastfm-section">
               ${renderLastFmProfileTotals(profileTotals)}
               <h4 class="lastfm-section-title">Recent Tracks</h4>
-              ${renderLastFmRecentTracks(recentTracks, currentlyListening)}
+              ${renderLastFmRecentTracks(recentTracks, currentlyListening, referenceTrackDiscovery)}
             </section>
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Artists</h4>
