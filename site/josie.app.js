@@ -2647,7 +2647,13 @@
           ${spotifyPreviewMarkup || ""}
           ${!spotifyPreviewMarkup ? `
           <div class="lastfm-track-panel-spotify-embed-wrap">
-            <iframe class="lastfm-track-panel-spotify-embed" src="${escapeHtml(spotify.embedUrl)}" title="Spotify preview for ${escapeHtml(track.title || "track")}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+            <div
+              class="lastfm-track-panel-spotify-embed-host"
+              data-spotify-track-embed-target
+              data-spotify-embed-url="${escapeHtml(spotify.embedUrl)}"
+              data-spotify-open-url="${escapeHtml(spotify.openUrl)}"
+              data-spotify-track-title="${escapeHtml(track.title || "track")}"
+            ></div>
           </div>
           ` : ""}
         ` : `
@@ -3048,6 +3054,9 @@
     let lastFmTrackPreviewPausedShuffle = false;
     let lastFmTrackPreviewSyncQueued = false;
     let lastFmTrackPreviewSuppressAutoResume = false;
+    let spotifyIframeApiPromise = null;
+    let lastFmSpotifyEmbedController = null;
+    let lastFmSpotifyEmbedLoadToken = 0;
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -3181,10 +3190,86 @@
       const normalized = normalizeTrackDetailsQuery(query);
       return `${normalized.artist.toLowerCase()}::${normalized.track.toLowerCase()}`;
     }
+    function buildSpotifyTrackUriFromUrl(rawUrl) {
+      const safeUrl = sanitizeUrl(rawUrl);
+      if (!safeUrl) return "";
+      try {
+        const parsed = new URL(safeUrl);
+        const match = parsed.pathname.match(/\/(?:embed\/)?track\/([A-Za-z0-9_-]+)(?:\/|$)/i);
+        return match?.[1] ? `spotify:track:${match[1]}` : "";
+      } catch {
+        return "";
+      }
+    }
+    function resolveTrackDetailsSpotifyUri(spotify) {
+      return firstNonEmpty(
+        buildSpotifyTrackUriFromUrl(spotify?.embedUrl),
+        buildSpotifyTrackUriFromUrl(spotify?.openUrl)
+      );
+    }
+    function ensureSpotifyIframeApi() {
+      if (window.__internetAngelSpotifyIframeApi?.createController) {
+        return Promise.resolve(window.__internetAngelSpotifyIframeApi);
+      }
+      if (spotifyIframeApiPromise) {
+        return spotifyIframeApiPromise;
+      }
+      spotifyIframeApiPromise = new Promise((resolve, reject) => {
+        let settled = false;
+        const timeoutId = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          spotifyIframeApiPromise = null;
+          reject(new Error("Spotify iFrame API timed out"));
+        }, 15_000);
+        const finish = (api) => {
+          if (settled || !api?.createController) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
+          window.__internetAngelSpotifyIframeApi = api;
+          resolve(api);
+        };
+        const fail = () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
+          spotifyIframeApiPromise = null;
+          reject(new Error("Spotify iFrame API failed to load"));
+        };
+        const previousReady = typeof window.onSpotifyIframeApiReady === "function" ? window.onSpotifyIframeApiReady : null;
+        window.onSpotifyIframeApiReady = (api) => {
+          try {
+            previousReady?.(api);
+          } catch {
+          }
+          finish(api);
+        };
+        const existingScript = document.querySelector("script[data-spotify-iframe-api]");
+        if (existingScript instanceof HTMLScriptElement) {
+          existingScript.addEventListener("error", fail, { once: true });
+        } else {
+          const script = document.createElement("script");
+          script.src = "https://open.spotify.com/embed/iframe-api/v1";
+          script.async = true;
+          script.dataset.spotifyIframeApi = "true";
+          script.addEventListener("error", fail, { once: true });
+          document.body.appendChild(script);
+        }
+        if (window.__internetAngelSpotifyIframeApi?.createController) {
+          finish(window.__internetAngelSpotifyIframeApi);
+        }
+      });
+      return spotifyIframeApiPromise;
+    }
     function getTrackPreviewPlayer() {
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return null;
       const player = lastFmTrackPanelRoot.querySelector("[data-track-preview-player]");
       return player instanceof HTMLElement ? player : null;
+    }
+    function getSpotifyEmbedTarget() {
+      if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return null;
+      const target = lastFmTrackPanelRoot.querySelector("[data-spotify-track-embed-target]");
+      return target instanceof HTMLElement ? target : null;
     }
     function queueTrackPreviewUiSync() {
       if (lastFmTrackPreviewSyncQueued) return;
@@ -3352,6 +3437,103 @@
       }
       queueTrackPreviewUiSync();
     }
+    async function destroySpotifyEmbedController({ resumeShuffle = true } = {}) {
+      const controller = lastFmSpotifyEmbedController;
+      lastFmSpotifyEmbedController = null;
+      lastFmSpotifyEmbedLoadToken += 1;
+      if (controller?.pause instanceof Function) {
+        try {
+          controller.pause();
+        } catch {
+        }
+      }
+      if (controller?.destroy instanceof Function) {
+        try {
+          controller.destroy();
+        } catch {
+        }
+      }
+      if (resumeShuffle) {
+        await resumeShuffleAfterTrackPreview();
+      }
+    }
+    function mountFallbackSpotifyEmbed(spotify, embedTarget, trackTitle) {
+      const safeEmbedUrl = sanitizeUrl(spotify?.embedUrl);
+      if (!(embedTarget instanceof HTMLElement)) return;
+      if (!safeEmbedUrl) {
+        embedTarget.innerHTML = "";
+        return;
+      }
+      embedTarget.innerHTML = `
+        <iframe
+          class="lastfm-track-panel-spotify-embed"
+          src="${escapeHtml(safeEmbedUrl)}"
+          title="Spotify preview for ${escapeHtml(trackTitle || "track")}"
+          loading="lazy"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        ></iframe>
+      `;
+    }
+    async function mountSpotifyEmbedController(detail, cacheKey) {
+      const spotify = detail?.spotify || {};
+      const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
+      const embedTarget = getSpotifyEmbedTarget();
+      if (spotifyPreviewUrl || !(embedTarget instanceof HTMLElement)) {
+        await destroySpotifyEmbedController({ resumeShuffle: true });
+        return;
+      }
+      const spotifyUri = resolveTrackDetailsSpotifyUri(spotify);
+      if (!spotifyUri) {
+        await destroySpotifyEmbedController({ resumeShuffle: true });
+        mountFallbackSpotifyEmbed(spotify, embedTarget, detail?.track?.title || spotify.title);
+        return;
+      }
+      await destroySpotifyEmbedController({ resumeShuffle: true });
+      const loadToken = ++lastFmSpotifyEmbedLoadToken;
+      try {
+        const iframeApi = await ensureSpotifyIframeApi();
+        if (disposed || lastFmTrackPanelActiveKey !== cacheKey || !(embedTarget instanceof HTMLElement) || !embedTarget.isConnected) {
+          return;
+        }
+        await new Promise((resolve, reject) => {
+          try {
+            iframeApi.createController(embedTarget, {
+              uri: spotifyUri,
+              width: "100%",
+              height: 352
+            }, (controller) => {
+              if (loadToken !== lastFmSpotifyEmbedLoadToken) {
+                try {
+                  controller?.destroy?.();
+                } catch {
+                }
+                resolve();
+                return;
+              }
+              lastFmSpotifyEmbedController = controller;
+              controller?.addListener?.("playback_started", () => {
+                if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
+                pauseShuffleForTrackPreview();
+              });
+              controller?.addListener?.("playback_update", (event) => {
+                if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
+                if (Boolean(event?.data?.isPaused)) {
+                  void resumeShuffleAfterTrackPreview();
+                  return;
+                }
+                pauseShuffleForTrackPreview();
+              });
+              resolve();
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      } catch {
+        if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
+        mountFallbackSpotifyEmbed(spotify, embedTarget, detail?.track?.title || spotify.title);
+      }
+    }
     function getTrackPanelFocusableElements() {
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return [];
       return Array.from(lastFmTrackPanelRoot.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], iframe, [tabindex]:not([tabindex="-1"])')).filter((element) => element instanceof HTMLElement);
@@ -3444,6 +3626,7 @@
     function hideLastFmTrackDetails() {
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
+      void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
       lastFmTrackPanelActiveKey = "";
@@ -3491,6 +3674,7 @@
         lastFmTrackPanelOriginTrigger = trigger;
       }
       lastFmTrackPanelActiveKey = cacheKey;
+      void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       setLastFmTrackDetailsContent(renderLastFmTrackPanelSkeleton(normalizedQuery));
       panel.hidden = false;
@@ -3506,12 +3690,14 @@
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         setLastFmTrackDetailsContent(renderLastFmTrackPanelContent(payload));
         hydrateTrackPreview(payload);
+        void mountSpotifyEmbedController(payload, cacheKey);
         const nextFocusTarget = panel.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
         }
       } catch {
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
+        void destroySpotifyEmbedController({ resumeShuffle: true });
         void stopTrackPreview({ resumeShuffle: true, resetSource: true });
         setLastFmTrackDetailsContent(renderLastFmTrackPanelError(normalizedQuery));
       }
@@ -3613,6 +3799,8 @@
       lastFmTrackPanelContent = null;
       lastFmTrackPanelOriginTrigger = null;
       lastFmTrackPanelAbortController = null;
+      void destroySpotifyEmbedController({ resumeShuffle: false });
+      spotifyIframeApiPromise = null;
       lastFmTrackDetailsCache.clear();
       if (lastFmTrackPreviewAudio instanceof HTMLAudioElement) {
         lastFmTrackPreviewSuppressAutoResume = true;

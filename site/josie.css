@@ -1093,6 +1093,12 @@ body.lastfm-track-panel-open {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.lastfm-track-panel-spotify-embed-host {
+  width: 100%;
+  min-height: 352px;
+  background: #0c111d;
+}
+
 .lastfm-track-panel-spotify-embed {
   width: 100%;
   height: 352px;

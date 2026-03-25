@@ -684,3 +684,149 @@ test("josie track details panel falls back to spotify search when no embed match
   await page.locator(".lastfm-track-panel-spotify .lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
 });
+
+test("josie pauses site audio when a spotify embed starts playing", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__mockSpotifyEmbedEvents = [];
+    window.__internetAngelSpotifyIframeApi = {
+      createController(element, options, callback) {
+        const listeners = new Map();
+        const controller = {
+          addListener(eventName, handler) {
+            const current = listeners.get(eventName) || [];
+            current.push(handler);
+            listeners.set(eventName, current);
+          },
+          pause() {
+            window.__mockSpotifyEmbedEvents.push({ type: "pause-method" });
+          },
+          destroy() {
+            window.__mockSpotifyEmbedEvents.push({ type: "destroy-method" });
+            element.innerHTML = "";
+          },
+          __emit(eventName, data = {}) {
+            const handlers = listeners.get(eventName) || [];
+            for (const handler of handlers) {
+              handler({ data });
+            }
+          }
+        };
+        element.dataset.mockSpotifyMounted = String(options?.uri || "");
+        element.innerHTML = '<div class="mock-spotify-embed">Mock Spotify Embed</div>';
+        window.__mockSpotifyEmbedController = controller;
+        callback(controller);
+      }
+    };
+  });
+
+  const apiRequests = [];
+  page.on("request", (outboundRequest) => {
+    const url = outboundRequest.url();
+    if (url.startsWith("http://127.0.0.1:8788/api/")) {
+      apiRequests.push(url);
+    }
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "One Time",
+              artist: { name: "beabadoobee" },
+              album: { "#text": "This Is How Tomorrow Moves" },
+              image: [],
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: { artist: [] },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee", track: "One Time", album: "This Is How Tomorrow Moves" },
+        track: {
+          title: "One Time",
+          artist: "beabadoobee",
+          album: "This Is How Tomorrow Moves",
+          durationMs: 184000,
+          durationLabel: "3:04",
+          artworkUrl: "https://example.com/one-time-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          userPlaycount: 3,
+          userLoved: false,
+          globalPlaycount: 2740015,
+          listeners: 285055,
+          summary: "",
+          publishedAt: null,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "matched",
+          embedUrl: "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator",
+          openUrl: "https://open.spotify.com/track/spotify-track-1",
+          searchUrl: "https://open.spotify.com/search/One%20Time%20beabadoobee",
+          previewUrl: "",
+          title: "One Time",
+          artist: "beabadoobee",
+          album: "This Is How Tomorrow Moves",
+          artworkUrl: "https://i.scdn.co/image/one-time.jpg"
+        },
+        scrobbles: { total: 3, items: [] },
+        artistTopTracks: { artist: "beabadoobee", items: [] }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator("[data-shuffle-surface]").first().click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+
+  await page.locator(".lastfm-recent-button").first().click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
+  await page.waitForFunction(() => Boolean(window.__mockSpotifyEmbedController));
+
+  await page.evaluate(() => {
+    window.__mockSpotifyEmbedController.__emit("playback_started", { playingURI: "spotify:track:spotify-track-1" });
+  });
+  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.__mockSpotifyEmbedController.__emit("playback_update", {
+      playingURI: "spotify:track:spotify-track-1",
+      isPaused: true,
+      isBuffering: false,
+      duration: 184000,
+      position: 24000
+    });
+  });
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
+
+  expect(apiRequests.some((url) => url.includes("/api/lastfm-track-details"))).toBe(true);
+  expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
+});
