@@ -556,6 +556,23 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time");
   await expect(page.locator(".lastfm-track-panel-stat-label")).toContainText(["Scrobbles", "Global plays", "Listeners"]);
   await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Your plays" })).toHaveCount(0);
+  const panelBox = await page.evaluate(() => {
+    const windowEl = document.querySelector(".lastfm-track-panel-window");
+    if (!(windowEl instanceof HTMLElement)) {
+      return null;
+    }
+    const rect = windowEl.getBoundingClientRect();
+    const styles = window.getComputedStyle(windowEl);
+    return {
+      width: rect.width,
+      scrollbarWidth: styles.getPropertyValue("scrollbar-width").trim(),
+      overflowY: styles.overflowY
+    };
+  });
+  expect(panelBox).not.toBeNull();
+  expect(panelBox.width).toBeLessThanOrEqual(760);
+  expect(panelBox.scrollbarWidth).toBe("none");
+  expect(panelBox.overflowY).toBe("auto");
   const panelTypography = await page.evaluate(() => {
     const title = document.querySelector(".lastfm-track-panel-title");
     const meta = document.querySelector(".lastfm-track-panel-meta");
