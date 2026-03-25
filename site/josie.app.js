@@ -2601,12 +2601,8 @@
       </section>
     `;
   }
-  function renderHeroTaglinePanel() {
-    return `
-      <section class="steam-tagline-panel" aria-label="Profile tagline">
-        <p class="steam-tagline-text">${escapeHtml(HERO_DESCRIPTION_TEXT)}</p>
-      </section>
-    `;
+  function renderHeroDescriptionMarkup() {
+    return escapeHtml(HERO_DESCRIPTION_TEXT);
   }
   function renderDiscordPresencePanel(payload) {
     const safePayload = payload && typeof payload === "object" ? payload : null;
@@ -2667,6 +2663,7 @@
     );
     const heroName = escapeHtml(hero?.profile?.name || "FoundLifeless");
     const heroOrnament = renderHeroOrnamentMarkup();
+    const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
     return `
     <section class="steam-hero-shell" aria-label="Profile hero">
       ${compact ? "" : `<div class="steam-hero-toolbar">${renderThemeToggleMarkup(themeState)}</div>`}
@@ -2678,6 +2675,7 @@
         <div class="steam-hero-copy">
           <h2 class="steam-hero-name">${heroName}</h2>
           <div class="steam-hero-ornament" aria-hidden="true">${heroOrnament}</div>
+          ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
     </section>
@@ -3792,10 +3790,6 @@
     }).join("");
     const cinnaGifs = ['cinna_sleep.gif', 'cinna_wink.gif'];
     const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
-    const discordPayload = ensurePayload(
-      sites.find((site) => site.id === "discord") || { id: "discord", label: "Discord", url: "https://discord.com/users/331350000154050560" },
-      payloadById.get("discord")
-    );
     return `
     <section class="steam-sidebar-panel">
       ${compact ? renderThemeToggleMarkup({ ...themeState, compact: true }) : ""}
@@ -3807,7 +3801,6 @@
         <img class="cinna-mobile-gif" src="/${randomCinna}" data-cinna-gif-src="/${randomCinna}" alt="" loading="eager" decoding="async" />
       </div>
     </section>
-    ${renderDiscordPresencePanel(discordPayload)}
   `;
   }
   function createSocialHubRenderer({
@@ -4814,7 +4807,11 @@
       }
       profile.innerHTML = renderHero(payloadById, sites, { compact: compactMobile });
       if (profileTagline instanceof HTMLElement) {
-        profileTagline.innerHTML = renderHeroTaglinePanel();
+        const discordPayload = ensurePayload(
+          sites.find((site) => site.id === "discord") || { id: "discord", label: "Discord", url: "https://discord.com/users/331350000154050560" },
+          payloadById.get("discord")
+        );
+        profileTagline.innerHTML = renderDiscordPresencePanel(discordPayload);
       }
       if (compactMobile) {
         showcases.innerHTML = "";
@@ -5107,8 +5104,9 @@
   function createAmbientBackdropController() {
     if (!(document.body instanceof HTMLElement)) return null;
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
-    if (!(osAmbientCanvas instanceof HTMLCanvasElement)) return null;
-    const ctx = osAmbientCanvas.getContext("2d", { alpha: true, desynchronized: true });
+    const ambientCanvas = osAmbientCanvas instanceof HTMLCanvasElement ? osAmbientCanvas : osAmbientCanvasBase instanceof HTMLCanvasElement ? osAmbientCanvasBase : null;
+    if (!(ambientCanvas instanceof HTMLCanvasElement)) return null;
+    const ctx = ambientCanvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!ctx) return null;
     let disposed = false;
     let rafId = 0;
@@ -5436,7 +5434,7 @@
     }
     function clearCanvas() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, osAmbientCanvas.width, osAmbientCanvas.height);
+      ctx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
     }
     function rebuildField() {
       const area = cssWidth * cssHeight;
@@ -5458,9 +5456,9 @@
       dpr = Math.max(1, Math.min(compactMobileLayout ? 1.25 : 2, window.devicePixelRatio || 1));
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
-      if (osAmbientCanvas.width !== renderWidth || osAmbientCanvas.height !== renderHeight) {
-        osAmbientCanvas.width = renderWidth;
-        osAmbientCanvas.height = renderHeight;
+      if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
+        ambientCanvas.width = renderWidth;
+        ambientCanvas.height = renderHeight;
       }
       rebuildField();
       drawStaticFrame(0);
@@ -5587,7 +5585,7 @@
         drawStaticFrame(0);
         return;
       }
-      if (osAmbientCanvas.width !== renderWidth || osAmbientCanvas.height !== renderHeight) {
+      if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
         resize();
       }
       drawStaticFrame(timeMs);
@@ -5650,6 +5648,45 @@
           window.removeEventListener("pointerout", handlePointerOut);
           window.removeEventListener("blur", handleWindowBlur);
         }
+      }
+    };
+  }
+  function createAdaptiveAmbientBackdropController() {
+    if (!(document.body instanceof HTMLElement)) return null;
+    if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
+    let disposed = false;
+    let activeController = null;
+    let activeVariant = "";
+    const bodyObserver = new MutationObserver(() => {
+      syncController();
+    });
+    function disposeActiveController() {
+      activeController?.dispose?.();
+      activeController = null;
+    }
+    function resolveVariant() {
+      return document.body.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
+    }
+    function syncController(force = false) {
+      if (disposed) return;
+      const nextVariant = resolveVariant();
+      if (!force && nextVariant === activeVariant && activeController) return;
+      disposeActiveController();
+      activeVariant = nextVariant;
+      osAmbientBackdrop.setAttribute("data-ambient-variant", activeVariant);
+      activeController = activeVariant === "day" ? createFoundlifelessAmbientController() : createAmbientBackdropController();
+    }
+    bodyObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-theme-resolved"]
+    });
+    syncController(true);
+    return {
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        bodyObserver.disconnect();
+        disposeActiveController();
       }
     };
   }
@@ -6313,7 +6350,7 @@
         syncLayoutMode();
       }
     });
-    ambientBackdropController = createFoundlifelessAmbientController();
+    ambientBackdropController = createAdaptiveAmbientBackdropController();
     siteCursorController = createSiteCursorController();
     await ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();

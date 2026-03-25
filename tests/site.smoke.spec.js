@@ -198,7 +198,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-heart")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
-  await expect(page.locator(".steam-tagline-text")).toContainText("The Internet Angel");
+  await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
   await expect(page.locator(".steam-theme-toggle")).toHaveCount(1);
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
@@ -315,7 +315,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
 });
 
-test("josie defaults to auto day theme, persists manual overrides, and renders the discord presence card between links and tagline", async ({ page }) => {
+test("josie defaults to auto day theme, persists manual overrides, and renders the discord presence card under the hero tagline", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
 
   const requests = [];
@@ -398,21 +398,20 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   await expect(page.locator(".discord-presence-album-art")).toHaveAttribute("src", /example-up-down/);
 
   const layoutPositions = await page.evaluate(() => {
-    const profileLinks = document.querySelector(".steam-sidebar-panel");
+    const heroDescription = document.querySelector(".steam-hero-description");
     const discordPanel = document.querySelector(".discord-presence-panel");
-    const tagline = document.querySelector(".social-hub-profile-tagline");
     const topOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect().top : null;
     return {
-      profileLinksTop: topOf(profileLinks),
+      heroDescriptionTop: topOf(heroDescription),
       discordPanelTop: topOf(discordPanel),
-      taglineTop: topOf(tagline)
+      profileLinksTop: topOf(document.querySelector("#social-hub-sidebar .steam-sidebar-panel"))
     };
   });
-  expect(layoutPositions.profileLinksTop).not.toBeNull();
+  expect(layoutPositions.heroDescriptionTop).not.toBeNull();
   expect(layoutPositions.discordPanelTop).not.toBeNull();
-  expect(layoutPositions.taglineTop).not.toBeNull();
-  expect(layoutPositions.profileLinksTop).toBeLessThan(layoutPositions.discordPanelTop);
-  expect(layoutPositions.discordPanelTop).toBeLessThan(layoutPositions.taglineTop);
+  expect(layoutPositions.profileLinksTop).not.toBeNull();
+  expect(layoutPositions.heroDescriptionTop).toBeLessThan(layoutPositions.discordPanelTop);
+  expect(layoutPositions.discordPanelTop).toBeLessThan(layoutPositions.profileLinksTop);
 
   const dayThemeColors = await page.evaluate(() => {
     const heroName = document.querySelector(".steam-hero-name");

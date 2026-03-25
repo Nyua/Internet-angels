@@ -438,6 +438,27 @@ body.has-custom-cursor.has-system-pointer * {
   filter: blur(10px);
 }
 
+.os-ambient-backdrop[data-ambient-variant="night"] .os-ambient-canvas--base {
+  opacity: 0.96;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.os-ambient-backdrop[data-ambient-variant="night"] .os-ambient-canvas--glow {
+  opacity: 0;
+  filter: none;
+}
+
+.os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--base {
+  opacity: 1;
+  image-rendering: auto;
+}
+
+.os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--glow {
+  opacity: 0.92;
+  filter: blur(10px);
+}
+
 body.site-load-playing .os-ambient-backdrop {
   opacity: 0;
 }
@@ -2302,7 +2323,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .social-hub-profile-tagline {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .social-hub-showcases {
