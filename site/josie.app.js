@@ -5984,9 +5984,11 @@
       lastMoveMs: 0,
       swirlSign: 1
     };
-    const backWispCount = 34;
-    const frontWispCount = 18;
-    const trailLength = 16;
+    const defaultTrailLength = 16;
+    const backWashCount = 22;
+    const backLineCount = 16;
+    const frontWashCount = 6;
+    const frontLineCount = 12;
     const wisps = [];
     const bursts = [];
     function clamp01(value) {
@@ -6166,19 +6168,35 @@
     function createHistoryPoint(x, y) {
       return { x, y };
     }
-    function createWisp(index, layer) {
+    function createWisp(index, layer, kind) {
       const seed = seededValue(index + 1.73) + index * 0.037;
+      const isLine = kind === "line";
+      const historyLength = isLine ? 22 : defaultTrailLength;
       return {
         id: index,
         layer,
+        kind,
         seed,
-        widthBase: 5.5 + seededValue(index + 31) * (layer === "front" ? 3.6 : 4.8),
-        alphaBase: (layer === "front" ? 0.058 : 0.08) + seededValue(index + 71) * 0.03,
-        speed: 48 + seededValue(index + 103) * 24,
-        sway: 14 + seededValue(index + 131) * 32,
-        frequencyA: 0.56 + seededValue(index + 173) * 0.72,
-        frequencyB: 0.38 + seededValue(index + 211) * 0.46,
+        widthBase: isLine
+          ? 0.68 + seededValue(index + 31) * (layer === "front" ? 1.05 : 1.35)
+          : 5.4 + seededValue(index + 31) * (layer === "front" ? 3.4 : 4.6),
+        alphaBase: isLine
+          ? (layer === "front" ? 0.11 : 0.092) + seededValue(index + 71) * 0.04
+          : (layer === "front" ? 0.05 : 0.072) + seededValue(index + 71) * 0.026,
+        speed: isLine
+          ? 116 + seededValue(index + 103) * 54
+          : 48 + seededValue(index + 103) * 24,
+        sway: isLine
+          ? 22 + seededValue(index + 131) * 34
+          : 14 + seededValue(index + 131) * 32,
+        frequencyA: isLine
+          ? 1.18 + seededValue(index + 173) * 1.1
+          : 0.56 + seededValue(index + 173) * 0.72,
+        frequencyB: isLine
+          ? 1.44 + seededValue(index + 211) * 1.18
+          : 0.38 + seededValue(index + 211) * 0.46,
         driftSign: seededValue(index + 251) > 0.5 ? 1 : -1,
+        routeBias: seededValue(index + 271) > 0.5 ? 1 : -1,
         x: 0,
         y: 0,
         vx: 0,
@@ -6186,7 +6204,8 @@
         age: 0,
         lastCollisionMs: 0,
         lastInteractionMs: 0,
-        history: Array.from({ length: trailLength }, () => createHistoryPoint(0, 0))
+        lastLayerSwapMs: 0,
+        history: Array.from({ length: historyLength }, () => createHistoryPoint(0, 0))
       };
     }
     function setWispHistory(wisp, x, y) {
@@ -6199,38 +6218,70 @@
       if (!cssWidth || !cssHeight) return;
       const laneSeed = seededValue(wisp.id * 3.7 + (preserveSeed ? 19 : performance.now() * 0.0001));
       const spawnBand = wisp.layer === "front" ? 0.24 : 0.12;
-      wisp.x = cssWidth * (0.08 + laneSeed * 0.84);
-      wisp.y = cssHeight * (1.02 + seededValue(wisp.id + 401) * 0.16 + spawnBand);
-      wisp.vx = (seededValue(wisp.id + 433) - 0.5) * 16;
-      wisp.vy = -(wisp.speed * 0.85);
+      const spawnMargin = 42 + seededValue(wisp.id + 389) * 48;
+      if (wisp.kind === "line") {
+        const edgeRoll = seededValue(wisp.id + (preserveSeed ? 421 : performance.now() * 0.0003));
+        if (edgeRoll < 0.42) {
+          wisp.x = cssWidth * (0.04 + laneSeed * 0.92);
+          wisp.y = cssHeight + spawnMargin;
+          wisp.vx = (seededValue(wisp.id + 433) - 0.5) * 36;
+          wisp.vy = -(wisp.speed * (0.86 + seededValue(wisp.id + 449) * 0.12));
+        } else if (edgeRoll < 0.7) {
+          wisp.x = -spawnMargin;
+          wisp.y = cssHeight * (0.08 + laneSeed * 0.78);
+          wisp.vx = wisp.speed * (0.54 + seededValue(wisp.id + 467) * 0.16);
+          wisp.vy = -(wisp.speed * (0.14 + seededValue(wisp.id + 479) * 0.24));
+        } else {
+          wisp.x = cssWidth + spawnMargin;
+          wisp.y = cssHeight * (0.08 + laneSeed * 0.78);
+          wisp.vx = -wisp.speed * (0.54 + seededValue(wisp.id + 491) * 0.16);
+          wisp.vy = -(wisp.speed * (0.14 + seededValue(wisp.id + 503) * 0.24));
+        }
+      } else {
+        wisp.x = cssWidth * (0.08 + laneSeed * 0.84);
+        wisp.y = cssHeight * (1.02 + seededValue(wisp.id + 401) * 0.16 + spawnBand);
+        wisp.vx = (seededValue(wisp.id + 433) - 0.5) * 16;
+        wisp.vy = -(wisp.speed * 0.85);
+      }
       wisp.age = 0;
       wisp.lastCollisionMs = 0;
       wisp.lastInteractionMs = 0;
+      wisp.lastLayerSwapMs = 0;
       setWispHistory(wisp, wisp.x, wisp.y);
     }
     function seedWisps() {
       wisps.length = 0;
-      for (let index = 0; index < backWispCount; index += 1) {
-        wisps.push(createWisp(index, "back"));
+      let index = 0;
+      for (let count = 0; count < backWashCount; count += 1, index += 1) {
+        wisps.push(createWisp(index, "back", "wash"));
       }
-      for (let index = 0; index < frontWispCount; index += 1) {
-        wisps.push(createWisp(backWispCount + index, "front"));
+      for (let count = 0; count < backLineCount; count += 1, index += 1) {
+        wisps.push(createWisp(index, "back", "line"));
+      }
+      for (let count = 0; count < frontWashCount; count += 1, index += 1) {
+        wisps.push(createWisp(index, "front", "wash"));
+      }
+      for (let count = 0; count < frontLineCount; count += 1, index += 1) {
+        wisps.push(createWisp(index, "front", "line"));
       }
       wisps.forEach((wisp) => {
         resetWisp(wisp, true);
       });
     }
     function spawnBurst(x, y, layer, kind = "collision", strength = 1) {
+      const isInteraction = kind.includes("interaction");
+      const isLine = kind.includes("line");
       bursts.push({
         x,
         y,
         layer,
         kind,
-        radius: kind === "interaction" ? 18 : 12,
-        growth: (kind === "interaction" ? 68 : 42) * (0.72 + strength * 0.5),
-        alpha: (kind === "interaction" ? 0.18 : 0.12) * (0.74 + strength * 0.36),
+        radius: isInteraction ? (isLine ? 14 : 18) : (isLine ? 8 : 12),
+        growth: (isInteraction ? (isLine ? 42 : 68) : (isLine ? 26 : 42)) * (0.72 + strength * 0.5),
+        alpha: (isInteraction ? (isLine ? 0.14 : 0.18) : (isLine ? 0.1 : 0.12)) * (0.74 + strength * 0.36),
         age: 0,
-        maxAge: kind === "interaction" ? 0.58 : 0.42
+        maxAge: isInteraction ? (isLine ? 0.36 : 0.58) : (isLine ? 0.24 : 0.42),
+        seed: seededValue(x * 0.017 + y * 0.021 + performance.now() * 0.0008)
       });
       while (bursts.length > 120) {
         bursts.shift();
@@ -6255,7 +6306,7 @@
       glow2d.clearRect(0, 0, cssWidth, cssHeight);
       glow2d.globalCompositeOperation = "source-over";
       wisps.forEach((wisp) => {
-        if (wisp.layer !== "back") return;
+        if (wisp.layer !== "back" || wisp.kind !== "wash") return;
         const head = wisp.history[0];
         const rise = clamp01(1 - head.y / Math.max(1, cssHeight));
         const radius = (34 + rise * 88) * (0.9 + seededValue(wisp.id + 509) * 0.4);
@@ -6310,13 +6361,15 @@
       updatePointerActivity(nowMs);
       const obstacles = collectObstacles(nowMs);
       wisps.forEach((wisp) => {
+        const isLine = wisp.kind === "line";
         const rise = clamp01(1 - wisp.y / Math.max(1, cssHeight));
-        const swayA = Math.sin(nowMs * 0.00125 * wisp.frequencyA + wisp.seed * 12 + wisp.y * 0.006) * (wisp.sway * (0.4 + rise * 0.9));
-        const swayB = Math.cos(nowMs * 0.00175 * wisp.frequencyB - wisp.x * 0.003 + wisp.seed * 19) * (8 + rise * 18);
-        const swayC = Math.sin(nowMs * 0.00085 + wisp.seed * 27 + rise * 5.4) * (6 + rise * 16) * wisp.driftSign;
-        wisp.vx += (swayA + swayB + swayC) * deltaSeconds * 0.68;
-        wisp.vy = -(wisp.speed + rise * 42);
-        const influenceBase = (wisp.layer === "front" ? 56 : 72) + rise * 72;
+        const swayA = Math.sin(nowMs * (isLine ? 0.0022 : 0.00125) * wisp.frequencyA + wisp.seed * 12 + wisp.y * (isLine ? 0.011 : 0.006)) * (wisp.sway * (isLine ? 0.72 + rise * 0.7 : 0.4 + rise * 0.9));
+        const swayB = Math.cos(nowMs * (isLine ? 0.0027 : 0.00175) * wisp.frequencyB - wisp.x * (isLine ? 0.008 : 0.003) + wisp.seed * 19) * (isLine ? 12 + rise * 26 : 8 + rise * 18);
+        const swayC = Math.sin(nowMs * (isLine ? 0.0017 : 0.00085) + wisp.seed * 27 + rise * 5.4) * (isLine ? 8 + rise * 18 : 6 + rise * 16) * wisp.driftSign;
+        const routeLift = isLine ? Math.sin(nowMs * 0.0013 + wisp.seed * 33 + wisp.y * 0.002) * (10 + rise * 32) * wisp.routeBias : 0;
+        wisp.vx += (swayA + swayB + swayC + routeLift) * deltaSeconds * (isLine ? 1.08 : 0.68);
+        wisp.vy = -(wisp.speed + rise * (isLine ? 28 : 42));
+        const influenceBase = (wisp.layer === "front" ? (isLine ? 64 : 56) : (isLine ? 78 : 72)) + rise * (isLine ? 54 : 72);
         for (let index = 0; index < obstacles.length; index += 1) {
           const obstacle = obstacles[index];
           const nearest = nearestPointOnRect(wisp.x, wisp.y, obstacle);
@@ -6347,44 +6400,57 @@
           const awayY = dy * invDistance;
           const tangentX = -awayY * wisp.driftSign;
           const tangentY = awayX * wisp.driftSign;
-          wisp.vx += (awayX * 146 + tangentX * 84) * strength * deltaSeconds;
-          if (awayY > -0.2) {
-            wisp.vy += awayY * 24 * strength;
+          wisp.vx += (awayX * (isLine ? 204 : 146) + tangentX * (isLine ? 156 : 84)) * strength * deltaSeconds;
+          if (awayY > -0.24) {
+            wisp.vy += awayY * (isLine ? 82 : 24) * strength;
+          }
+          if (isLine) {
+            wisp.vx += tangentY * 8 * strength;
           }
           if (nowMs - wisp.lastCollisionMs > 160 && strength > 0.54) {
-            spawnBurst(nearest.x, nearest.y, wisp.layer, "collision", strength);
+            const collisionKind = isLine ? "collision-line" : "collision";
+            spawnBurst(nearest.x, nearest.y, wisp.layer, collisionKind, strength);
             wisp.lastCollisionMs = nowMs;
+            if (isLine) {
+              wisp.driftSign *= -1;
+              wisp.routeBias *= -1;
+              wisp.vx += tangentX * 120 * strength;
+              if (nowMs - wisp.lastLayerSwapMs > 540 && strength > 0.72 && seededValue(wisp.id * 17.3 + nowMs * 0.0013) > 0.56) {
+                wisp.layer = wisp.layer === "front" ? "back" : "front";
+                wisp.lastLayerSwapMs = nowMs;
+              }
+            }
           }
         }
         if (pointerState.active) {
           const dx = wisp.x - pointerState.x;
           const dy = wisp.y - pointerState.y;
           const distance = Math.hypot(dx, dy);
-          const pointerRadius = wisp.layer === "front" ? 110 : 92;
+          const pointerRadius = wisp.layer === "front" ? (isLine ? 132 : 110) : (isLine ? 108 : 92);
           if (distance < pointerRadius) {
             const strength = Math.pow(1 - distance / pointerRadius, 2);
             const inverseDistance = 1 / Math.max(8, distance);
             const tangentX = -dy * inverseDistance * pointerState.swirlSign;
             const tangentY = dx * inverseDistance * pointerState.swirlSign;
-            wisp.vx += (tangentX * 96 + dx * inverseDistance * 28) * strength * deltaSeconds;
-            wisp.vy += tangentY * 16 * strength;
+            wisp.vx += (tangentX * (isLine ? 148 : 96) + dx * inverseDistance * (isLine ? 44 : 28)) * strength * deltaSeconds;
+            wisp.vy += tangentY * (isLine ? 42 : 16) * strength;
             if (nowMs - wisp.lastInteractionMs > 190 && strength > 0.65) {
-              spawnBurst(pointerState.x, pointerState.y, "front", "interaction", strength);
+              spawnBurst(pointerState.x, pointerState.y, "front", isLine ? "interaction-line" : "interaction", strength);
               wisp.lastInteractionMs = nowMs;
             }
           }
         }
-        wisp.vx *= Math.exp(-deltaSeconds * 2.2);
+        wisp.vx *= Math.exp(-deltaSeconds * (isLine ? 1.36 : 2.2));
         wisp.age += deltaSeconds;
         wisp.x += wisp.vx * deltaSeconds;
         wisp.y += wisp.vy * deltaSeconds;
-        for (let index = trailLength - 1; index > 0; index -= 1) {
+        for (let index = wisp.history.length - 1; index > 0; index -= 1) {
           wisp.history[index].x = wisp.history[index - 1].x;
           wisp.history[index].y = wisp.history[index - 1].y;
         }
         wisp.history[0].x = wisp.x;
         wisp.history[0].y = wisp.y;
-        if (wisp.y < -cssHeight * 0.22 || wisp.x < -cssWidth * 0.24 || wisp.x > cssWidth * 1.24 || wisp.age > 16) {
+        if (wisp.y < -cssHeight * 0.22 || wisp.x < -cssWidth * 0.28 || wisp.x > cssWidth * 1.28 || wisp.age > (isLine ? 12 : 16)) {
           resetWisp(wisp);
         }
       });
@@ -6409,20 +6475,26 @@
     function buildGeometryForLayer(layer) {
       const trailVertices = [];
       const burstVertices = [];
-      const color = layer === "front" ? [0.42, 0.42, 0.46] : [0.48, 0.49, 0.53];
       wisps.forEach((wisp) => {
         if (wisp.layer !== layer) return;
-        for (let index = 0; index < trailLength - 1; index += 1) {
+        const wispColor = wisp.kind === "line"
+          ? (layer === "front" ? [0.14, 0.14, 0.16] : [0.2, 0.2, 0.22])
+          : (layer === "front" ? [0.42, 0.42, 0.46] : [0.48, 0.49, 0.53]);
+        for (let index = 0; index < wisp.history.length - 1; index += 1) {
           const pointA = wisp.history[index];
           const pointB = wisp.history[index + 1];
           const dx = pointB.x - pointA.x;
           const dy = pointB.y - pointA.y;
           const length = Math.hypot(dx, dy);
           if (length < 0.9) continue;
-          const ageT = index / Math.max(1, trailLength - 2);
+          const ageT = index / Math.max(1, wisp.history.length - 2);
           const rise = clamp01(1 - (pointA.y + pointB.y) * 0.5 / Math.max(1, cssHeight));
-          const width = wisp.widthBase * (0.22 + rise * 1.2) * (1 - ageT * 0.42);
-          const alpha = wisp.alphaBase * (0.42 + rise * 0.9) * (1 - ageT * 0.5);
+          const width = wisp.kind === "line"
+            ? wisp.widthBase * (0.72 + rise * 0.38) * (1 - ageT * 0.22)
+            : wisp.widthBase * (0.22 + rise * 1.2) * (1 - ageT * 0.42);
+          const alpha = wisp.kind === "line"
+            ? wisp.alphaBase * (0.9 + rise * 0.5) * (1 - ageT * 0.34)
+            : wisp.alphaBase * (0.42 + rise * 0.9) * (1 - ageT * 0.5);
           const nx = -dy / length;
           const ny = dx / length;
           const x0 = pointA.x + nx * width;
@@ -6433,7 +6505,7 @@
           const y2 = pointB.y + ny * width * 1.08;
           const x3 = pointB.x - nx * width * 1.08;
           const y3 = pointB.y - ny * width * 1.08;
-          pushQuad(trailVertices, x0, y0, x1, y1, x2, y2, x3, y3, alpha, color, -1, 1, 0, 1);
+          pushQuad(trailVertices, x0, y0, x1, y1, x2, y2, x3, y3, alpha, wispColor, -1, 1, 0, 1);
         }
       });
       bursts.forEach((burst) => {
@@ -6441,7 +6513,7 @@
         const lifeT = clamp01(burst.age / burst.maxAge);
         const size = burst.radius + burst.growth * lifeT;
         const alpha = burst.alpha * (1 - lifeT);
-        const burstColor = burst.kind === "interaction" ? [0.54, 0.54, 0.6] : [0.48, 0.48, 0.54];
+        const burstColor = burst.kind.includes("interaction") ? [0.3, 0.3, 0.34] : [0.34, 0.34, 0.38];
         pushQuad(
           burstVertices,
           burst.x - size, burst.y - size,
@@ -6455,6 +6527,29 @@
           -1,
           1
         );
+        if (burst.kind === "collision-line" || burst.kind === "interaction-line") {
+          const streakCount = burst.kind === "interaction-line" ? 5 : 3;
+          const baseAngle = burst.seed * Math.PI * 2 + lifeT * 0.92;
+          for (let index = 0; index < streakCount; index += 1) {
+            const angle = baseAngle + index * (Math.PI * 2 / streakCount);
+            const halfLength = (burst.kind === "interaction-line" ? 20 : 14) + lifeT * (burst.kind === "interaction-line" ? 22 : 14);
+            const halfWidth = 0.7 + (1 - lifeT) * 1.1;
+            const dirX = Math.cos(angle);
+            const dirY = Math.sin(angle);
+            const nx = -dirY * halfWidth;
+            const ny = dirX * halfWidth;
+            const x0 = burst.x - dirX * halfLength + nx;
+            const y0 = burst.y - dirY * halfLength + ny;
+            const x1 = burst.x - dirX * halfLength - nx;
+            const y1 = burst.y - dirY * halfLength - ny;
+            const x2 = burst.x + dirX * halfLength + nx;
+            const y2 = burst.y + dirY * halfLength + ny;
+            const x3 = burst.x + dirX * halfLength - nx;
+            const y3 = burst.y + dirY * halfLength - ny;
+            const streakAlpha = alpha * (burst.kind === "interaction-line" ? 0.95 : 0.82);
+            pushQuad(trailVertices, x0, y0, x1, y1, x2, y2, x3, y3, streakAlpha, burstColor, -1, 1, 0, 1);
+          }
+        }
       });
       return {
         trail: trailVertices.length ? new Float32Array(trailVertices) : new Float32Array(0),
@@ -6755,7 +6850,7 @@
       trailContext.setTransform(trailCanvasDpr, 0, 0, trailCanvasDpr, trailCanvas.width * 0.5, trailCanvas.height * 0.5);
       trailContext.lineCap = "round";
       trailContext.lineJoin = "round";
-      trailContext.globalCompositeOperation = "lighter";
+      trailContext.globalCompositeOperation = "multiply";
       for (let index = 0; index < points.length - 1; index += 1) {
         const start = points[index];
         const end = points[index + 1];
@@ -6767,9 +6862,9 @@
         trailContext.moveTo(start.x, start.y);
         trailContext.lineTo(end.x, end.y);
         trailContext.lineWidth = Math.max(0.35, baseWidth * taper);
-        trailContext.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(4)})`;
+        trailContext.strokeStyle = `rgba(18, 18, 22, ${alpha.toFixed(4)})`;
         trailContext.shadowBlur = glowBlur * Math.max(0.24, taper);
-        trailContext.shadowColor = `rgba(255, 255, 255, ${(glowAlpha * taper).toFixed(4)})`;
+        trailContext.shadowColor = `rgba(18, 18, 22, ${(glowAlpha * taper).toFixed(4)})`;
         trailContext.stroke();
       }
       trailContext.restore();
