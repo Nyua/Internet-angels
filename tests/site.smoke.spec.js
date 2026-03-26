@@ -129,9 +129,102 @@ async function mockClientTime(page, parts) {
   }, parts);
 }
 
-test("root loads the intro page", async ({ page }) => {
+test("root loads the Egrets Orchard intro page without the ASCII pipeline", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
+  await expect(page.locator("#introVideo")).toHaveCount(1);
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await expect(page.locator("#handoffFrame")).toHaveCount(1);
+  await expect(page.locator("#asciiCanvas")).toHaveCount(0);
+  const introState = await page.locator("#introVideo").evaluate((node) => ({
+    src: node.currentSrc || node.src,
+    muted: node.muted,
+    hasControls: node.controls,
+    paused: node.paused
+  }));
+  expect(introState.src).toMatch(/Egrets(?:%20| )Orchard\.mov/);
+  expect(introState.muted).toBe(false);
+  expect(introState.hasControls).toBe(false);
+  expect(introState.paused).toBe(true);
+});
+
+test("root starts the josie handoff 0.5 seconds early and keeps the intro document alive", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#introStartButton").click();
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    paused: node.paused,
+    muted: node.muted
+  }))).toEqual({ paused: false, muted: false });
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /preloading_josie|playing_intro|handoff_pending/);
+  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
+
+  const handoffFrame = page.frameLocator("#handoffFrame");
+  await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
+
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
+  const duringHandoffHandle = await page.waitForFunction(() => {
+    const video = document.querySelector("#introVideo");
+    const frameWrap = document.querySelector("#handoffFrameWrap");
+    if (
+      !(video instanceof HTMLVideoElement)
+      || !(frameWrap instanceof HTMLElement)
+      || document.body?.dataset?.bloomToDeathState !== "handoff_visible"
+      || !document.body.classList.contains("is-handoff-visible")
+    ) {
+      return null;
+    }
+    return {
+      href: window.location.href,
+      title: document.title,
+      state: document.body?.dataset?.bloomToDeathState || "",
+      ended: video.ended,
+      hiddenClass: video.classList.contains("is-hidden"),
+      pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
+    };
+  }, null, { timeout: 25_000, polling: 50 });
+  const duringHandoff = await duringHandoffHandle.jsonValue();
+  expect(duringHandoff).not.toBeNull();
+  expect(duringHandoff.href).toMatch(/\/josie(?:\.html)?$/);
+  expect(duringHandoff.title).toMatch(/Josie/);
+  expect(duringHandoff.state).toBe("handoff_visible");
+  expect(duringHandoff.ended).toBe(false);
+  expect(duringHandoff.hiddenClass).toBe(false);
+  expect(duringHandoff.pointerEvents).toBe("none");
+
+  await page.locator("#introVideo").evaluate((node) => {
+    node.dispatchEvent(new Event("ended"));
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
+  await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
+  const completedHandoff = await page.evaluate(() => {
+    const video = document.querySelector("#introVideo");
+    const frameWrap = document.querySelector("#handoffFrameWrap");
+    if (!(video instanceof HTMLVideoElement) || !(frameWrap instanceof HTMLElement)) return null;
+    return {
+      hiddenClass: video.classList.contains("is-hidden"),
+      pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
+    };
+  });
+  expect(completedHandoff).not.toBeNull();
+  expect(completedHandoff.hiddenClass).toBe(true);
+  expect(completedHandoff.pointerEvents).toBe("auto");
+});
+
+test("root falls back to a hard josie navigation if the handoff iframe never becomes ready", async ({ page }) => {
+  await page.route("**/josie.html?handoff=1", async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/");
+  await page.locator("#introStartButton").click();
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
+  await page.locator("#introVideo").evaluate((node) => {
+    node.currentTime = Math.max(0, node.duration - 0.2);
+    node.dispatchEvent(new Event("ended"));
+  });
+  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveTitle(/Josie/);
+  await expect(page.locator("#introVideo")).toHaveCount(0);
 });
 
 test("mobile root skips the intro and redirects to josie", async ({ page }) => {
@@ -190,6 +283,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     timeout: 30_000
   });
 
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true");
   await expect(page.locator(".steam-hero-name")).toHaveText("Josie");
   await expect(page.locator(".steam-hero-ornament")).toHaveCount(1);
@@ -200,7 +296,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
   await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
-  await expect(page.locator("#site-theme-toggle-anchor .site-theme-toggle")).toHaveCount(1);
+  await expect(page.locator("#site-theme-toggle-anchor")).toHaveCount(0);
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
@@ -316,8 +412,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
 });
 
-test("josie defaults to auto day theme, persists manual overrides, and renders the discord presence card under the hero tagline", async ({ page }) => {
-  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
+test("josie stays in night mode and keeps the Discord presence under the hero tagline", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 13 });
 
   const requests = [];
   page.on("request", (request) => {
@@ -389,15 +485,16 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-  await expect(page.locator("#site-theme-toggle-anchor .site-theme-toggle")).toHaveCount(1);
+  await expect(page.locator("body")).not.toHaveAttribute("data-theme-mode", /.*/);
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
   await expect(page.locator(".discord-presence-meta")).toContainText("by idkwhyy");
   await expect(page.locator(".discord-presence-nitro-badge")).toHaveCount(1);
   await expect(page.locator(".discord-presence-album-art")).toHaveAttribute("src", /example-up-down/);
+  await expect(page.locator("#site-theme-toggle-anchor")).toHaveCount(0);
 
   const layoutPositions = await page.evaluate(() => {
     const heroDescription = document.querySelector(".steam-hero-description");
@@ -415,12 +512,11 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   expect(layoutPositions.heroDescriptionTop).toBeLessThan(layoutPositions.discordPanelTop);
   expect(layoutPositions.discordPanelTop).toBeLessThan(layoutPositions.profileLinksTop);
 
-  const dayThemeColors = await page.evaluate(() => {
+  const nightThemeColors = await page.evaluate(() => {
     const heroName = document.querySelector(".steam-hero-name");
     const activityTitle = document.querySelector(".steam-activity-header-title");
     const accentTitle = document.querySelector(".steam-sidebar-row-title");
     const ambientBackdrop = document.querySelector("#os-ambient-backdrop");
-    const ambientOverlay = document.querySelector("#os-ambient-overlay");
     const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
     return {
       heroName: colorOf(heroName),
@@ -428,124 +524,40 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
       accentTitle: colorOf(accentTitle),
       pageBg: window.getComputedStyle(document.body).getPropertyValue("--page-bg").trim(),
       ambientRenderer: ambientBackdrop?.getAttribute("data-ambient-renderer") || "",
-      ambientMotion: ambientBackdrop?.getAttribute("data-ambient-motion") || "",
-      overlayCanvasCount: ambientOverlay?.querySelectorAll("canvas").length || 0
+      ambientMotion: ambientBackdrop?.getAttribute("data-ambient-motion") || ""
     };
   });
-  expect(dayThemeColors.heroName).toBe("rgb(46, 46, 52)");
-  expect(dayThemeColors.activityTitle).toBe("rgb(46, 46, 52)");
-  expect(dayThemeColors.accentTitle).toBe("rgb(240, 144, 194)");
-  expect(dayThemeColors.pageBg).toBe("#ffffff");
-  expect(dayThemeColors.ambientRenderer).toBe("webgl-wisps");
-  expect(["running", "frozen"]).toContain(dayThemeColors.ambientMotion);
-  expect(dayThemeColors.overlayCanvasCount).toBe(1);
-
-  const toggleLayout = await page.evaluate(() => {
-    const toggle = document.querySelector("#site-theme-toggle-anchor .site-theme-toggle");
-    if (!(toggle instanceof HTMLElement)) return null;
-    const rect = toggle.getBoundingClientRect();
-    return {
-      left: rect.left,
-      bottomInset: window.innerHeight - rect.bottom,
-      radius: Number.parseFloat(window.getComputedStyle(toggle).borderTopLeftRadius || "0")
-    };
-  });
-  expect(toggleLayout).not.toBeNull();
-  expect(toggleLayout.left).toBeLessThan(40);
-  expect(toggleLayout.bottomInset).toBeLessThan(40);
-  expect(toggleLayout.radius).toBeGreaterThan(30);
-
-  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='night']").click();
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
-  await page.reload();
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
-
-  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='day']").click();
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "day");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await page.reload();
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "day");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-
-  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='day']").click();
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await page.reload();
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
+  expect(nightThemeColors.heroName).toBe("rgb(210, 214, 223)");
+  expect(nightThemeColors.activityTitle).toBe("rgb(240, 246, 255)");
+  expect(nightThemeColors.accentTitle).toBe("rgb(240, 144, 194)");
+  expect(nightThemeColors.pageBg).toBe("#000000");
+  expect(nightThemeColors.ambientRenderer).toBe("legacy");
+  expect(["running", "frozen"]).toContain(nightThemeColors.ambientMotion);
 
   expect(requests.some((url) => url.includes("/api/discord"))).toBe(true);
   expect(requests.some((url) => url.includes("api.lanyard.rest"))).toBe(false);
 });
 
-test("josie defaults to auto night theme from the local clock", async ({ page }) => {
-  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
-  await page.goto("/josie.html");
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
-});
-
-test("josie day ambient freezes for reduced motion", async ({ page }) => {
-  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
+test("josie night ambient reports frozen motion for reduced motion users", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 13 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
-
-  const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
-  expect(renderer).toBe("webgl-wisps");
-  await expect(page.locator("#os-ambient-overlay")).toHaveCount(1);
 });
 
-test("josie day ambient falls back cleanly when WebGL is unavailable", async ({ page }) => {
-  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
-  await page.addInitScript(() => {
-    const originalGetContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function patchedGetContext(type, ...args) {
-      if (
-        this instanceof HTMLCanvasElement
-        && (this.id === "os-ambient-canvas-base" || this.id === "os-ambient-canvas-front")
-        && (type === "webgl2" || type === "webgl" || type === "experimental-webgl")
-      ) {
-        return null;
-      }
-      return originalGetContext.call(this, type, ...args);
-    };
-  });
-  await page.goto("/josie.html");
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "wisps-fallback");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
-  await expect(page.locator("#os-ambient-overlay")).toHaveCount(0);
-});
-
-test("josie day ambient renders on mobile without overflow", async ({ page }) => {
-  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
+test("josie night ambient renders on mobile without overflow", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 13 });
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-
-  const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
-  expect(["webgl-wisps", "wisps-fallback"]).toContain(renderer);
-  if (renderer === "webgl-wisps") {
-    await expect(page.locator("#os-ambient-overlay")).toHaveCount(1);
-  }
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
+  await expect(page.locator("#os-ambient-overlay")).toHaveCount(0);
 
   const overflowState = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,

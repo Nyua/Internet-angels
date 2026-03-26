@@ -7,7 +7,6 @@
   var osAmbientCanvas = document.querySelector("#os-ambient-canvas");
   var osAmbientCanvasBase = document.querySelector("#os-ambient-canvas-base");
   var osAmbientCanvasGlow = document.querySelector("#os-ambient-canvas-glow");
-  var siteThemeToggleAnchor = document.querySelector("#site-theme-toggle-anchor");
   var socialHubRoot = document.querySelector("#social-hub-root");
   var socialHubProfile = document.querySelector("#social-hub-profile");
   var socialHubShowcases = document.querySelector("#social-hub-showcases");
@@ -29,130 +28,13 @@
   var socialHubState = null;
   var ambientBackdropController = null;
   var siteCursorController = null;
-  var themeController = null;
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
-  var JOSIE_THEME_STORAGE_KEY = "josieThemePreference";
-  var JOSIE_THEME_LEGACY_STORAGE_KEY = "josieThemeMode";
-  var THEME_MODE_VALUES = /* @__PURE__ */ new Set(["auto", "day", "night"]);
-  function normalizeThemeMode(value) {
-    const normalized = String(value || "").trim().toLowerCase();
-    return THEME_MODE_VALUES.has(normalized) ? normalized : "auto";
-  }
-  function resolveAutoTheme(now = new Date()) {
-    const hour = now instanceof Date ? now.getHours() : new Date().getHours();
-    return hour >= 6 && hour < 18 ? "day" : "night";
-  }
-  function resolveThemeModeFromStorage() {
-    try {
-      const storedMode = normalizeThemeMode(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY));
-      if (storedMode !== "auto" || String(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY) || "").trim().toLowerCase() === "auto") {
-        window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
-        return storedMode;
-      }
-      window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
-      return "auto";
-    } catch {
-      return "auto";
-    }
-  }
-  function persistThemeMode(mode) {
-    try {
-      const normalizedMode = normalizeThemeMode(mode);
-      if (normalizedMode === "auto") {
-        window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
-      } else {
-        window.localStorage.setItem(JOSIE_THEME_STORAGE_KEY, normalizedMode);
-      }
-      window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
-    } catch {
-    }
-  }
-  function applyResolvedTheme(mode, resolvedTheme) {
+  function applyPermanentNightTheme() {
     if (!(document.body instanceof HTMLElement)) return;
-    document.body.setAttribute("data-theme-mode", mode);
-    document.body.setAttribute("data-theme-resolved", resolvedTheme);
-  }
-  function createThemeController({ onChange } = {}) {
-    if (!(document.body instanceof HTMLElement)) return null;
-    let mode = resolveThemeModeFromStorage();
-    let resolvedTheme = mode === "auto" ? resolveAutoTheme() : mode;
-    let intervalId = 0;
-    let disposed = false;
-    function emitChange() {
-      onChange?.({
-        mode,
-        resolvedTheme
-      });
-    }
-    function syncResolvedTheme({ force = false } = {}) {
-      if (disposed) return;
-      const nextResolvedTheme = mode === "auto" ? resolveAutoTheme() : mode;
-      const changed = force || nextResolvedTheme !== resolvedTheme || document.body.getAttribute("data-theme-mode") !== mode || document.body.getAttribute("data-theme-resolved") !== nextResolvedTheme;
-      resolvedTheme = nextResolvedTheme;
-      applyResolvedTheme(mode, resolvedTheme);
-      if (changed) {
-        emitChange();
-      }
-    }
-    function clearAutoTick() {
-      if (intervalId) {
-        window.clearInterval(intervalId);
-        intervalId = 0;
-      }
-    }
-    function ensureAutoTick() {
-      clearAutoTick();
-      if (mode !== "auto") return;
-      intervalId = window.setInterval(() => {
-        if (document.visibilityState === "visible") {
-          syncResolvedTheme();
-        }
-      }, 60 * 1e3);
-    }
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible" && mode === "auto") {
-        syncResolvedTheme();
-      }
-    }
-    function setMode(nextMode) {
-      const normalizedMode = normalizeThemeMode(nextMode);
-      if (normalizedMode === mode) {
-        syncResolvedTheme();
-        return;
-      }
-      mode = normalizedMode;
-      persistThemeMode(mode);
-      syncResolvedTheme({ force: true });
-      ensureAutoTick();
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    syncResolvedTheme({ force: true });
-    ensureAutoTick();
-    return {
-      getMode() {
-        return mode;
-      },
-      getResolvedTheme() {
-        return resolvedTheme;
-      },
-      setMode,
-      dispose() {
-        if (disposed) return;
-        disposed = true;
-        clearAutoTick();
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-      }
-    };
-  }
-  function getThemeRenderState() {
-    const mode = themeController?.getMode?.() || "auto";
-    const resolvedTheme = themeController?.getResolvedTheme?.() || resolveAutoTheme();
-    return {
-      mode,
-      resolvedTheme
-    };
+    document.body.setAttribute("data-theme-resolved", "night");
+    document.body.removeAttribute("data-theme-mode");
   }
   // src/josie/social-hub/config.js
   var SOCIAL_HUB_SITES = [
@@ -1775,7 +1657,7 @@
     let traceSmoothingValues = new Float32Array(0);
     let rafId = 0;
     let loadState = "loading";
-    let playbackUnlocked = !document.body?.classList.contains("site-load-playing");
+    let playbackUnlocked = !document.body?.classList.contains("site-load-playing") && !Boolean(window.__josieHandoffPending);
     let siteLoadWaitPromise = null;
     let siteLoadClassObserver = null;
     let initialTrackQueued = false;
@@ -1912,7 +1794,7 @@
       }
     }
     function isSiteLoadPending() {
-      return Boolean(document.body?.classList.contains("site-load-playing"));
+      return Boolean(document.body?.classList.contains("site-load-playing") || window.__josieHandoffPending);
     }
     function finalizePlaybackUnlock() {
       playbackUnlocked = true;
@@ -2587,82 +2469,6 @@
       <span class="steam-hero-bio-wing steam-hero-bio-wing--right" aria-hidden="true">໒꒱</span>
       <span class="steam-hero-bio-sparkle steam-hero-bio-sparkle--right" aria-hidden="true">‧₊˚</span>
     `;
-  }
-  function renderThemeToggleMarkup(options = {}) {
-    const mode = normalizeThemeMode(options?.mode);
-    const resolvedTheme = String(options?.resolvedTheme || "night").trim().toLowerCase() === "day" ? "day" : "night";
-    const compact = Boolean(options?.compact);
-    const stateLabel = mode === "auto"
-      ? `Auto · ${resolvedTheme === "day" ? "Day" : "Night"}`
-      : `Pinned · ${mode === "day" ? "Day" : "Night"}`;
-    return `
-      <section class="steam-theme-toggle${compact ? " steam-theme-toggle--compact" : ""}" data-theme-toggle data-theme-mode="${escapeHtml(mode)}" data-theme-resolved="${escapeHtml(resolvedTheme)}" aria-label="Theme controls">
-        <div class="steam-theme-toggle-head">
-          <span class="steam-theme-toggle-title">Theme</span>
-          <span class="steam-theme-toggle-state">${escapeHtml(stateLabel)}</span>
-        </div>
-        <div class="steam-theme-toggle-group" role="group" aria-label="Theme mode">
-          ${["auto", "day", "night"].map((themeMode) => {
-      const active = themeMode === mode;
-      const label = themeMode === "auto" ? "Auto" : themeMode === "day" ? "Day" : "Night";
-      return `<button class="steam-theme-toggle-button${active ? " is-active" : ""}" type="button" data-theme-mode-choice="${themeMode}" aria-pressed="${active ? "true" : "false"}">${label}</button>`;
-    }).join("")}
-        </div>
-      </section>
-    `;
-  }
-  function renderFloatingThemeToggleMarkup(options = {}) {
-    const mode = normalizeThemeMode(options?.mode);
-    const resolvedTheme = String(options?.resolvedTheme || "night").trim().toLowerCase() === "day" ? "day" : "night";
-    const activeTheme = mode === "auto" ? resolvedTheme : mode;
-    const stateLabel = mode === "auto"
-      ? `Following your local time. ${resolvedTheme === "day" ? "Day" : "Night"} is active.`
-      : `Pinned to ${activeTheme === "day" ? "Day" : "Night"}. Click the active mode again to follow local time.`;
-    return `
-      <section class="site-theme-toggle" data-theme-toggle data-theme-mode="${escapeHtml(mode)}" data-theme-resolved="${escapeHtml(resolvedTheme)}" aria-label="Day and night theme toggle" title="${escapeHtml(stateLabel)}">
-        <div class="site-theme-toggle-group" role="group" aria-label="Day and night theme toggle">
-          ${["day", "night"].map((themeMode) => {
-      const label = themeMode === "day" ? "Day" : "Night";
-      const active = activeTheme === themeMode;
-      const pinned = mode === themeMode;
-      const buttonLabel = pinned ? `${label}. Pinned theme. Click again to follow local time.` : active ? `${label}. Active from local time.` : `${label}.`;
-      return `
-              <button
-                class="site-theme-toggle-button${active ? " is-active" : ""}"
-                type="button"
-                data-theme-mode-choice="${themeMode}"
-                data-theme-mode-state="${pinned ? "pinned" : active ? "auto" : "idle"}"
-                aria-pressed="${active ? "true" : "false"}"
-                aria-label="${escapeHtml(buttonLabel)}"
-              >
-                <span class="site-theme-toggle-button-label">${label}</span>
-              </button>
-            `;
-    }).join("")}
-        </div>
-      </section>
-    `;
-  }
-  function syncFloatingThemeToggle() {
-    if (!(siteThemeToggleAnchor instanceof HTMLElement)) return;
-    siteThemeToggleAnchor.innerHTML = renderFloatingThemeToggleMarkup(getThemeRenderState());
-  }
-  function resolveNextThemeMode(requestedMode) {
-    const normalizedMode = normalizeThemeMode(requestedMode);
-    if (normalizedMode === "auto") return "auto";
-    const currentMode = themeController?.getMode?.() || "auto";
-    const resolvedTheme = themeController?.getResolvedTheme?.() || resolveAutoTheme();
-    if (currentMode === normalizedMode) return "auto";
-    if (currentMode === "auto" && resolvedTheme === normalizedMode) return normalizedMode;
-    return normalizedMode;
-  }
-  function onFloatingThemeToggleClick(event) {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const themeToggleButton = target.closest(".site-theme-toggle-button[data-theme-mode-choice]");
-    if (!(themeToggleButton instanceof HTMLButtonElement)) return;
-    event.preventDefault();
-    themeController?.setMode?.(resolveNextThemeMode(themeToggleButton.getAttribute("data-theme-mode-choice") || "auto"));
   }
   function renderHeroDescriptionMarkup() {
     return escapeHtml(HERO_DESCRIPTION_TEXT);
@@ -3825,7 +3631,6 @@
   }
   function renderSidebar(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
-    const themeState = getThemeRenderState();
     const rows = sites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
@@ -3853,7 +3658,6 @@
     const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
     return `
     <section class="steam-sidebar-panel">
-      ${compact ? renderThemeToggleMarkup({ ...themeState, compact: true }) : ""}
       <h3 class="steam-sidebar-title">Profile Links:</h3>
       <ul class="steam-sidebar-list">
         ${rows}
@@ -4793,12 +4597,6 @@
       if (disposed) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      const themeToggleButton = target.closest("[data-theme-mode-choice]");
-      if (themeToggleButton instanceof HTMLButtonElement) {
-        event.preventDefault();
-        themeController?.setMode?.(themeToggleButton.getAttribute("data-theme-mode-choice") || "auto");
-        return;
-      }
       const lastFmArtistButton = target.closest(".lastfm-media-button[data-lastfm-artist-name]");
       if (lastFmArtistButton instanceof HTMLElement) {
         event.preventDefault();
@@ -5715,54 +5513,16 @@
   function createAdaptiveAmbientBackdropController() {
     if (!(document.body instanceof HTMLElement)) return null;
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
-    let disposed = false;
-    let activeController = null;
-    let activeVariant = "";
-    const bodyObserver = new MutationObserver(() => {
-      syncController();
-    });
-    function setBackdropState(variant, renderer, motion) {
-      osAmbientBackdrop.setAttribute("data-ambient-variant", variant);
-      osAmbientBackdrop.setAttribute("data-ambient-renderer", renderer);
-      osAmbientBackdrop.setAttribute("data-ambient-motion", motion);
-    }
-    function disposeActiveController() {
-      activeController?.dispose?.();
-      activeController = null;
-    }
-    function resolveVariant() {
-      return document.body.getAttribute("data-theme-resolved") === "day" ? "day" : "night";
-    }
-    function resolveMotionState() {
-      return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "frozen" : "running";
-    }
-    function syncController(force = false) {
-      if (disposed) return;
-      const nextVariant = resolveVariant();
-      if (!force && nextVariant === activeVariant && activeController) return;
-      disposeActiveController();
-      activeVariant = nextVariant;
-      if (activeVariant === "day") {
-        setBackdropState("day", "static", resolveMotionState());
-        activeController = createDayWispBackdropController();
-        return;
-      }
-      setBackdropState("night", "legacy", resolveMotionState());
-      activeController = createAmbientBackdropController();
-    }
-    bodyObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["data-theme-resolved"]
-    });
-    syncController(true);
-    return {
-      dispose() {
-        if (disposed) return;
-        disposed = true;
-        bodyObserver.disconnect();
-        disposeActiveController();
-      }
-    };
+    document.body.setAttribute("data-theme-resolved", "night");
+    document.body.removeAttribute("data-theme-mode");
+    osAmbientBackdrop.setAttribute("data-ambient-variant", "night");
+    osAmbientBackdrop.setAttribute("data-ambient-renderer", "legacy");
+    osAmbientBackdrop.setAttribute(
+      "data-ambient-motion",
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "frozen" : "running"
+    );
+    document.querySelector("#os-ambient-overlay")?.remove?.();
+    return createAmbientBackdropController();
   }
   function createDayWispFallbackController(rendererLabel = "wisps-fallback") {
     if (!(document.body instanceof HTMLElement)) return null;
@@ -7227,17 +6987,10 @@
   }
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
+    applyPermanentNightTheme();
     setReadyState();
-    themeController = createThemeController({
-      onChange: () => {
-        syncFloatingThemeToggle();
-        syncLayoutMode();
-      }
-    });
-    syncFloatingThemeToggle();
     ambientBackdropController = createAdaptiveAmbientBackdropController();
     siteCursorController = createSiteCursorController();
-    siteThemeToggleAnchor?.addEventListener("click", onFloatingThemeToggleClick);
     await ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();
     if (compactMobileLayoutQuery) {
@@ -7265,9 +7018,6 @@
     }
     ambientBackdropController?.dispose?.();
     ambientBackdropController = null;
-    themeController?.dispose?.();
-    themeController = null;
-    siteThemeToggleAnchor?.removeEventListener("click", onFloatingThemeToggleClick);
     siteCursorController?.dispose?.();
     siteCursorController = null;
   });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260326-josie-85" />
+    <link rel="stylesheet" href="/josie.css?v=20260326-josie-88" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -146,26 +146,19 @@
       }
     </style>
   </head>
-  <body class="site-load-active site-load-playing">
+  <body class="site-load-active site-load-playing" data-theme-resolved="night">
     <script>
       (() => {
-        const key = "josieThemePreference";
-        const legacyKey = "josieThemeMode";
-        let mode = "auto";
-        try {
-          const storedMode = String(window.localStorage.getItem(key) || "").trim().toLowerCase();
-          if (storedMode === "auto" || storedMode === "day" || storedMode === "night") {
-            mode = storedMode;
-          }
-          window.localStorage.removeItem(legacyKey);
-        } catch (error) {}
-        const hour = new Date().getHours();
-        const resolved = mode === "auto" ? (hour >= 6 && hour < 18 ? "day" : "night") : mode;
-        document.body.setAttribute("data-theme-mode", mode);
-        document.body.setAttribute("data-theme-resolved", resolved);
+        const handoffMode = new URLSearchParams(window.location.search).get("handoff") === "1";
+        window.__josieHandoffMode = handoffMode;
+        window.__josieHandoffPending = handoffMode;
+        window.__amesSiteLoadPlaying = !handoffMode;
+        window.__amesSiteLoadComplete = false;
+        if (!handoffMode || !(document.body instanceof HTMLElement)) return;
+        document.body.dataset.handoffMode = "true";
+        document.body.classList.remove("site-load-active", "site-load-playing");
       })();
     </script>
-    <script>try { window.localStorage.setItem('hasSeenJosieIntro', 'true'); } catch (e) {}</script>
     <main class="corner-shell theme-chrome state-os-ready">
       <section id="os-stage" class="os-stage" aria-hidden="false">
         <div id="os-ambient-backdrop" class="os-ambient-backdrop" aria-hidden="true">
@@ -184,10 +177,79 @@
             </div>
           </div>
         </div>
-        <div id="site-theme-toggle-anchor" class="site-theme-toggle-anchor" aria-live="polite"></div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260326-josie-86"></script>
+    <script src="/josie.client.js?v=20260326-josie-88"></script>
+    <script>
+      (() => {
+        const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
+        const handoffMode = Boolean(window.__josieHandoffMode);
+        if (!handoffMode) return;
+
+        const handoffReadyMessageType = "josie-handoff-ready";
+        const handoffCompleteMessageType = "josie-handoff-complete";
+        let readyPosted = false;
+
+        function isSameOriginParentMessage(event) {
+          return event.origin === window.location.origin && event.source === window.parent;
+        }
+
+        function unlockHandoffPlayback() {
+          if (!window.__josieHandoffPending) return;
+          window.__josieHandoffPending = false;
+          window.__amesSiteLoadPlaying = false;
+          if (!window.__amesSiteLoadComplete) {
+            window.__amesSiteLoadComplete = true;
+            window.dispatchEvent(new CustomEvent(SITE_LOAD_COMPLETE_EVENT));
+          }
+        }
+
+        function postReadyToParent() {
+          if (readyPosted || window.parent === window) return;
+          readyPosted = true;
+          try {
+            window.parent.postMessage({ type: handoffReadyMessageType }, window.location.origin);
+          } catch {
+          }
+        }
+
+        function waitForSocialHubReady() {
+          const root = document.querySelector("#social-hub-root");
+          if (root instanceof HTMLElement && root.getAttribute("data-social-hub-ready") === "true") {
+            postReadyToParent();
+            return;
+          }
+          const observer = new MutationObserver(() => {
+            const nextRoot = document.querySelector("#social-hub-root");
+            if (!(nextRoot instanceof HTMLElement)) return;
+            if (nextRoot.getAttribute("data-social-hub-ready") !== "true") return;
+            observer.disconnect();
+            postReadyToParent();
+          });
+          if (document.body instanceof HTMLElement) {
+            observer.observe(document.body, {
+              subtree: true,
+              childList: true,
+              attributes: true,
+              attributeFilter: ["data-social-hub-ready"]
+            });
+          }
+        }
+
+        window.addEventListener("message", (event) => {
+          if (!isSameOriginParentMessage(event)) return;
+          const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
+          if (messageType !== handoffCompleteMessageType) return;
+          unlockHandoffPlayback();
+        });
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", waitForSocialHubReady, { once: true });
+        } else {
+          waitForSocialHubReady();
+        }
+      })();
+    </script>
     <script>
       (() => {
         const breakpointPx = 1120;
@@ -257,6 +319,7 @@
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
+        const handoffMode = Boolean(window.__josieHandoffMode);
         const compactMobileBreakpointPx = 820;
         const chars = ".:-=+*#%@";
         const bayer4 = [
@@ -338,6 +401,10 @@
         window.__amesLoadingIconUsesVariant = useLoadingIconVariant;
 
         if (!sampleCtx) return;
+        if (handoffMode) {
+          window.__amesSiteLoadPlaying = false;
+          return;
+        }
 
         function clamp01(value) {
           if (value < 0) return 0;

@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BloomToDeath</title>
   <link rel="icon" href="data:,">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #050505;
-      --fg: #f5f5f5;
-      --muted: rgba(245, 245, 245, 0.58);
-      --panel: rgba(245, 245, 245, 0.08);
-      --border: rgba(245, 245, 245, 0.24);
+      --intro-bg: #000;
+      --intro-fg: rgba(255, 255, 255, 0.92);
+      --intro-border: rgba(255, 255, 255, 0.16);
+      --intro-shadow: rgba(0, 0, 0, 0.48);
+      --intro-card-bg: rgba(14, 14, 16, 0.72);
+      --intro-card-border: rgba(255, 255, 255, 0.12);
+      --intro-card-glow: rgba(255, 255, 255, 0.08);
+      --intro-card-copy: rgba(255, 255, 255, 0.96);
+      --intro-card-copy-muted: rgba(255, 255, 255, 0.64);
+      --handoff-fade-duration: 220ms;
     }
 
     * {
@@ -23,502 +25,515 @@
 
     html,
     body {
-      width: 100vw;
-      height: 100vh;
       margin: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
-      letter-spacing: 0.01em;
+      background: var(--intro-bg);
+      color: var(--intro-fg);
     }
 
     body {
       position: relative;
-      min-width: 100vw;
-      min-height: 100vh;
-      transition: background-color 260ms ease, color 260ms ease;
+      font-family: "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
     }
 
-    .source-video {
+    .handoff-frame-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity var(--handoff-fade-duration) ease,
+        visibility 0s linear var(--handoff-fade-duration);
+      background: #000;
+    }
+
+    .handoff-frame {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+    }
+
+    .intro-video {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
-      pointer-events: none;
+      background: #000;
+      z-index: 3;
+      opacity: 1;
+      transition: opacity var(--handoff-fade-duration) ease;
+    }
+
+    .intro-video.is-ready {
+      opacity: 1;
+    }
+
+    .intro-video.is-hidden {
       opacity: 0;
-      filter: grayscale(1) contrast(1.15);
-      transform: scale(1.02);
+      pointer-events: none;
     }
 
-    .source-video.active {
-      opacity: 0.08;
-    }
-
-    .ascii-layer {
+    .intro-overlay {
       position: fixed;
       inset: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
+      pointer-events: none;
+      z-index: 4;
+      opacity: 1;
+      transition: opacity var(--handoff-fade-duration) ease;
+      background:
+        radial-gradient(circle at center, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.24)),
+        linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.28));
     }
 
-    .start-wrap {
+    .intro-start-wrap {
       position: fixed;
       inset: 0;
       display: none;
       align-items: center;
       justify-content: center;
-      pointer-events: none;
+      padding: 24px;
+      background:
+        radial-gradient(circle at center, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.42)),
+        rgba(0, 0, 0, 0.16);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 5;
     }
 
-    .start-wrap.visible {
+    .intro-start-wrap.is-visible {
       display: flex;
     }
 
-    .start-btn {
-      pointer-events: auto;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px 16px;
-      background: var(--bg);
-      color: var(--fg);
-      font: 700 12px/1 "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+    .intro-start-button {
+      position: relative;
+      display: grid;
+      gap: 14px;
+      width: min(80vw, 720px);
+      min-height: clamp(188px, 28vw, 280px);
+      border: 1px solid var(--intro-border);
+      border-color: var(--intro-card-border);
+      border-radius: 30px;
+      padding: clamp(26px, 4vw, 42px);
+      background:
+        linear-gradient(180deg, rgba(36, 36, 40, 0.6), rgba(8, 8, 10, 0.8)),
+        var(--intro-card-bg);
+      color: var(--intro-fg);
+      box-shadow:
+        0 34px 80px rgba(0, 0, 0, 0.58),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(26px) saturate(130%);
+      -webkit-backdrop-filter: blur(26px) saturate(130%);
       cursor: pointer;
-      transition: transform 120ms ease, background-color 150ms ease;
+      overflow: hidden;
+      isolation: isolate;
+      text-align: center;
+      place-items: center;
+      transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        background 180ms ease;
     }
 
-    .start-btn:hover {
-      transform: translateY(-1px);
-      background: color-mix(in srgb, var(--bg) 90%, var(--fg));
+    .intro-start-button::before,
+    .intro-start-button::after {
+      content: "";
+      position: absolute;
+      inset: auto;
+      pointer-events: none;
+      z-index: -1;
     }
 
-    .start-btn:active {
-      transform: translateY(0);
+    .intro-start-button::before {
+      inset: -10% -6%;
+      background:
+        radial-gradient(circle at 28% 42%, rgba(255, 255, 255, 0.14), transparent 34%),
+        radial-gradient(circle at 62% 50%, rgba(255, 255, 255, 0.08), transparent 24%),
+        radial-gradient(circle at 74% 30%, rgba(255, 255, 255, 0.12), transparent 22%),
+        linear-gradient(125deg, rgba(255, 255, 255, 0.05), transparent 28%, rgba(255, 255, 255, 0.03) 55%, transparent 76%);
+      filter: blur(22px);
+      opacity: 0.95;
+      transform: scale(1.04);
+    }
+
+    .intro-start-button::after {
+      inset: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.035), transparent 62%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+      opacity: 0.92;
+    }
+
+    .intro-start-button:hover,
+    .intro-start-button:focus-visible {
+      transform: translateY(-2px) scale(1.01);
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow:
+        0 42px 96px rgba(0, 0, 0, 0.62),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      outline: none;
+    }
+
+    .intro-start-card-message {
+      max-width: 18ch;
+      color: var(--intro-card-copy);
+      font:
+        700
+        clamp(22px, 3vw, 34px)
+        / 1.12
+        "Space Mono",
+        "IBM Plex Mono",
+        Consolas,
+        Menlo,
+        monospace;
+      letter-spacing: 0.015em;
+      text-wrap: balance;
+      text-shadow:
+        0 2px 22px rgba(255, 255, 255, 0.08),
+        0 0 1px rgba(255, 255, 255, 0.3);
+    }
+
+    .intro-start-card-caption {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.055);
+      color: var(--intro-card-copy-muted);
+      font: 700 11px/1 "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      box-shadow: inset 0 1px 0 var(--intro-card-glow);
+    }
+
+    .intro-start-card-caption::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      margin-right: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.34);
+    }
+
+    @media (max-width: 640px) {
+      .intro-start-button {
+        width: min(92vw, 560px);
+        min-height: 180px;
+        border-radius: 24px;
+        padding: 24px;
+      }
+
+      .intro-start-card-caption {
+        padding: 0 14px;
+        font-size: 10px;
+        letter-spacing: 0.16em;
+      }
+    }
+
+    body.is-handoff-visible .handoff-frame-wrap,
+    body.is-handoff-complete .handoff-frame-wrap {
+      opacity: 1;
+      visibility: visible;
+      transition-delay: 0s;
+    }
+
+    body.is-handoff-complete .handoff-frame-wrap {
+      pointer-events: auto;
+    }
+
+    body.is-handoff-visible .intro-video {
+      opacity: 0.16;
+    }
+
+    body.is-handoff-visible .intro-overlay {
+      opacity: 0.22;
+    }
+
+    body.is-handoff-complete .intro-overlay,
+    body.is-handoff-complete .intro-start-wrap {
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <video id="sourceVideoA" class="source-video active" playsinline preload="auto"></video>
-  <video id="sourceVideoB" class="source-video" playsinline preload="auto" aria-hidden="true"></video>
-  <canvas id="asciiCanvas" class="ascii-layer" aria-label="ASCII-rendered timelapse"></canvas>
-
-  <div id="startWrap" class="start-wrap" aria-live="polite">
-    <button id="startBtn" class="start-btn" type="button">Start</button>
+  <div id="handoffFrameWrap" class="handoff-frame-wrap" aria-hidden="true">
+    <iframe
+      id="handoffFrame"
+      class="handoff-frame"
+      title="Josie"
+      loading="eager"
+      allow="autoplay"
+      referrerpolicy="same-origin"
+    ></iframe>
+  </div>
+  <video id="introVideo" class="intro-video" playsinline preload="auto"></video>
+  <div id="introOverlay" class="intro-overlay" aria-hidden="true"></div>
+  <div id="introStartWrap" class="intro-start-wrap" aria-live="polite">
+    <button
+      id="introStartButton"
+      class="intro-start-button"
+      type="button"
+      aria-label="Click for sound. This user is a cat; therefore, meow"
+    >
+      <span class="intro-start-card-message">This user is a cat; therefore, meow</span>
+      <span class="intro-start-card-caption">Click for sound</span>
+    </button>
   </div>
 
   <script>
     (() => {
       const mobileIntroBypassMaxWidthPx = 820;
+      const handoffLeadSeconds = 0.5;
+      const introVideoPath = "Timelapse/Egrets Orchard.mov";
+      const introReadyMessageType = "josie-handoff-ready";
+      const introCompleteMessageType = "josie-handoff-complete";
+      const introVideo = document.getElementById("introVideo");
+      const introOverlay = document.getElementById("introOverlay");
+      const introStartWrap = document.getElementById("introStartWrap");
+      const introStartButton = document.getElementById("introStartButton");
+      const handoffFrameWrap = document.getElementById("handoffFrameWrap");
+      const handoffFrame = document.getElementById("handoffFrame");
+      let introStarted = false;
+      let iframePreloading = false;
+      let iframeReady = false;
+      let handoffVisible = false;
+      let handoffCompleted = false;
+      let fallbackNavigationTriggered = false;
+      let state = "idle";
+      let monitorRafId = 0;
+
+      function setState(nextState) {
+        state = nextState;
+        window.__bloomToDeathState = nextState;
+        document.body.dataset.bloomToDeathState = nextState;
+      }
+
       function shouldSkipIntro() {
         if (typeof window === "undefined") return false;
-        try {
-          if (window.localStorage.getItem('hasSeenJosieIntro') === 'true') {
-            return true;
-          }
-        } catch (e) {}
         const mobileMatch = window.matchMedia?.(`(max-width: ${mobileIntroBypassMaxWidthPx}px)`)?.matches;
         const coarsePointerMatch = window.matchMedia?.("(pointer: coarse)")?.matches;
         return Boolean(mobileMatch || coarsePointerMatch || window.innerWidth <= mobileIntroBypassMaxWidthPx);
       }
-      function resolveMobileJosieUrl() {
-        const isProductionDomain = /(^|\.)internet-angel\.net$/i.test(window.location.hostname);
-        if (isProductionDomain) {
-          return "https://internet-angel.net/josie";
-        }
-        return "/josie.html";
+
+      function resolveJosiePath() {
+        const isProductionDomain = /(^|\\.)internet-angel\\.net$/i.test(window.location.hostname);
+        return isProductionDomain ? "/josie" : "/josie.html";
       }
+
+      function resolveJosieUrl() {
+        return new URL(resolveJosiePath(), window.location.origin);
+      }
+
+      function resolveJosieHandoffUrl() {
+        const url = resolveJosieUrl();
+        url.searchParams.set("handoff", "1");
+        return url;
+      }
+
+      function clearMonitorLoop() {
+        if (!monitorRafId) return;
+        window.cancelAnimationFrame(monitorRafId);
+        monitorRafId = 0;
+      }
+
+      function showStartButton() {
+        introStartWrap?.classList.add("is-visible");
+      }
+
+      function hideStartButton() {
+        introStartWrap?.classList.remove("is-visible");
+      }
+
+      function updateTopLevelUrlForJosie() {
+        const url = resolveJosieUrl();
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        document.title = "Josie";
+      }
+
+      function preloadJosieFrame() {
+        if (!(handoffFrame instanceof HTMLIFrameElement)) return;
+        if (iframePreloading) return;
+        iframePreloading = true;
+        setState("preloading_josie");
+        handoffFrame.src = resolveJosieHandoffUrl().toString();
+      }
+
+      function isTransitionWindowOpen() {
+        if (!(introVideo instanceof HTMLVideoElement)) return false;
+        if (!Number.isFinite(introVideo.duration) || introVideo.duration <= 0) return false;
+        return introVideo.currentTime >= Math.max(0, introVideo.duration - handoffLeadSeconds);
+      }
+
+      function notifyIframeHandoffComplete() {
+        try {
+          handoffFrame?.contentWindow?.postMessage({ type: introCompleteMessageType }, window.location.origin);
+        } catch {
+        }
+      }
+
+      function syncIframeReadyFromDocument() {
+        if (iframeReady || !(handoffFrame instanceof HTMLIFrameElement)) return iframeReady;
+        try {
+          const frameRoot = handoffFrame.contentDocument?.querySelector("#social-hub-root[data-social-hub-ready='true']");
+          if (frameRoot) {
+            iframeReady = true;
+          }
+        } catch {
+        }
+        return iframeReady;
+      }
+
+      function beginVisualHandoff() {
+        if (handoffVisible || fallbackNavigationTriggered || !(handoffFrameWrap instanceof HTMLElement)) return;
+        if (!syncIframeReadyFromDocument()) {
+          setState("handoff_pending");
+          return;
+        }
+        handoffVisible = true;
+        setState("handoff_visible");
+        updateTopLevelUrlForJosie();
+        document.body.classList.add("is-handoff-visible");
+        handoffFrameWrap.removeAttribute("aria-hidden");
+      }
+
+      function completeHandoff() {
+        if (handoffCompleted || fallbackNavigationTriggered) return;
+        if (!handoffVisible && iframeReady) {
+          beginVisualHandoff();
+        }
+        if (!handoffVisible) {
+          performFallbackNavigation();
+          return;
+        }
+        handoffCompleted = true;
+        setState("handoff_complete");
+        clearMonitorLoop();
+        document.body.classList.remove("is-handoff-visible");
+        document.body.classList.add("is-handoff-complete");
+        introVideo?.classList.add("is-hidden");
+        introVideo?.setAttribute("aria-hidden", "true");
+        if (introOverlay instanceof HTMLElement) {
+          introOverlay.hidden = true;
+        }
+        if (introStartWrap instanceof HTMLElement) {
+          introStartWrap.hidden = true;
+        }
+        notifyIframeHandoffComplete();
+      }
+
+      function performFallbackNavigation() {
+        if (fallbackNavigationTriggered) return;
+        fallbackNavigationTriggered = true;
+        setState("handoff_fallback_navigation");
+        clearMonitorLoop();
+        window.location.replace(resolveJosieUrl().toString());
+      }
+
+      function evaluateHandoffWindow() {
+        if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
+        syncIframeReadyFromDocument();
+        if (iframeReady && isTransitionWindowOpen()) {
+          beginVisualHandoff();
+        }
+      }
+
+      function syncHandoffProgress() {
+        monitorRafId = 0;
+        evaluateHandoffWindow();
+        if (!handoffCompleted && !fallbackNavigationTriggered) {
+          monitorRafId = window.requestAnimationFrame(syncHandoffProgress);
+        }
+      }
+
+      function ensureMonitorLoop() {
+        if (monitorRafId || handoffCompleted || fallbackNavigationTriggered) return;
+        monitorRafId = window.requestAnimationFrame(syncHandoffProgress);
+      }
+
+      async function tryPlayIntro() {
+        if (!(introVideo instanceof HTMLVideoElement)) return false;
+        introVideo.defaultMuted = false;
+        introVideo.muted = false;
+        try {
+          await introVideo.play();
+          introStarted = true;
+          setState("playing_intro");
+          hideStartButton();
+          preloadJosieFrame();
+          ensureMonitorLoop();
+          return true;
+        } catch {
+          showStartButton();
+          setState("idle");
+          return false;
+        }
+      }
+
+      if (!(introVideo instanceof HTMLVideoElement)) return;
+      setState("idle");
       if (shouldSkipIntro()) {
-        window.location.replace(resolveMobileJosieUrl());
+        window.location.replace(resolveJosieUrl().toString());
         return;
       }
 
-      const bloomVideos = [
-        "Timelapse/BloomToDeath-1.mov",
-        "Timelapse/BloomToDeath-2.mov",
-        "Timelapse/BloomToDeath-3.mov"
-      ];
-      const introVideoPath = "Timelapse/Egrets-Intro.mov";
-      const nextPageUrl = "next.html";
-      const chars = " .:-=+*#%@";
-      const baseCellSize = 6;
-      const bloomPlaybackFraction = 0.5;
-      const egretsDenseGridStartSeconds = 3;
-      const egretsDenseGridScale = 1 / Math.SQRT2;
-      const asciiColorLevels = 3;
-      const bassBoostFrequencyHz = 180;
-      const bassBoostGainDb = 6;
-      const bayer4 = [
-        [0, 8, 2, 10],
-        [12, 4, 14, 6],
-        [3, 11, 1, 9],
-        [15, 7, 13, 5]
-      ];
-
-      const asciiCanvas = document.getElementById("asciiCanvas");
-      const ctx = asciiCanvas.getContext("2d", { alpha: false });
-      const sourceVideoA = document.getElementById("sourceVideoA");
-      const sourceVideoB = document.getElementById("sourceVideoB");
-      const startWrap = document.getElementById("startWrap");
-      const startBtn = document.getElementById("startBtn");
-
-      const sampleCanvas = document.createElement("canvas");
-      const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-      const glyphFillCache = new Map();
-      const mediaSourceNodes = new WeakMap();
-
-      let dpr = Math.max(1, window.devicePixelRatio || 1);
-      let viewportW = 0;
-      let viewportH = 0;
-      let cols = 0;
-      let rows = 0;
-      let cellW = baseCellSize;
-      let cellH = Math.round(baseCellSize * 1.32);
-      let lastFrame = 0;
-      const targetFrameMs = 1000 / 24;
-      let glyphColor = "#f5f5f5";
-      let bgColor = "#050505";
-      let fgIsDark = false;
-      let activeVideo = sourceVideoA;
-      let hasStartedIntro = false;
-      let introPrimed = false;
-      const introSwitchLeadSeconds = 0.08;
-      let gridSignature = "";
-      let audioCtx = null;
-      let bassShelfFilter = null;
-      let masterGain = null;
-
-      sourceVideoA.loop = false;
-      sourceVideoB.loop = false;
-
-      function setActiveVideo(videoEl) {
-        activeVideo = videoEl;
-        sourceVideoA.classList.toggle("active", videoEl === sourceVideoA);
-        sourceVideoB.classList.toggle("active", videoEl === sourceVideoB);
-      }
-
-      function clamp01(value) {
-        if (value < 0) return 0;
-        if (value > 1) return 1;
-        return value;
-      }
-
-      function getGlyphFillStyle(luminance) {
-        const maxBucket = Math.max(1, asciiColorLevels - 1);
-        const quantize = (value) => {
-          const bucket = Math.round(clamp01(value) * maxBucket);
-          return Math.round((bucket / maxBucket) * 255);
-        };
-        const grayscale = quantize(luminance);
-        const key = grayscale;
-        let style = glyphFillCache.get(key);
-        if (!style) {
-          style = `rgb(${grayscale} ${grayscale} ${grayscale})`;
-          glyphFillCache.set(key, style);
-        }
-        return style;
-      }
-
-      function applyNightTheme() {
-        bgColor = "#050505";
-        glyphColor = "#f5f5f5";
-        fgIsDark = false;
-
-        const muted = "rgba(245, 245, 245, 0.58)";
-        const panel = "rgba(245, 245, 245, 0.08)";
-        const border = "rgba(245, 245, 245, 0.24)";
-
-        document.documentElement.style.setProperty("--bg", bgColor);
-        document.documentElement.style.setProperty("--fg", glyphColor);
-        document.documentElement.style.setProperty("--muted", muted);
-        document.documentElement.style.setProperty("--panel", panel);
-        document.documentElement.style.setProperty("--border", border);
-      }
-
-      function pickRandomVideo() {
-        const index = Math.floor(Math.random() * bloomVideos.length);
-        return bloomVideos[index];
-      }
-
-      function getViewportSize() {
-        if (window.visualViewport) {
-          return {
-            width: Math.max(1, Math.round(window.visualViewport.width)),
-            height: Math.max(1, Math.round(window.visualViewport.height))
-          };
-        }
-        return {
-          width: Math.max(1, window.innerWidth),
-          height: Math.max(1, window.innerHeight)
-        };
-      }
-
-      function configureCanvasSize() {
-        const viewport = getViewportSize();
-        viewportW = viewport.width;
-        viewportH = viewport.height;
-        dpr = Math.max(1, window.devicePixelRatio || 1);
-
-        asciiCanvas.width = Math.max(1, Math.floor(viewportW * dpr));
-        asciiCanvas.height = Math.max(1, Math.floor(viewportH * dpr));
-        asciiCanvas.style.width = viewportW + "px";
-        asciiCanvas.style.height = viewportH + "px";
-
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.textBaseline = "top";
-        ctx.textAlign = "left";
-        ctx.imageSmoothingEnabled = false;
-        syncAsciiGrid(true);
-      }
-
-      function resolveCellScale() {
-        if (
-          activeVideo === sourceVideoB
-          && sourceVideoB.currentTime >= egretsDenseGridStartSeconds
-        ) {
-          return egretsDenseGridScale;
-        }
-        return 1;
-      }
-
-      async function ensureAudioGraph() {
-        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextCtor) return null;
-
-        if (!audioCtx) {
-          audioCtx = new AudioContextCtor();
-          bassShelfFilter = audioCtx.createBiquadFilter();
-          bassShelfFilter.type = "lowshelf";
-          bassShelfFilter.frequency.value = bassBoostFrequencyHz;
-          bassShelfFilter.gain.value = bassBoostGainDb;
-
-          masterGain = audioCtx.createGain();
-          masterGain.gain.value = 1;
-
-          bassShelfFilter.connect(masterGain);
-          masterGain.connect(audioCtx.destination);
-
-          for (const videoEl of [sourceVideoA, sourceVideoB]) {
-            if (mediaSourceNodes.has(videoEl)) continue;
-            const sourceNode = audioCtx.createMediaElementSource(videoEl);
-            sourceNode.connect(bassShelfFilter);
-            mediaSourceNodes.set(videoEl, sourceNode);
+      window.addEventListener("message", (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.source !== handoffFrame?.contentWindow) return;
+        const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
+        if (messageType !== introReadyMessageType) return;
+        iframeReady = true;
+        if (!handoffVisible && introStarted) {
+          evaluateHandoffWindow();
+          if (!handoffVisible && state !== "playing_intro") {
+            setState("handoff_pending");
           }
-        }
-
-        if (audioCtx.state === "suspended") {
-          try {
-            await audioCtx.resume();
-          } catch (err) {
-          }
-        }
-
-        return audioCtx;
-      }
-
-      function syncAsciiGrid(force = false) {
-        const effectiveCellSize = baseCellSize * resolveCellScale();
-        cellW = effectiveCellSize;
-        cellH = effectiveCellSize * 1.32;
-        cols = Math.max(2, Math.floor(viewportW / cellW));
-        rows = Math.max(2, Math.floor(viewportH / cellH));
-        const nextGridSignature = `${cols}x${rows}`;
-        if (!force && nextGridSignature === gridSignature) {
-          return;
-        }
-        gridSignature = nextGridSignature;
-
-        sampleCanvas.width = cols;
-        sampleCanvas.height = rows;
-      }
-
-      function luminanceFromImageData(imageData) {
-        const data = imageData.data;
-        const size = cols * rows;
-        const lum = new Float32Array(size);
-        for (let i = 0, p = 0; i < size; i += 1, p += 4) {
-          const r = data[p];
-          const g = data[p + 1];
-          const b = data[p + 2];
-          let y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-          y = clamp01((y - 0.5) * 1.45 + 0.5);
-          y = Math.pow(y, 0.92);
-          lum[i] = y;
-        }
-        return lum;
-      }
-
-      function drawAsciiFrame() {
-        if (activeVideo.readyState < 2) return;
-        syncAsciiGrid();
-        sampleCtx.drawImage(activeVideo, 0, 0, cols, rows);
-        const frame = sampleCtx.getImageData(0, 0, cols, rows);
-        const data = frame.data;
-        const lum = luminanceFromImageData(frame);
-
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, viewportW, viewportH);
-        ctx.font = `${Math.round(cellW * 1.2)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
-
-        const densityMax = chars.length - 1;
-        const edgeStrength = 0.68;
-        const ditherStrength = 0.15;
-        let lastFillStyle = "";
-
-        for (let y = 0; y < rows; y += 1) {
-          const yBase = y * cols;
-          const py = y * cellH;
-          for (let x = 0; x < cols; x += 1) {
-            const idx = yBase + x;
-            const pixelIndex = idx * 4;
-            const l = lum[idx];
-            const left = x > 0 ? lum[idx - 1] : l;
-            const right = x < cols - 1 ? lum[idx + 1] : l;
-            const up = y > 0 ? lum[idx - cols] : l;
-            const down = y < rows - 1 ? lum[idx + cols] : l;
-
-            const edge = Math.hypot(right - left, down - up);
-            const dither = (bayer4[y & 3][x & 3] / 15 - 0.5) * ditherStrength;
-            let signal = clamp01(l * 0.78 + edge * edgeStrength + dither);
-
-            if (fgIsDark) {
-              signal = clamp01(signal * 0.95);
-            }
-
-            const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
-            const ch = chars[charIndex];
-            if (ch !== " ") {
-              const fillStyle = getGlyphFillStyle(l);
-              if (fillStyle !== lastFillStyle) {
-                ctx.fillStyle = fillStyle;
-                lastFillStyle = fillStyle;
-              }
-              ctx.fillText(ch, x * cellW, py);
-            }
-          }
-        }
-      }
-
-      function renderLoop(ts) {
-        if (!activeVideo.paused && !activeVideo.ended && activeVideo.readyState >= 2) {
-          if (ts - lastFrame >= targetFrameMs) {
-            lastFrame = ts;
-            drawAsciiFrame();
-          }
-        }
-        requestAnimationFrame(renderLoop);
-      }
-
-      async function startPlayback() {
-        try {
-          await ensureAudioGraph();
-          await activeVideo.play();
-          startWrap.classList.remove("visible");
-        } catch (err) {
-          startWrap.classList.add("visible");
-        }
-      }
-
-      async function switchToIntro() {
-        if (hasStartedIntro) return;
-        hasStartedIntro = true;
-
-        const playIntro = async () => {
-          setActiveVideo(sourceVideoB);
-          sourceVideoB.currentTime = 0;
-          sourceVideoB.muted = sourceVideoA.muted;
-          sourceVideoA.pause();
-          try {
-            await ensureAudioGraph();
-            await sourceVideoB.play();
-            startWrap.classList.remove("visible");
-          } catch (err) {
-            startWrap.classList.add("visible");
-          }
-        };
-
-        if (sourceVideoB.readyState >= 2) {
-          await playIntro();
-          return;
-        }
-
-        sourceVideoB.addEventListener("loadeddata", () => {
-          void playIntro();
-        }, { once: true });
-      }
-
-      async function primeIntroPlayback() {
-        if (introPrimed || sourceVideoB.readyState < 2) return;
-        introPrimed = true;
-        try {
-          await ensureAudioGraph();
-          sourceVideoB.muted = true;
-          sourceVideoB.currentTime = 0;
-          await sourceVideoB.play();
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-          sourceVideoB.pause();
-          sourceVideoB.currentTime = 0;
-        } catch (err) {
-          sourceVideoB.pause();
-          sourceVideoB.currentTime = 0;
-        }
-      }
-
-      startBtn.addEventListener("click", async () => {
-        activeVideo.muted = false;
-        try {
-          await ensureAudioGraph();
-          await activeVideo.play();
-          startWrap.classList.remove("visible");
-        } catch (err) {
-          activeVideo.muted = true;
-          await startPlayback();
-        }
-        void primeIntroPlayback();
-      });
-
-      window.addEventListener("resize", configureCanvasSize);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", configureCanvasSize);
-      }
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && activeVideo.paused) {
-          startPlayback();
         }
       });
 
-      applyNightTheme();
-      configureCanvasSize();
+      introVideo.src = introVideoPath;
+      introVideo.load();
+      showStartButton();
 
-      const selectedBloom = pickRandomVideo();
-      setActiveVideo(sourceVideoA);
-      sourceVideoA.src = selectedBloom;
-      sourceVideoB.src = introVideoPath;
-      sourceVideoB.load();
-
-      sourceVideoA.addEventListener("loadeddata", () => {
-        startPlayback();
-        void primeIntroPlayback();
+      introVideo.addEventListener("loadeddata", () => {
+        introVideo.classList.add("is-ready");
       }, { once: true });
-      sourceVideoA.addEventListener("timeupdate", () => {
-        if (hasStartedIntro) return;
-        if (!sourceVideoA.duration || sourceVideoA.duration === Infinity) return;
-        const bloomExitTime = sourceVideoA.duration * bloomPlaybackFraction;
-        if (sourceVideoA.currentTime >= Math.max(0, bloomExitTime - introSwitchLeadSeconds)) {
-          void switchToIntro();
-        }
-      });
-      sourceVideoA.addEventListener("ended", () => {
-        void switchToIntro();
-      });
-      sourceVideoB.addEventListener("ended", () => {
-        window.location.href = nextPageUrl;
+
+      ["timeupdate", "seeked", "durationchange"].forEach((eventName) => {
+        introVideo.addEventListener(eventName, () => {
+          evaluateHandoffWindow();
+        });
       });
 
-      requestAnimationFrame(renderLoop);
+      introVideo.addEventListener("ended", () => {
+        if (iframeReady) {
+          completeHandoff();
+          return;
+        }
+        performFallbackNavigation();
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && introStarted && introVideo.paused && !introVideo.ended) {
+          void tryPlayIntro();
+        }
+      });
+
+      introStartButton?.addEventListener("click", () => {
+        void tryPlayIntro();
+      });
     })();
   </script>
 </body>

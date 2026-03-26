@@ -65,12 +65,6 @@
   --ambient-glow: rgba(var(--accent-rgb), 0.2);
   --ambient-scanline: rgba(255, 255, 255, 0.006);
   --ambient-scanline-blend: screen;
-  --theme-control-bg: rgba(10, 10, 12, 0.84);
-  --theme-control-border: rgba(255, 255, 255, 0.1);
-  --theme-control-text: #eefbff;
-  --theme-control-active-bg: rgba(var(--accent-rgb), 0.14);
-  --theme-control-active-border: rgba(var(--accent-rgb), 0.32);
-  --theme-control-active-text: #ccb7c1;
   --discord-card-bg: rgba(9, 9, 12, 0.45);
   --discord-card-border: rgba(255, 255, 255, 0.08);
   --discord-card-shadow: rgba(0, 0, 0, 0.34);
@@ -78,38 +72,11 @@
   --discord-status-idle: #c5a158;
   --discord-status-dnd: #ca6f79;
   --discord-status-offline: #6f7684;
-  --day-plasma-fallback-image: url("/assets/day-plasma-fallback.webp");
 
   --focus-ring: #69c8d4;
   --container-radius: 8px;
   --desktop-hub-design-width: 1300px;
   --desktop-hub-scale: 1;
-}
-
-body[data-theme-resolved="day"] {
-  --page-bg: #ffffff;
-  --page-bg-alt: #ffffff;
-  --surface-bg: rgba(255, 255, 255, 0.92);
-  --surface-bg-strong: rgba(255, 255, 255, 0.98);
-  --surface-border: rgba(26, 26, 32, 0.12);
-  --surface-shadow: rgba(54, 54, 66, 0.18);
-  --text-primary: #2e2e34;
-  --text-secondary: #4b4b55;
-  --text-muted: #6a6a75;
-  --icon-primary: #34343b;
-  --ambient-line: rgba(116, 116, 116, 0.12);
-  --ambient-glow: rgba(160, 160, 160, 0.1);
-  --ambient-scanline: rgba(255, 255, 255, 0);
-  --ambient-scanline-blend: screen;
-  --theme-control-bg: rgba(255, 255, 255, 0.92);
-  --theme-control-border: rgba(26, 26, 32, 0.12);
-  --theme-control-text: #2e2e34;
-  --theme-control-active-bg: rgba(var(--accent-rgb), 0.08);
-  --theme-control-active-border: rgba(var(--accent-rgb), 0.24);
-  --theme-control-active-text: #a65e83;
-  --discord-card-bg: rgba(255, 255, 255, 0.44);
-  --discord-card-border: rgba(26, 26, 32, 0.12);
-  --discord-card-shadow: rgba(68, 68, 82, 0.12);
 }
 
 * {
@@ -453,16 +420,6 @@ body[data-theme-resolved="night"] .site-pointer-arrow::before {
   transition: opacity 220ms ease;
 }
 
-.os-ambient-overlay {
-  position: fixed;
-  inset: 0;
-  overflow: clip;
-  pointer-events: none;
-  z-index: 4;
-  opacity: 1;
-  transition: opacity 220ms ease;
-}
-
 .os-ambient-backdrop::before,
 .os-ambient-backdrop::after {
   content: "";
@@ -501,14 +458,6 @@ body[data-theme-resolved="night"] .site-pointer-arrow::before {
   filter: blur(10px);
 }
 
-.os-ambient-canvas--front {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  opacity: 0.96;
-  mix-blend-mode: multiply;
-}
-
 .os-ambient-backdrop[data-ambient-variant="night"] .os-ambient-canvas--base {
   opacity: 0.96;
   image-rendering: pixelated;
@@ -520,41 +469,7 @@ body[data-theme-resolved="night"] .site-pointer-arrow::before {
   filter: none;
 }
 
-.os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--base {
-  opacity: 1;
-  image-rendering: auto;
-  filter: none;
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--glow {
-  opacity: 0.3;
-  filter: blur(26px);
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"] {
-  background-color: #ffffff;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"]::before {
-  opacity: 0;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"]::after {
-  opacity: 0;
-}
-
 body.site-load-playing .os-ambient-backdrop {
-  opacity: 0;
-}
-
-body.site-load-playing .os-ambient-overlay,
-body[data-theme-resolved="night"] .os-ambient-overlay {
   opacity: 0;
 }
 
@@ -5050,10 +4965,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     filter: drop-shadow(0 0 10px color-mix(in srgb, var(--text-primary) 8%, transparent));
   }
 
-  .steam-theme-toggle {
-    margin: 0 18px 12px;
-  }
-
   .discord-presence-card {
     min-height: 68px;
     padding: 10px;
@@ -5116,23 +5027,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .josie-mobile-audio-player {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + 1rem);
     width: min(430px, calc(100vw - 16px));
-  }
-
-  .site-theme-toggle-anchor {
-    left: max(12px, calc(env(safe-area-inset-left, 0px) + 12px));
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
-  }
-
-  .site-theme-toggle {
-    padding: 6px;
-  }
-
-  .site-theme-toggle-button {
-    min-width: 76px;
-    min-height: 38px;
-    padding: 0 15px;
-    font-size: 10px;
-    letter-spacing: 0.12em;
   }
 
   .josie-mobile-audio-player .josie-audio-player-wave-shell {
@@ -5256,171 +5150,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     height: 210px;
   }
 }
-.steam-theme-toggle {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--theme-control-border);
-  background: var(--theme-control-bg);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--surface-shadow) 56%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-.steam-theme-toggle--compact {
-  margin-bottom: 12px;
-}
-
-.steam-theme-toggle-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.steam-theme-toggle-title,
-.steam-theme-toggle-state {
-  font-size: 12px;
-  line-height: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary);
-}
-
-.steam-theme-toggle-group {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.steam-theme-toggle-button {
-  min-height: 32px;
-  border: 1px solid var(--theme-control-border);
-  background: transparent;
-  color: var(--theme-control-text);
-  font-family: var(--discord-font);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.steam-theme-toggle-button:hover,
-.steam-theme-toggle-button:focus-visible {
-  background: color-mix(in srgb, var(--theme-control-active-bg) 48%, transparent);
-  border-color: var(--theme-control-active-border);
-  color: var(--theme-control-active-text);
-}
-
-.steam-theme-toggle-button.is-active {
-  background: var(--theme-control-active-bg);
-  border-color: var(--theme-control-active-border);
-  color: var(--theme-control-active-text);
-}
-
-.site-theme-toggle-anchor {
-  position: fixed;
-  left: max(18px, calc(env(safe-area-inset-left, 0px) + 18px));
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
-  z-index: 18;
-  pointer-events: none;
-}
-
-.site-theme-toggle {
-  position: relative;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid var(--theme-control-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--theme-control-bg) 92%, transparent);
-  box-shadow:
-    0 18px 40px color-mix(in srgb, var(--surface-shadow) 48%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 10%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.site-theme-toggle::before {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-control-active-bg) 28%, transparent), transparent 60%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-border) 26%, transparent), transparent 72%);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.site-theme-toggle-group {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.site-theme-toggle-button {
-  min-width: 88px;
-  min-height: 42px;
-  padding: 0 18px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--theme-control-text);
-  font-family: var(--discord-font);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    transform 180ms ease,
-    background-color 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.site-theme-toggle-button:hover,
-.site-theme-toggle-button:focus-visible {
-  transform: translateY(-1px);
-  background: color-mix(in srgb, var(--theme-control-active-bg) 54%, transparent);
-  border-color: color-mix(in srgb, var(--theme-control-active-border) 86%, transparent);
-  color: var(--theme-control-active-text);
-}
-
-.site-theme-toggle-button.is-active {
-  transform: translateY(-1px);
-  background: var(--theme-control-active-bg);
-  border-color: var(--theme-control-active-border);
-  color: var(--theme-control-active-text);
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--theme-control-active-bg) 46%, transparent);
-}
-
-.site-theme-toggle-button[data-theme-mode-state="pinned"].is-active {
-  background: color-mix(in srgb, var(--theme-control-active-bg) 74%, transparent);
-  border-color: color-mix(in srgb, var(--theme-control-active-border) 100%, transparent);
-}
-
-body[data-theme-resolved="day"] .site-theme-toggle {
-  background: rgba(255, 255, 255, 0.82);
-}
-
-body[data-theme-resolved="night"] .site-theme-toggle {
-  background: rgba(10, 10, 12, 0.78);
-}
-
 .steam-tagline-panel {
   padding: 8px 10px 0;
 }
@@ -5616,157 +5345,10 @@ body[data-theme-resolved="night"] .site-theme-toggle {
   object-fit: cover;
 }
 
-body[data-theme-resolved="day"] :is(
-  .steam-hero-name,
-  .steam-tagline-text,
-  .steam-sidebar-title,
-  .steam-sidebar-row-title,
-  .steam-sidebar-link,
-  .steam-activity-header-title,
-  .steam-activity-game-title,
-  .lastfm-section-title,
-  .lastfm-track-panel-title,
-  .lastfm-track-panel-section-title,
-  .lastfm-track-panel-related-title,
-  .lastfm-track-panel-similar-title,
-  .lastfm-track-panel-summary,
-  .lastfm-track-panel-summary-link,
-  .lastfm-track-panel-meta,
-  .lastfm-track-panel-track-title,
-  .lastfm-track-panel-track-meta,
-  .external-link-confirm-title,
-  .external-link-confirm-copy,
-  .external-link-confirm-close
-) {
-  color: var(--text-primary);
-  text-shadow: none;
-}
-
-body[data-theme-resolved="day"] :is(
-  .steam-sidebar-panel,
-  .steam-showcase,
-  .steam-showcase--lastfm-minimal,
-  .steam-showcase-summary,
-  .steam-showcase-content,
-  .steam-activity-row-button,
-  .lastfm-track-panel-window,
-  .lastfm-track-panel-preview,
-  .lastfm-track-panel-history-item,
-  .lastfm-track-panel-related-button,
-  .lastfm-track-panel-track-item,
-  .external-link-confirm-window
-) {
-  background: var(--surface-bg-strong);
-  border-color: var(--surface-border);
-  box-shadow: 0 18px 28px var(--surface-shadow);
-}
-
 .social-hub-profile {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-}
-
-body[data-theme-resolved="day"] .steam-hero-shell,
-body[data-theme-resolved="day"] .steam-sidebar-panel,
-body[data-theme-resolved="day"] .steam-showcase,
-body[data-theme-resolved="day"] .steam-showcase--lastfm-minimal,
-body[data-theme-resolved="day"] .steam-showcase-summary,
-body[data-theme-resolved="day"] .steam-showcase-content {
-  backdrop-filter: blur(16px) saturate(112%);
-  -webkit-backdrop-filter: blur(16px) saturate(112%);
-}
-
-body[data-theme-resolved="day"] .steam-hero-shell {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-body[data-theme-resolved="day"] .steam-showcase {
-  --showcase-accent: #4a4a56;
-  --showcase-head-grad-a: rgba(255, 255, 255, 0.98);
-  --showcase-head-grad-b: rgba(245, 245, 249, 0.96);
-  --showcase-shell-grad-a: rgba(255, 255, 255, 0.98);
-  --showcase-shell-grad-b: rgba(246, 246, 250, 0.96);
-  --showcase-summary-grad-a: rgba(255, 255, 255, 0.94);
-  --showcase-summary-grad-b: rgba(244, 244, 248, 0.94);
-  --showcase-content-grad-a: rgba(255, 255, 255, 0.92);
-  --showcase-content-grad-b: rgba(244, 244, 248, 0.92);
-  --showcase-glass-noise-alpha: 0.055;
-  --showcase-glass-caustic-alpha: 0.16;
-  --showcase-glass-caustic-blur: 24px;
-  --showcase-glass-detail-blur: 0.35px;
-  --showcase-glass-tint-a: rgba(255, 255, 255, 0.52);
-  --showcase-glass-tint-b: rgba(255, 255, 255, 0.34);
-  --showcase-glass-tint-c: rgba(245, 245, 249, 0.2);
-  box-shadow:
-    0 22px 40px rgba(10, 10, 14, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(44, 44, 56, 0.06);
-  background: var(--surface-bg-strong);
-}
-
-body[data-theme-resolved="day"] .steam-showcase::before {
-  display: none;
-}
-
-body[data-theme-resolved="day"] .steam-showcase::after {
-  display: none;
-}
-
-body[data-theme-resolved="day"] .steam-showcase--lastfm-minimal {
-  border: 1px solid var(--surface-border);
-  box-shadow: 0 18px 28px rgba(10, 10, 14, 0.16);
-}
-
-body[data-theme-resolved="day"] :is(
-  .steam-showcase-head,
-  .steam-showcase-summary,
-  .steam-showcase-content,
-  .steam-showcase-embed-wrap,
-  .steam-activity-header,
-  .steam-activity-body,
-  .steam-activity-row-button,
-  .steam-stat,
-  .social-item-button,
-  .social-card-empty,
-  .lastfm-track-panel-window,
-  .lastfm-track-panel-preview,
-  .lastfm-track-panel-history-item,
-  .lastfm-track-panel-related-button,
-  .lastfm-track-panel-track-item,
-  .external-link-confirm-window
-) {
-  background-image: none !important;
-}
-
-body[data-theme-resolved="day"] .steam-showcase-head {
-  background: color-mix(in srgb, var(--surface-bg-strong) 98%, #f1f1f5 2%);
-}
-
-body[data-theme-resolved="day"] :is(
-  .steam-showcase-summary,
-  .steam-showcase-content,
-  .steam-showcase-embed-wrap,
-  .steam-activity-header,
-  .steam-activity-body,
-  .steam-activity-row-button,
-  .steam-stat,
-  .social-item-button,
-  .social-card-empty
-) {
-  background: color-mix(in srgb, var(--surface-bg) 96%, #f3f3f7 4%);
-}
-
-body[data-theme-resolved="day"] :is(
-  .steam-sidebar-site-icon,
-  .steam-activity-capsule-fallback,
-  .lastfm-track-panel-close
-) {
-  color: var(--icon-primary);
 }
