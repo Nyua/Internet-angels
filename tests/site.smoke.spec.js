@@ -200,7 +200,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
   await expect(page.locator(".steam-hero-description")).toContainText("The Internet Angel");
-  await expect(page.locator(".steam-theme-toggle")).toHaveCount(0);
+  await expect(page.locator("#site-theme-toggle-anchor .site-theme-toggle")).toHaveCount(1);
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
@@ -392,7 +392,7 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-  await expect(page.locator(".steam-theme-toggle")).toHaveCount(0);
+  await expect(page.locator("#site-theme-toggle-anchor .site-theme-toggle")).toHaveCount(1);
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
   await expect(page.locator(".discord-presence-meta")).toContainText("by idkwhyy");
@@ -440,18 +440,41 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
   expect(["running", "frozen"]).toContain(dayThemeColors.ambientMotion);
   expect(dayThemeColors.overlayCanvasCount).toBe(1);
 
-  await page.evaluate(() => {
-    window.localStorage.setItem("josieThemeMode", "night");
+  const toggleLayout = await page.evaluate(() => {
+    const toggle = document.querySelector("#site-theme-toggle-anchor .site-theme-toggle");
+    if (!(toggle instanceof HTMLElement)) return null;
+    const rect = toggle.getBoundingClientRect();
+    return {
+      left: rect.left,
+      bottomInset: window.innerHeight - rect.bottom,
+      radius: Number.parseFloat(window.getComputedStyle(toggle).borderTopLeftRadius || "0")
+    };
   });
+  expect(toggleLayout).not.toBeNull();
+  expect(toggleLayout.left).toBeLessThan(40);
+  expect(toggleLayout.bottomInset).toBeLessThan(40);
+  expect(toggleLayout.radius).toBeGreaterThan(30);
+
+  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='night']").click();
+  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
   await page.reload();
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
+
+  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='day']").click();
+  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "day");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await page.reload();
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "day");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+
+  await page.locator("#site-theme-toggle-anchor .site-theme-toggle-button[data-theme-mode-choice='day']").click();
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-
-  await page.evaluate(() => {
-    window.localStorage.setItem("josieThemeMode", "auto");
-  });
   await page.reload();
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");

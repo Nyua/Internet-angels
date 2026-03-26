@@ -7,6 +7,7 @@
   var osAmbientCanvas = document.querySelector("#os-ambient-canvas");
   var osAmbientCanvasBase = document.querySelector("#os-ambient-canvas-base");
   var osAmbientCanvasGlow = document.querySelector("#os-ambient-canvas-glow");
+  var siteThemeToggleAnchor = document.querySelector("#site-theme-toggle-anchor");
   var socialHubRoot = document.querySelector("#social-hub-root");
   var socialHubProfile = document.querySelector("#social-hub-profile");
   var socialHubShowcases = document.querySelector("#social-hub-showcases");
@@ -32,7 +33,8 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
-  var JOSIE_THEME_STORAGE_KEY = "josieThemeMode";
+  var JOSIE_THEME_STORAGE_KEY = "josieThemePreference";
+  var JOSIE_THEME_LEGACY_STORAGE_KEY = "josieThemeMode";
   var THEME_MODE_VALUES = /* @__PURE__ */ new Set(["auto", "day", "night"]);
   function normalizeThemeMode(value) {
     const normalized = String(value || "").trim().toLowerCase();
@@ -44,7 +46,12 @@
   }
   function resolveThemeModeFromStorage() {
     try {
-      window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
+      const storedMode = normalizeThemeMode(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY));
+      if (storedMode !== "auto" || String(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY) || "").trim().toLowerCase() === "auto") {
+        window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
+        return storedMode;
+      }
+      window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
       return "auto";
     } catch {
       return "auto";
@@ -52,7 +59,13 @@
   }
   function persistThemeMode(mode) {
     try {
-      window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
+      const normalizedMode = normalizeThemeMode(mode);
+      if (normalizedMode === "auto") {
+        window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(JOSIE_THEME_STORAGE_KEY, normalizedMode);
+      }
+      window.localStorage.removeItem(JOSIE_THEME_LEGACY_STORAGE_KEY);
     } catch {
     }
   }
@@ -2597,6 +2610,59 @@
         </div>
       </section>
     `;
+  }
+  function renderFloatingThemeToggleMarkup(options = {}) {
+    const mode = normalizeThemeMode(options?.mode);
+    const resolvedTheme = String(options?.resolvedTheme || "night").trim().toLowerCase() === "day" ? "day" : "night";
+    const activeTheme = mode === "auto" ? resolvedTheme : mode;
+    const stateLabel = mode === "auto"
+      ? `Following your local time. ${resolvedTheme === "day" ? "Day" : "Night"} is active.`
+      : `Pinned to ${activeTheme === "day" ? "Day" : "Night"}. Click the active mode again to follow local time.`;
+    return `
+      <section class="site-theme-toggle" data-theme-toggle data-theme-mode="${escapeHtml(mode)}" data-theme-resolved="${escapeHtml(resolvedTheme)}" aria-label="Day and night theme toggle" title="${escapeHtml(stateLabel)}">
+        <div class="site-theme-toggle-group" role="group" aria-label="Day and night theme toggle">
+          ${["day", "night"].map((themeMode) => {
+      const label = themeMode === "day" ? "Day" : "Night";
+      const active = activeTheme === themeMode;
+      const pinned = mode === themeMode;
+      const buttonLabel = pinned ? `${label}. Pinned theme. Click again to follow local time.` : active ? `${label}. Active from local time.` : `${label}.`;
+      return `
+              <button
+                class="site-theme-toggle-button${active ? " is-active" : ""}"
+                type="button"
+                data-theme-mode-choice="${themeMode}"
+                data-theme-mode-state="${pinned ? "pinned" : active ? "auto" : "idle"}"
+                aria-pressed="${active ? "true" : "false"}"
+                aria-label="${escapeHtml(buttonLabel)}"
+              >
+                <span class="site-theme-toggle-button-label">${label}</span>
+              </button>
+            `;
+    }).join("")}
+        </div>
+      </section>
+    `;
+  }
+  function syncFloatingThemeToggle() {
+    if (!(siteThemeToggleAnchor instanceof HTMLElement)) return;
+    siteThemeToggleAnchor.innerHTML = renderFloatingThemeToggleMarkup(getThemeRenderState());
+  }
+  function resolveNextThemeMode(requestedMode) {
+    const normalizedMode = normalizeThemeMode(requestedMode);
+    if (normalizedMode === "auto") return "auto";
+    const currentMode = themeController?.getMode?.() || "auto";
+    const resolvedTheme = themeController?.getResolvedTheme?.() || resolveAutoTheme();
+    if (currentMode === normalizedMode) return "auto";
+    if (currentMode === "auto" && resolvedTheme === normalizedMode) return normalizedMode;
+    return normalizedMode;
+  }
+  function onFloatingThemeToggleClick(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const themeToggleButton = target.closest(".site-theme-toggle-button[data-theme-mode-choice]");
+    if (!(themeToggleButton instanceof HTMLButtonElement)) return;
+    event.preventDefault();
+    themeController?.setMode?.(resolveNextThemeMode(themeToggleButton.getAttribute("data-theme-mode-choice") || "auto"));
   }
   function renderHeroDescriptionMarkup() {
     return escapeHtml(HERO_DESCRIPTION_TEXT);
@@ -7164,11 +7230,14 @@
     setReadyState();
     themeController = createThemeController({
       onChange: () => {
+        syncFloatingThemeToggle();
         syncLayoutMode();
       }
     });
+    syncFloatingThemeToggle();
     ambientBackdropController = createAdaptiveAmbientBackdropController();
     siteCursorController = createSiteCursorController();
+    siteThemeToggleAnchor?.addEventListener("click", onFloatingThemeToggleClick);
     await ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();
     if (compactMobileLayoutQuery) {
@@ -7198,6 +7267,7 @@
     ambientBackdropController = null;
     themeController?.dispose?.();
     themeController = null;
+    siteThemeToggleAnchor?.removeEventListener("click", onFloatingThemeToggleClick);
     siteCursorController?.dispose?.();
     siteCursorController = null;
   });
