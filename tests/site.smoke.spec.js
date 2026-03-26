@@ -148,6 +148,34 @@ test("root loads the Egrets Orchard intro page without the ASCII pipeline", asyn
   expect(introState.paused).toBe(true);
 });
 
+test("root skips the intro movie on repeat visits but keeps the fullscreen sound gate", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem(storageKey, "1");
+  }, "internetAngelBloomToDeathIntroSeen");
+  await page.goto("/");
+  await expect(page).toHaveTitle(/BloomToDeath/);
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
+  const repeatVisitState = await page.evaluate(() => {
+    const video = document.querySelector("#introVideo");
+    return {
+      repeatVisit: document.body?.dataset?.bloomToDeathRepeatVisit || "",
+      state: document.body?.dataset?.bloomToDeathState || "",
+      videoHidden: video instanceof HTMLVideoElement ? video.classList.contains("is-hidden") : false,
+      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
+    };
+  });
+  expect(repeatVisitState.repeatVisit).toBe("true");
+  expect(repeatVisitState.state).toBe("preloading_josie");
+  expect(repeatVisitState.videoHidden).toBe(true);
+  expect(repeatVisitState.videoSrcAttr).toBeNull();
+
+  await page.locator("#introStartButton").click();
+  await expect(page).toHaveURL(/\/josie$/);
+  await expect(page).toHaveTitle(/Josie/);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
+});
+
 test("root starts the josie handoff 0.5 seconds early and keeps the intro document alive", async ({ page }) => {
   await page.goto("/");
   await page.locator("#introStartButton").click();
@@ -184,7 +212,7 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   }, null, { timeout: 25_000, polling: 50 });
   const duringHandoff = await duringHandoffHandle.jsonValue();
   expect(duringHandoff).not.toBeNull();
-  expect(duringHandoff.href).toMatch(/\/josie(?:\.html)?$/);
+  expect(duringHandoff.href).toMatch(/\/josie$/);
   expect(duringHandoff.title).toMatch(/Josie/);
   expect(duringHandoff.state).toBe("handoff_visible");
   expect(duringHandoff.ended).toBe(false);
@@ -211,7 +239,7 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
 });
 
 test("root falls back to a hard josie navigation if the handoff iframe never becomes ready", async ({ page }) => {
-  await page.route("**/josie.html?handoff=1", async (route) => {
+  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
     await route.abort();
   });
 
@@ -222,21 +250,41 @@ test("root falls back to a hard josie navigation if the handoff iframe never bec
     node.currentTime = Math.max(0, node.duration - 0.2);
     node.dispatchEvent(new Event("ended"));
   });
-  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveURL(/\/josie$/);
   await expect(page).toHaveTitle(/Josie/);
   await expect(page.locator("#introVideo")).toHaveCount(0);
 });
 
-test("mobile root skips the intro and redirects to josie", async ({ page }) => {
+test("mobile root skips the intro movie but still uses the fullscreen sound gate", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/");
-  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveTitle(/BloomToDeath/);
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  const mobileState = await page.evaluate(() => {
+    const video = document.querySelector("#introVideo");
+    return {
+      skipMovie: document.body?.dataset?.bloomToDeathSkipMovie || "",
+      repeatVisit: document.body?.dataset?.bloomToDeathRepeatVisit || "",
+      state: document.body?.dataset?.bloomToDeathState || "",
+      videoHidden: video instanceof HTMLVideoElement ? video.classList.contains("is-hidden") : false,
+      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
+    };
+  });
+  expect(mobileState.skipMovie).toBe("true");
+  expect(mobileState.repeatVisit).toBe("false");
+  expect(mobileState.state).toBe("preloading_josie");
+  expect(mobileState.videoHidden).toBe(true);
+  expect(mobileState.videoSrcAttr).toBeNull();
+
+  await page.locator("#introStartButton").click();
+  await expect(page).toHaveURL(/\/josie$/);
   await expect(page).toHaveTitle(/Josie/);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
 });
 
 test("next page redirects to josie", async ({ page }) => {
   await page.goto("/next.html");
-  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
+  await expect(page).toHaveURL(/\/josie$/);
   await expect(page).toHaveTitle(/Josie/);
 });
 

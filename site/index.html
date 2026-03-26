@@ -15,7 +15,6 @@
       --intro-card-border: rgba(255, 255, 255, 0.12);
       --intro-card-glow: rgba(255, 255, 255, 0.08);
       --intro-card-copy: rgba(255, 255, 255, 0.96);
-      --intro-card-copy-muted: rgba(255, 255, 255, 0.64);
       --handoff-fade-duration: 220ms;
     }
 
@@ -98,12 +97,11 @@
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 24px;
       background:
-        radial-gradient(circle at center, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.42)),
-        rgba(0, 0, 0, 0.16);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+        radial-gradient(circle at 50% 48%, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.44) 72%),
+        rgba(8, 8, 10, 0.28);
+      backdrop-filter: blur(20px) saturate(115%);
+      -webkit-backdrop-filter: blur(20px) saturate(115%);
       z-index: 5;
     }
 
@@ -114,22 +112,19 @@
     .intro-start-button {
       position: relative;
       display: grid;
-      gap: 14px;
-      width: min(80vw, 720px);
-      min-height: clamp(188px, 28vw, 280px);
-      border: 1px solid var(--intro-border);
-      border-color: var(--intro-card-border);
-      border-radius: 30px;
-      padding: clamp(26px, 4vw, 42px);
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 0;
+      padding: 24px;
       background:
-        linear-gradient(180deg, rgba(36, 36, 40, 0.6), rgba(8, 8, 10, 0.8)),
+        radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.025), transparent 26%),
+        linear-gradient(180deg, rgba(18, 18, 22, 0.34), rgba(4, 4, 6, 0.54)),
         var(--intro-card-bg);
       color: var(--intro-fg);
-      box-shadow:
-        0 34px 80px rgba(0, 0, 0, 0.58),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-      backdrop-filter: blur(26px) saturate(130%);
-      -webkit-backdrop-filter: blur(26px) saturate(130%);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       cursor: pointer;
       overflow: hidden;
       isolation: isolate;
@@ -137,7 +132,6 @@
       place-items: center;
       transition:
         transform 180ms ease,
-        border-color 180ms ease,
         box-shadow 180ms ease,
         background 180ms ease;
     }
@@ -152,94 +146,53 @@
     }
 
     .intro-start-button::before {
-      inset: -10% -6%;
+      inset: -8% -4%;
       background:
-        radial-gradient(circle at 28% 42%, rgba(255, 255, 255, 0.14), transparent 34%),
-        radial-gradient(circle at 62% 50%, rgba(255, 255, 255, 0.08), transparent 24%),
-        radial-gradient(circle at 74% 30%, rgba(255, 255, 255, 0.12), transparent 22%),
-        linear-gradient(125deg, rgba(255, 255, 255, 0.05), transparent 28%, rgba(255, 255, 255, 0.03) 55%, transparent 76%);
-      filter: blur(22px);
-      opacity: 0.95;
-      transform: scale(1.04);
+        radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.4), transparent 22%),
+        radial-gradient(circle at 33% 58%, rgba(255, 255, 255, 0.065), transparent 22%),
+        radial-gradient(circle at 66% 44%, rgba(255, 255, 255, 0.05), transparent 20%),
+        radial-gradient(circle at 52% 70%, rgba(255, 255, 255, 0.04), transparent 18%);
+      filter: blur(48px);
+      opacity: 1;
     }
 
     .intro-start-button::after {
-      inset: 18px;
-      border-radius: 22px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      inset: 0;
       background:
-        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.035), transparent 62%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
-      opacity: 0.92;
+        linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
+        radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.028), transparent 30%);
+      opacity: 1;
     }
 
     .intro-start-button:hover,
     .intro-start-button:focus-visible {
-      transform: translateY(-2px) scale(1.01);
-      border-color: rgba(255, 255, 255, 0.2);
-      box-shadow:
-        0 42px 96px rgba(0, 0, 0, 0.62),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      transform: scale(1.002);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
       outline: none;
     }
 
     .intro-start-card-message {
-      max-width: 18ch;
+      max-width: 19ch;
       color: var(--intro-card-copy);
       font:
         700
-        clamp(22px, 3vw, 34px)
-        / 1.12
+        clamp(28px, 3vw, 44px)
+        / 1.08
         "Space Mono",
         "IBM Plex Mono",
         Consolas,
         Menlo,
         monospace;
-      letter-spacing: 0.015em;
+      letter-spacing: 0.02em;
       text-wrap: balance;
       text-shadow:
-        0 2px 22px rgba(255, 255, 255, 0.08),
-        0 0 1px rgba(255, 255, 255, 0.3);
-    }
-
-    .intro-start-card-caption {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 42px;
-      padding: 0 16px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.055);
-      color: var(--intro-card-copy-muted);
-      font: 700 11px/1 "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      box-shadow: inset 0 1px 0 var(--intro-card-glow);
-    }
-
-    .intro-start-card-caption::before {
-      content: "";
-      width: 8px;
-      height: 8px;
-      margin-right: 10px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.74);
-      box-shadow: 0 0 12px rgba(255, 255, 255, 0.34);
+        0 0 28px rgba(255, 255, 255, 0.08),
+        0 1px 1px rgba(0, 0, 0, 0.32);
     }
 
     @media (max-width: 640px) {
       .intro-start-button {
-        width: min(92vw, 560px);
-        min-height: 180px;
-        border-radius: 24px;
         padding: 24px;
-      }
-
-      .intro-start-card-caption {
-        padding: 0 14px;
-        font-size: 10px;
-        letter-spacing: 0.16em;
       }
     }
 
@@ -287,10 +240,9 @@
       id="introStartButton"
       class="intro-start-button"
       type="button"
-      aria-label="Click for sound. This user is a cat; therefore, meow"
+      aria-label="Start intro audio. This user is a cat; therefore meow."
     >
-      <span class="intro-start-card-message">This user is a cat; therefore, meow</span>
-      <span class="intro-start-card-caption">Click for sound</span>
+      <span class="intro-start-card-message">This user is a cat; therefore meow.</span>
     </button>
   </div>
 
@@ -298,6 +250,8 @@
     (() => {
       const mobileIntroBypassMaxWidthPx = 820;
       const handoffLeadSeconds = 0.5;
+      const repeatVisitHandoffDelayMs = 160;
+      const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Egrets Orchard.mov";
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
@@ -313,6 +267,10 @@
       let handoffVisible = false;
       let handoffCompleted = false;
       let fallbackNavigationTriggered = false;
+      let repeatVisitMode = false;
+      let skipMovieMode = false;
+      let repeatVisitClickArmed = false;
+      let repeatVisitHandoffTimer = 0;
       let state = "idle";
       let monitorRafId = 0;
 
@@ -329,25 +287,54 @@
         return Boolean(mobileMatch || coarsePointerMatch || window.innerWidth <= mobileIntroBypassMaxWidthPx);
       }
 
-      function resolveJosiePath() {
+      function resolveJosieDisplayPath() {
+        return "/josie";
+      }
+
+      function resolveJosieDocumentPath() {
         const isProductionDomain = /(^|\\.)internet-angel\\.net$/i.test(window.location.hostname);
         return isProductionDomain ? "/josie" : "/josie.html";
       }
 
       function resolveJosieUrl() {
-        return new URL(resolveJosiePath(), window.location.origin);
+        return new URL(resolveJosieDisplayPath(), window.location.origin);
+      }
+
+      function resolveJosieDocumentUrl() {
+        return new URL(resolveJosieDocumentPath(), window.location.origin);
       }
 
       function resolveJosieHandoffUrl() {
-        const url = resolveJosieUrl();
+        const url = resolveJosieDocumentUrl();
         url.searchParams.set("handoff", "1");
         return url;
+      }
+
+      function hasSeenIntroBefore() {
+        try {
+          return window.localStorage.getItem(introSeenStorageKey) === "1";
+        } catch {
+          return false;
+        }
+      }
+
+      function markIntroAsSeen() {
+        try {
+          window.localStorage.setItem(introSeenStorageKey, "1");
+        } catch {
+        }
       }
 
       function clearMonitorLoop() {
         if (!monitorRafId) return;
         window.cancelAnimationFrame(monitorRafId);
         monitorRafId = 0;
+      }
+
+      function clearRepeatVisitTimer() {
+        if (!repeatVisitHandoffTimer) return;
+        window.clearTimeout(repeatVisitHandoffTimer);
+        repeatVisitHandoffTimer = 0;
       }
 
       function showStartButton() {
@@ -422,6 +409,7 @@
         handoffCompleted = true;
         setState("handoff_complete");
         clearMonitorLoop();
+        clearRepeatVisitTimer();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
         introVideo?.classList.add("is-hidden");
@@ -440,11 +428,30 @@
         fallbackNavigationTriggered = true;
         setState("handoff_fallback_navigation");
         clearMonitorLoop();
+        clearRepeatVisitTimer();
         window.location.replace(resolveJosieUrl().toString());
+      }
+
+      function beginRepeatVisitHandoff() {
+        if (!repeatVisitClickArmed || handoffCompleted || fallbackNavigationTriggered) return;
+        if (!syncIframeReadyFromDocument()) {
+          setState("handoff_pending");
+          return;
+        }
+        beginVisualHandoff();
+        if (repeatVisitHandoffTimer) return;
+        repeatVisitHandoffTimer = window.setTimeout(() => {
+          repeatVisitHandoffTimer = 0;
+          completeHandoff();
+        }, repeatVisitHandoffDelayMs);
       }
 
       function evaluateHandoffWindow() {
         if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
+        if (skipMovieMode) {
+          beginRepeatVisitHandoff();
+          return;
+        }
         syncIframeReadyFromDocument();
         if (iframeReady && isTransitionWindowOpen()) {
           beginVisualHandoff();
@@ -466,17 +473,24 @@
 
       async function tryPlayIntro() {
         if (!(introVideo instanceof HTMLVideoElement)) return false;
+        preloadJosieFrame();
+        introStarted = true;
+        if (skipMovieMode) {
+          repeatVisitClickArmed = true;
+          beginRepeatVisitHandoff();
+          return true;
+        }
         introVideo.defaultMuted = false;
         introVideo.muted = false;
         try {
           await introVideo.play();
-          introStarted = true;
+          markIntroAsSeen();
           setState("playing_intro");
           hideStartButton();
-          preloadJosieFrame();
           ensureMonitorLoop();
           return true;
         } catch {
+          introStarted = false;
           showStartButton();
           setState("idle");
           return false;
@@ -485,9 +499,14 @@
 
       if (!(introVideo instanceof HTMLVideoElement)) return;
       setState("idle");
-      if (shouldSkipIntro()) {
-        window.location.replace(resolveJosieUrl().toString());
-        return;
+      repeatVisitMode = hasSeenIntroBefore();
+      skipMovieMode = repeatVisitMode || shouldSkipIntro();
+      document.body.dataset.bloomToDeathRepeatVisit = repeatVisitMode ? "true" : "false";
+      document.body.dataset.bloomToDeathSkipMovie = skipMovieMode ? "true" : "false";
+      if (skipMovieMode) {
+        introVideo.classList.add("is-hidden");
+        introVideo.setAttribute("aria-hidden", "true");
+        preloadJosieFrame();
       }
 
       window.addEventListener("message", (event) => {
@@ -496,7 +515,11 @@
         const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
         if (messageType !== introReadyMessageType) return;
         iframeReady = true;
-        if (!handoffVisible && introStarted) {
+        if (!handoffVisible && (introStarted || repeatVisitClickArmed)) {
+          if (skipMovieMode) {
+            beginRepeatVisitHandoff();
+            return;
+          }
           evaluateHandoffWindow();
           if (!handoffVisible && state !== "playing_intro") {
             setState("handoff_pending");
@@ -504,8 +527,10 @@
         }
       });
 
-      introVideo.src = introVideoPath;
-      introVideo.load();
+      if (!skipMovieMode) {
+        introVideo.src = introVideoPath;
+        introVideo.load();
+      }
       showStartButton();
 
       introVideo.addEventListener("loadeddata", () => {
