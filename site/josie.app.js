@@ -44,18 +44,15 @@
   }
   function resolveThemeModeFromStorage() {
     try {
-      return normalizeThemeMode(window.localStorage.getItem(JOSIE_THEME_STORAGE_KEY));
+      window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
+      return "auto";
     } catch {
       return "auto";
     }
   }
   function persistThemeMode(mode) {
     try {
-      if (mode === "auto") {
-        window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
-      } else {
-        window.localStorage.setItem(JOSIE_THEME_STORAGE_KEY, mode);
-      }
+      window.localStorage.removeItem(JOSIE_THEME_STORAGE_KEY);
     } catch {
     }
   }
@@ -5681,7 +5678,7 @@
       activeVariant = nextVariant;
       if (activeVariant === "day") {
         setBackdropState("day", "static", resolveMotionState());
-        activeController = createDayPlasmaBackdropController();
+        activeController = createDayWispBackdropController();
         return;
       }
       setBackdropState("night", "legacy", resolveMotionState());
@@ -5701,13 +5698,15 @@
       }
     };
   }
-  function createDayPlasmaBackdropController() {
+  function createDayWispFallbackController(rendererLabel = "wisps-fallback") {
     if (!(document.body instanceof HTMLElement)) return null;
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
     if (!(osAmbientCanvasBase instanceof HTMLCanvasElement)) return null;
     const baseCanvas = osAmbientCanvasBase;
+    const baseCtx = baseCanvas.getContext("2d", { alpha: true, desynchronized: true });
     const glowCanvas = osAmbientCanvasGlow instanceof HTMLCanvasElement ? osAmbientCanvasGlow : null;
     const glowCtx = glowCanvas?.getContext("2d", { alpha: true, desynchronized: true }) || null;
+    if (!baseCtx) return null;
     let disposed = false;
     let rafId = 0;
     let cssWidth = 0;
@@ -5715,295 +5714,125 @@
     let renderWidth = 0;
     let renderHeight = 0;
     let dpr = 1;
-    let gl = null;
-    let isWebGl2 = false;
-    let program = null;
-    let positionBuffer = null;
-    let positionLocation = -1;
-    let uniformResolutionLocation = null;
-    let uniformTimeLocation = null;
-    let uniformSeedLocation = null;
-    let uniformMotionEnabledLocation = null;
-    let lastFrameMs = 0;
     let startTimeMs = 0;
-    let usingStaticFallback = false;
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
     const fixedSeed = 0.6180339887;
-    const frozenTimeSeconds = 24.6180339887;
+    const frozenTimeSeconds = 18.6180339887;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
+    const wisps = createWisps();
     function setRendererState(renderer, motion) {
       osAmbientBackdrop.setAttribute("data-ambient-variant", "day");
       osAmbientBackdrop.setAttribute("data-ambient-renderer", renderer);
       osAmbientBackdrop.setAttribute("data-ambient-motion", motion);
     }
-    function clearGlowCanvas() {
-      if (!(glowCanvas instanceof HTMLCanvasElement) || !glowCtx) return;
-      if (glowCanvas.width !== renderWidth || glowCanvas.height !== renderHeight) {
-        glowCanvas.width = renderWidth;
-        glowCanvas.height = renderHeight;
-      }
-      glowCtx.setTransform(1, 0, 0, 1, 0, 0);
-      glowCtx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    function seededValue(seed) {
+      const x = Math.sin(seed * 127.1 + fixedSeed * 311.7) * 43758.5453123;
+      return x - Math.floor(x);
     }
-    function destroyRenderer() {
-      if (gl && positionBuffer) {
-        gl.deleteBuffer(positionBuffer);
-      }
-      if (gl && program) {
-        gl.deleteProgram(program);
-      }
-      positionBuffer = null;
-      program = null;
-      positionLocation = -1;
-      uniformResolutionLocation = null;
-      uniformTimeLocation = null;
-      uniformSeedLocation = null;
-      uniformMotionEnabledLocation = null;
-      gl = null;
+    function createWisps() {
+      return Array.from({ length: 8 }, (_, index) => {
+        const row = index / 7;
+        return {
+          y: 0.16 + row * 0.1 + (seededValue(index + 1) - 0.5) * 0.04,
+          amplitudeA: 8 + seededValue(index + 7) * 12,
+          amplitudeB: 4 + seededValue(index + 19) * 10,
+          frequencyA: 1.1 + seededValue(index + 31) * 1.8,
+          frequencyB: 2.2 + seededValue(index + 43) * 2.6,
+          speedA: 0.6 + seededValue(index + 55) * 0.55,
+          speedB: 0.35 + seededValue(index + 67) * 0.35,
+          phaseA: seededValue(index + 79) * Math.PI * 2,
+          phaseB: seededValue(index + 91) * Math.PI * 2,
+          drift: (seededValue(index + 103) - 0.5) * 22,
+          alpha: 0.12 + seededValue(index + 115) * 0.09,
+          width: 0.9 + seededValue(index + 127) * 1.4,
+          glowWidth: 10 + seededValue(index + 139) * 16
+        };
+      });
     }
-    function buildVertexShaderSource(useWebGl2) {
-      if (useWebGl2) {
-        return `#version 300 es
-in vec2 a_position;
-out vec2 v_uv;
-void main() {
-  v_uv = a_position * 0.5 + 0.5;
-  gl_Position = vec4(a_position, 0.0, 1.0);
-}`;
+    function clearCanvas(ctx, canvas) {
+      if (!(canvas instanceof HTMLCanvasElement)) return;
+      if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+        canvas.width = renderWidth;
+        canvas.height = renderHeight;
       }
-      return `
-attribute vec2 a_position;
-varying vec2 v_uv;
-void main() {
-  v_uv = a_position * 0.5 + 0.5;
-  gl_Position = vec4(a_position, 0.0, 1.0);
-}`;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-    function buildFragmentShaderSource(useWebGl2) {
-      const header = useWebGl2
-        ? `#version 300 es
-precision highp float;
-in vec2 v_uv;
-out vec4 outColor;
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform float u_seed;
-uniform float u_motion_enabled;`
-        : `
-precision highp float;
-varying vec2 v_uv;
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform float u_seed;
-uniform float u_motion_enabled;`;
-      const footer = useWebGl2 ? "outColor = vec4(smokeColor, alpha);" : "gl_FragColor = vec4(smokeColor, alpha);";
-      return `${header}
-
-float finiteComponent(float value) {
-  return (value != value || abs(value) > 1.0e6) ? 0.0 : value;
-}
-
-vec3 sanitize(vec3 color) {
-  return vec3(
-    finiteComponent(color.r),
-    finiteComponent(color.g),
-    finiteComponent(color.b)
-  );
-}
-
-void mainImage(out vec4 outputColor, vec2 fragCoord) {
-  vec2 center = u_resolution.xy * 0.5;
-  fragCoord = (fragCoord - center) / 1.1 + center;
-  float timeValue = u_time * 0.2 * step(0.5, u_motion_enabled);
-  float depth = 0.0;
-  vec3 accumulation = vec3(0.0);
-
-  for (float stepIndex = 1.0; stepIndex < 60.0; stepIndex += 1.0) {
-    vec3 ray = depth * normalize(vec3(fragCoord - 0.5 * u_resolution.xy, u_resolution.y));
-    ray.z -= 4.0;
-
-    vec3 origin = ray;
-    float waveTime = ray.y - timeValue;
-    ray.x += 0.4 * (1.0 + ray.y) * sin(waveTime + ray.x * 0.1) * cos(0.34 * waveTime + ray.x * 0.05);
-
-    vec4 twistCos = cos(ray.y + vec4(0.0, 11.0, 33.0, 0.0) - timeValue);
-    mat2 twist = mat2(twistCos.x, twistCos.y, twistCos.z, twistCos.w);
-    vec2 ribbon = twist * ray.xz;
-    ray.xz = ribbon;
-
-    float distanceSample = abs(length(ribbon) - 0.25 * (5.0 + origin.y)) / 3.0 + 0.0008;
-    depth += distanceSample;
-
-    vec4 pulse = 1.0 + sin(origin.y + ray.z * 0.5 + origin.z - length(origin - ray) + vec4(2.0, 1.0, 0.0, 8.0));
-    accumulation += pulse.w / max(distanceSample, 0.00025) * pulse.xyz;
-  }
-  outputColor = vec4(tanh(accumulation / 10000.0), 1.0);
-}
-
-void main() {
-  vec4 plasma = vec4(0.0);
-  mainImage(plasma, gl_FragCoord.xy);
-  vec3 rgb = sanitize(plasma.rgb);
-  float intensity = clamp(length(rgb), 0.0, 1.0);
-  float shell = smoothstep(0.018, 0.16, intensity);
-  float body = smoothstep(0.09, 0.42, intensity);
-  float core = smoothstep(0.22, 0.72, intensity);
-  vec3 smokeColor = mix(vec3(0.74, 0.75, 0.78), vec3(0.46, 0.47, 0.51), body);
-  smokeColor = mix(smokeColor, vec3(0.26, 0.27, 0.3), core * 0.72);
-  smokeColor = mix(vec3(0.88, 0.88, 0.9), smokeColor, shell);
-  float alpha = clamp(shell * 0.12 + body * 0.1 + core * 0.08, 0.0, 0.28);
-  ${footer}
-}`;
-    }
-    function compileShader(shaderType, source) {
-      if (!gl) return null;
-      const shader = gl.createShader(shaderType);
-      if (!shader) return null;
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        return shader;
+    function drawWisp(ctx, wisp, timeSeconds, { glow = false } = {}) {
+      const segments = 72;
+      const startX = -cssWidth * 0.08;
+      const endX = cssWidth * 1.08;
+      ctx.beginPath();
+      for (let index = 0; index <= segments; index += 1) {
+        const progress = index / segments;
+        const x = startX + (endX - startX) * progress;
+        const drift = Math.sin(progress * Math.PI * 2 * wisp.frequencyA + timeSeconds * wisp.speedA + wisp.phaseA) * wisp.amplitudeA;
+        const flutter = Math.sin(progress * Math.PI * 2 * wisp.frequencyB - timeSeconds * wisp.speedB + wisp.phaseB) * wisp.amplitudeB;
+        const taper = 0.35 + 0.65 * Math.sin(progress * Math.PI);
+        const y = cssHeight * wisp.y + drift * taper + flutter * (0.25 + progress * 0.75) + wisp.drift;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
-      gl.deleteShader(shader);
-      return null;
-    }
-    function initializeRenderer() {
-      const contextAttributes = {
-        alpha: true,
-        antialias: false,
-        premultipliedAlpha: false,
-        powerPreference: "high-performance"
-      };
-      const nextGl = baseCanvas.getContext("webgl2", contextAttributes)
-        || baseCanvas.getContext("webgl", contextAttributes)
-        || baseCanvas.getContext("experimental-webgl", contextAttributes);
-      if (!nextGl) {
-        return false;
-      }
-      gl = nextGl;
-      isWebGl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
-      const vertexShader = compileShader(gl.VERTEX_SHADER, buildVertexShaderSource(isWebGl2));
-      const fragmentShader = compileShader(gl.FRAGMENT_SHADER, buildFragmentShaderSource(isWebGl2));
-      if (!vertexShader || !fragmentShader) {
-        if (vertexShader) gl.deleteShader(vertexShader);
-        if (fragmentShader) gl.deleteShader(fragmentShader);
-        destroyRenderer();
-        return false;
-      }
-      const nextProgram = gl.createProgram();
-      if (!nextProgram) {
-        gl.deleteShader(vertexShader);
-        gl.deleteShader(fragmentShader);
-        destroyRenderer();
-        return false;
-      }
-      gl.attachShader(nextProgram, vertexShader);
-      gl.attachShader(nextProgram, fragmentShader);
-      gl.linkProgram(nextProgram);
-      gl.deleteShader(vertexShader);
-      gl.deleteShader(fragmentShader);
-      if (!gl.getProgramParameter(nextProgram, gl.LINK_STATUS)) {
-        gl.deleteProgram(nextProgram);
-        destroyRenderer();
-        return false;
-      }
-      program = nextProgram;
-      positionBuffer = gl.createBuffer();
-      if (!positionBuffer) {
-        destroyRenderer();
-        return false;
-      }
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-        -1, -1,
-        3, -1,
-        -1, 3
-      ]), gl.STATIC_DRAW);
-      positionLocation = gl.getAttribLocation(program, "a_position");
-      uniformResolutionLocation = gl.getUniformLocation(program, "u_resolution");
-      uniformTimeLocation = gl.getUniformLocation(program, "u_time");
-      uniformSeedLocation = gl.getUniformLocation(program, "u_seed");
-      uniformMotionEnabledLocation = gl.getUniformLocation(program, "u_motion_enabled");
-      gl.clearColor(0, 0, 0, 0);
-      return true;
-    }
-    function applyStaticFallback() {
-      if (usingStaticFallback) {
-        setRendererState("static", "frozen");
-        clearGlowCanvas();
-        return;
-      }
-      usingStaticFallback = true;
-      stop();
-      destroyRenderer();
-      clearGlowCanvas();
-      setRendererState("static", "frozen");
-    }
-    function handleContextLost(event) {
-      event.preventDefault();
-      applyStaticFallback();
+      ctx.lineWidth = glow ? wisp.glowWidth : wisp.width;
+      ctx.strokeStyle = glow
+        ? `rgba(160, 160, 160, ${Math.min(0.11, wisp.alpha * 0.72)})`
+        : `rgba(116, 116, 116, ${wisp.alpha})`;
+      ctx.stroke();
     }
     function drawFrame(nowMs, { frozen = false } = {}) {
-      if (disposed || usingStaticFallback || !gl || !program || !positionBuffer) return;
+      if (disposed) return;
       if (!startTimeMs) {
         startTimeMs = nowMs;
       }
       const elapsedSeconds = frozen ? frozenTimeSeconds : Math.max(0, (nowMs - startTimeMs) * 0.001);
-      gl.viewport(0, 0, renderWidth, renderHeight);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.useProgram(program);
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      if (positionLocation >= 0) {
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+      clearCanvas(baseCtx, baseCanvas);
+      if (glowCtx && glowCanvas) {
+        clearCanvas(glowCtx, glowCanvas);
       }
-      if (uniformResolutionLocation) {
-        gl.uniform2f(uniformResolutionLocation, renderWidth, renderHeight);
+      baseCtx.save();
+      baseCtx.scale(dpr, dpr);
+      baseCtx.lineCap = "round";
+      baseCtx.lineJoin = "round";
+      if (glowCtx) {
+        glowCtx.save();
+        glowCtx.scale(dpr, dpr);
+        glowCtx.lineCap = "round";
+        glowCtx.lineJoin = "round";
       }
-      if (uniformTimeLocation) {
-        gl.uniform1f(uniformTimeLocation, elapsedSeconds);
+      wisps.forEach((wisp) => {
+        if (glowCtx) {
+          drawWisp(glowCtx, wisp, elapsedSeconds, { glow: true });
+        }
+        drawWisp(baseCtx, wisp, elapsedSeconds, { glow: false });
+      });
+      baseCtx.restore();
+      if (glowCtx) {
+        glowCtx.restore();
       }
-      if (uniformSeedLocation) {
-        gl.uniform1f(uniformSeedLocation, fixedSeed);
-      }
-      if (uniformMotionEnabledLocation) {
-        gl.uniform1f(uniformMotionEnabledLocation, frozen ? 0 : 1);
-      }
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      clearGlowCanvas();
     }
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
       const compactMobile = isCompactMobileLayout();
-      dpr = Math.max(1, Math.min(compactMobile ? 1 : 1.25, window.devicePixelRatio || 1));
+      dpr = Math.max(1, Math.min(compactMobile ? 1 : 1.5, window.devicePixelRatio || 1));
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
-      if (baseCanvas.width !== renderWidth || baseCanvas.height !== renderHeight) {
-        baseCanvas.width = renderWidth;
-        baseCanvas.height = renderHeight;
-      }
-      clearGlowCanvas();
-      if (gl) {
-        gl.viewport(0, 0, renderWidth, renderHeight);
-      }
-      if (!usingStaticFallback) {
-        drawFrame(performance.now(), { frozen: prefersReducedMotion });
-      }
+      drawFrame(performance.now(), { frozen: prefersReducedMotion });
     }
     function shouldAnimate() {
-      return !usingStaticFallback
-        && !prefersReducedMotion
+      return !prefersReducedMotion
         && !document.hidden
         && !document.body.classList.contains("site-load-playing")
         && Boolean(root?.classList.contains("state-os-ready"));
     }
     function tick(nowMs) {
       rafId = 0;
-      if (disposed || usingStaticFallback) return;
-      lastFrameMs = nowMs;
+      if (disposed) return;
       drawFrame(nowMs, { frozen: false });
       if (shouldAnimate()) {
         rafId = window.requestAnimationFrame(tick);
@@ -6021,12 +5850,8 @@ void main() {
     }
     function sync() {
       if (disposed) return;
-      if (usingStaticFallback) {
-        setRendererState("static", "frozen");
-        return;
-      }
       const motionState = prefersReducedMotion ? "frozen" : "running";
-      setRendererState("webgl", motionState);
+      setRendererState(rendererLabel, motionState);
       if (prefersReducedMotion) {
         stop();
         drawFrame(performance.now(), { frozen: true });
@@ -6038,15 +5863,6 @@ void main() {
         stop();
       }
     }
-    if (!initializeRenderer()) {
-      applyStaticFallback();
-      return {
-        dispose() {
-          disposed = true;
-        }
-      };
-    }
-    baseCanvas.addEventListener("webglcontextlost", handleContextLost, false);
     bodyObserver.observe(document.body, {
       attributes: true,
       attributeFilter: ["class"]
@@ -6069,15 +5885,726 @@ void main() {
         if (disposed) return;
         disposed = true;
         stop();
-        baseCanvas.removeEventListener("webglcontextlost", handleContextLost, false);
         bodyObserver.disconnect();
         window.removeEventListener("resize", resize);
         if (window.visualViewport) {
           window.visualViewport.removeEventListener("resize", resize);
         }
         document.removeEventListener("visibilitychange", sync);
+        clearCanvas(baseCtx, baseCanvas);
+        if (glowCtx && glowCanvas) {
+          clearCanvas(glowCtx, glowCanvas);
+        }
+      }
+    };
+  }
+  function ensureDayAmbientOverlayCanvas() {
+    if (!(osStage instanceof HTMLElement)) return null;
+    let overlay = document.querySelector("#os-ambient-overlay");
+    let canvas = overlay instanceof HTMLElement ? overlay.querySelector("#os-ambient-canvas-front") : null;
+    if (!(overlay instanceof HTMLElement)) {
+      overlay = document.createElement("div");
+      overlay.id = "os-ambient-overlay";
+      overlay.className = "os-ambient-overlay";
+      overlay.setAttribute("aria-hidden", "true");
+      canvas = document.createElement("canvas");
+      canvas.id = "os-ambient-canvas-front";
+      canvas.className = "os-ambient-canvas os-ambient-canvas--front";
+      canvas.setAttribute("aria-hidden", "true");
+      overlay.appendChild(canvas);
+      osStage.appendChild(overlay);
+    }
+    if (!(canvas instanceof HTMLCanvasElement)) return null;
+    overlay.setAttribute("data-ambient-variant", "day");
+    return { overlay, canvas };
+  }
+  function createDayWispBackdropController() {
+    if (!(document.body instanceof HTMLElement)) return null;
+    if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
+    if (!(osAmbientCanvasBase instanceof HTMLCanvasElement)) return null;
+    const overlayParts = ensureDayAmbientOverlayCanvas();
+    if (!overlayParts) {
+      return createDayWispFallbackController();
+    }
+    const baseCanvas = osAmbientCanvasBase;
+    const glowCanvas = osAmbientCanvasGlow instanceof HTMLCanvasElement ? osAmbientCanvasGlow : null;
+    const frontOverlay = overlayParts.overlay;
+    const frontCanvas = overlayParts.canvas;
+    const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    const contextAttributes = {
+      alpha: true,
+      antialias: false,
+      premultipliedAlpha: false,
+      powerPreference: "high-performance"
+    };
+    function createGlContext(canvas) {
+      if (!(canvas instanceof HTMLCanvasElement)) return null;
+      return canvas.getContext("webgl2", contextAttributes)
+        || canvas.getContext("webgl", contextAttributes)
+        || canvas.getContext("experimental-webgl", contextAttributes);
+    }
+    const baseGl = createGlContext(baseCanvas);
+    const frontGl = createGlContext(frontCanvas);
+    if (!baseGl || !frontGl) {
+      frontOverlay.remove();
+      return createDayWispFallbackController();
+    }
+    const glow2d = glowCanvas?.getContext("2d", { alpha: true, desynchronized: true }) || null;
+    let disposed = false;
+    let rafId = 0;
+    let cssWidth = 0;
+    let cssHeight = 0;
+    let renderWidth = 0;
+    let renderHeight = 0;
+    let dpr = 1;
+    let startedAt = 0;
+    let lastFrameAt = 0;
+    let lastObstacleSample = 0;
+    let obstaclesDirty = true;
+    let obstacleRects = [];
+    const bodyObserver = new MutationObserver(() => {
+      obstaclesDirty = true;
+      sync();
+    });
+    const obstacleSelectors = [
+      "#social-hub-profile .steam-hero-shell",
+      "#social-hub-profile-tagline",
+      "#social-hub-sidebar .steam-sidebar-panel",
+      "#social-hub-showcases .steam-showcase",
+      ".discord-presence-panel",
+      ".lastfm-track-panel-window",
+      ".lastfm-artist-panel-window",
+      ".lastfm-album-panel-window",
+      ".external-link-confirm-window"
+    ].join(", ");
+    const pointerState = {
+      x: 0,
+      y: 0,
+      active: false,
+      lastMoveMs: 0,
+      swirlSign: 1
+    };
+    const backWispCount = 34;
+    const frontWispCount = 18;
+    const trailLength = 16;
+    const wisps = [];
+    const bursts = [];
+    function clamp01(value) {
+      return clamp(value, 0, 1);
+    }
+    function seededValue(seed) {
+      const raw = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+      return raw - Math.floor(raw);
+    }
+    function createGlProgram(gl, vertexSource, fragmentSource) {
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        if (!shader) return null;
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(message);
+        }
+        return shader;
+      }
+      const vertexShader = compileShader(gl.VERTEX_SHADER, vertexSource);
+      const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+      const program = gl.createProgram();
+      if (!program || !vertexShader || !fragmentShader) {
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        throw new Error("Unable to create WebGL program");
+      }
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const message = gl.getProgramInfoLog(program) || "Unknown program link error";
+        gl.deleteProgram(program);
+        throw new Error(message);
+      }
+      return program;
+    }
+    function createWispLayerRenderer(gl, canvas) {
+      const sharedVertexSource = `
+        attribute vec2 a_position;
+        attribute vec2 a_uv;
+        attribute float a_alpha;
+        attribute vec3 a_color;
+        uniform vec2 u_resolution;
+        varying vec2 v_uv;
+        varying float v_alpha;
+        varying vec3 v_color;
+        void main() {
+          vec2 zeroToOne = a_position / u_resolution;
+          vec2 clip = zeroToOne * 2.0 - 1.0;
+          gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+          v_uv = a_uv;
+          v_alpha = a_alpha;
+          v_color = a_color;
+        }
+      `;
+      const trailFragmentSource = `
+        precision mediump float;
+        varying vec2 v_uv;
+        varying float v_alpha;
+        varying vec3 v_color;
+        void main() {
+          float edge = 1.0 - smoothstep(0.32, 1.0, abs(v_uv.x));
+          float head = smoothstep(0.0, 0.16, v_uv.y);
+          float tail = 1.0 - smoothstep(0.78, 1.0, v_uv.y);
+          float core = edge * head * tail;
+          float haze = (1.0 - smoothstep(0.65, 1.35, abs(v_uv.x))) * 0.36 * head;
+          float alpha = clamp((core * 1.18 + haze) * v_alpha, 0.0, 1.0);
+          if (alpha <= 0.003) discard;
+          gl_FragColor = vec4(v_color, alpha);
+        }
+      `;
+      const burstFragmentSource = `
+        precision mediump float;
+        varying vec2 v_uv;
+        varying float v_alpha;
+        varying vec3 v_color;
+        void main() {
+          float radius = length(v_uv);
+          float haze = 1.0 - smoothstep(0.0, 1.0, radius);
+          float ring = smoothstep(0.92, 0.48, radius) * (1.0 - smoothstep(0.48, 0.14, radius));
+          float alpha = clamp((haze * 0.42 + ring * 0.92) * v_alpha, 0.0, 1.0);
+          if (alpha <= 0.003) discard;
+          gl_FragColor = vec4(v_color, alpha);
+        }
+      `;
+      const trailProgram = createGlProgram(gl, sharedVertexSource, trailFragmentSource);
+      const burstProgram = createGlProgram(gl, sharedVertexSource, burstFragmentSource);
+      const trailBuffer = gl.createBuffer();
+      const burstBuffer = gl.createBuffer();
+      const trailResolution = gl.getUniformLocation(trailProgram, "u_resolution");
+      const burstResolution = gl.getUniformLocation(burstProgram, "u_resolution");
+      const stride = Float32Array.BYTES_PER_ELEMENT * 8;
+      function configureAttributes(program) {
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        const uvLocation = gl.getAttribLocation(program, "a_uv");
+        const alphaLocation = gl.getAttribLocation(program, "a_alpha");
+        const colorLocation = gl.getAttribLocation(program, "a_color");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, stride, 0);
+        gl.enableVertexAttribArray(uvLocation);
+        gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, stride, Float32Array.BYTES_PER_ELEMENT * 2);
+        gl.enableVertexAttribArray(alphaLocation);
+        gl.vertexAttribPointer(alphaLocation, 1, gl.FLOAT, false, stride, Float32Array.BYTES_PER_ELEMENT * 4);
+        gl.enableVertexAttribArray(colorLocation);
+        gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, stride, Float32Array.BYTES_PER_ELEMENT * 5);
+      }
+      function resizeLayer(nextWidth, nextHeight, nextDpr) {
+        const targetWidth = Math.max(1, Math.round(nextWidth * nextDpr));
+        const targetHeight = Math.max(1, Math.round(nextHeight * nextDpr));
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+        }
+        canvas.style.width = `${nextWidth}px`;
+        canvas.style.height = `${nextHeight}px`;
+        gl.viewport(0, 0, targetWidth, targetHeight);
+      }
+      function clearLayer() {
+        gl.viewport(0, 0, canvas.width || 1, canvas.height || 1);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      function drawVertices(program, buffer, resolutionLocation, data) {
+        if (!(data instanceof Float32Array) || !data.length) return;
+        gl.useProgram(program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+        configureAttributes(program);
+        gl.uniform2f(resolutionLocation, Math.max(1, canvas.width), Math.max(1, canvas.height));
+        gl.drawArrays(gl.TRIANGLES, 0, data.length / 8);
+      }
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      return {
+        resize: resizeLayer,
+        clear: clearLayer,
+        render(trailVertices, burstVertices) {
+          clearLayer();
+          drawVertices(trailProgram, trailBuffer, trailResolution, trailVertices);
+          drawVertices(burstProgram, burstBuffer, burstResolution, burstVertices);
+        },
+        dispose() {
+          gl.deleteBuffer(trailBuffer);
+          gl.deleteBuffer(burstBuffer);
+          gl.deleteProgram(trailProgram);
+          gl.deleteProgram(burstProgram);
+        }
+      };
+    }
+    let baseRenderer = null;
+    let frontRenderer = null;
+    try {
+      baseRenderer = createWispLayerRenderer(baseGl, baseCanvas);
+      frontRenderer = createWispLayerRenderer(frontGl, frontCanvas);
+    } catch (error) {
+      frontOverlay.remove();
+      baseRenderer?.dispose?.();
+      frontRenderer?.dispose?.();
+      return createDayWispFallbackController();
+    }
+    function setRendererState(renderer, motion) {
+      osAmbientBackdrop.setAttribute("data-ambient-variant", "day");
+      osAmbientBackdrop.setAttribute("data-ambient-renderer", renderer);
+      osAmbientBackdrop.setAttribute("data-ambient-motion", motion);
+      frontOverlay.setAttribute("data-ambient-variant", "day");
+      frontOverlay.setAttribute("data-ambient-renderer", renderer);
+      frontOverlay.setAttribute("data-ambient-motion", motion);
+    }
+    function createHistoryPoint(x, y) {
+      return { x, y };
+    }
+    function createWisp(index, layer) {
+      const seed = seededValue(index + 1.73) + index * 0.037;
+      return {
+        id: index,
+        layer,
+        seed,
+        widthBase: 5.5 + seededValue(index + 31) * (layer === "front" ? 3.6 : 4.8),
+        alphaBase: (layer === "front" ? 0.058 : 0.08) + seededValue(index + 71) * 0.03,
+        speed: 48 + seededValue(index + 103) * 24,
+        sway: 14 + seededValue(index + 131) * 32,
+        frequencyA: 0.56 + seededValue(index + 173) * 0.72,
+        frequencyB: 0.38 + seededValue(index + 211) * 0.46,
+        driftSign: seededValue(index + 251) > 0.5 ? 1 : -1,
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        age: 0,
+        lastCollisionMs: 0,
+        lastInteractionMs: 0,
+        history: Array.from({ length: trailLength }, () => createHistoryPoint(0, 0))
+      };
+    }
+    function setWispHistory(wisp, x, y) {
+      for (let index = 0; index < wisp.history.length; index += 1) {
+        wisp.history[index].x = x;
+        wisp.history[index].y = y;
+      }
+    }
+    function resetWisp(wisp, preserveSeed = false) {
+      if (!cssWidth || !cssHeight) return;
+      const laneSeed = seededValue(wisp.id * 3.7 + (preserveSeed ? 19 : performance.now() * 0.0001));
+      const spawnBand = wisp.layer === "front" ? 0.24 : 0.12;
+      wisp.x = cssWidth * (0.08 + laneSeed * 0.84);
+      wisp.y = cssHeight * (1.02 + seededValue(wisp.id + 401) * 0.16 + spawnBand);
+      wisp.vx = (seededValue(wisp.id + 433) - 0.5) * 16;
+      wisp.vy = -(wisp.speed * 0.85);
+      wisp.age = 0;
+      wisp.lastCollisionMs = 0;
+      wisp.lastInteractionMs = 0;
+      setWispHistory(wisp, wisp.x, wisp.y);
+    }
+    function seedWisps() {
+      wisps.length = 0;
+      for (let index = 0; index < backWispCount; index += 1) {
+        wisps.push(createWisp(index, "back"));
+      }
+      for (let index = 0; index < frontWispCount; index += 1) {
+        wisps.push(createWisp(backWispCount + index, "front"));
+      }
+      wisps.forEach((wisp) => {
+        resetWisp(wisp, true);
+      });
+    }
+    function spawnBurst(x, y, layer, kind = "collision", strength = 1) {
+      bursts.push({
+        x,
+        y,
+        layer,
+        kind,
+        radius: kind === "interaction" ? 18 : 12,
+        growth: (kind === "interaction" ? 68 : 42) * (0.72 + strength * 0.5),
+        alpha: (kind === "interaction" ? 0.18 : 0.12) * (0.74 + strength * 0.36),
+        age: 0,
+        maxAge: kind === "interaction" ? 0.58 : 0.42
+      });
+      while (bursts.length > 120) {
+        bursts.shift();
+      }
+    }
+    function clearGlowCanvas() {
+      if (!(glowCanvas instanceof HTMLCanvasElement) || !glow2d) return;
+      const targetWidth = Math.max(1, Math.round(cssWidth * dpr));
+      const targetHeight = Math.max(1, Math.round(cssHeight * dpr));
+      if (glowCanvas.width !== targetWidth || glowCanvas.height !== targetHeight) {
+        glowCanvas.width = targetWidth;
+        glowCanvas.height = targetHeight;
+      }
+      glowCanvas.style.width = `${cssWidth}px`;
+      glowCanvas.style.height = `${cssHeight}px`;
+      glow2d.setTransform(1, 0, 0, 1, 0, 0);
+      glow2d.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    }
+    function drawGlowLayer() {
+      if (!(glowCanvas instanceof HTMLCanvasElement) || !glow2d) return;
+      glow2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      glow2d.clearRect(0, 0, cssWidth, cssHeight);
+      glow2d.globalCompositeOperation = "source-over";
+      wisps.forEach((wisp) => {
+        if (wisp.layer !== "back") return;
+        const head = wisp.history[0];
+        const rise = clamp01(1 - head.y / Math.max(1, cssHeight));
+        const radius = (34 + rise * 88) * (0.9 + seededValue(wisp.id + 509) * 0.4);
+        const gradient = glow2d.createRadialGradient(head.x, head.y, radius * 0.08, head.x, head.y, radius);
+        gradient.addColorStop(0, "rgba(180, 186, 196, 0.035)");
+        gradient.addColorStop(0.4, "rgba(170, 176, 188, 0.022)");
+        gradient.addColorStop(1, "rgba(170, 176, 188, 0)");
+        glow2d.fillStyle = gradient;
+        glow2d.beginPath();
+        glow2d.arc(head.x, head.y, radius, 0, Math.PI * 2);
+        glow2d.fill();
+      });
+    }
+    function collectObstacles(nowMs) {
+      if (!obstaclesDirty && nowMs - lastObstacleSample < 120) return obstacleRects;
+      lastObstacleSample = nowMs;
+      obstaclesDirty = false;
+      obstacleRects = [];
+      const nodes = document.querySelectorAll(obstacleSelectors);
+      nodes.forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        const style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden" || Number.parseFloat(style.opacity || "1") <= 0.03) {
+          return;
+        }
+        const rect = node.getBoundingClientRect();
+        if (rect.width < 46 || rect.height < 24) return;
+        const padding = 12;
+        obstacleRects.push({
+          left: rect.left - padding,
+          right: rect.right + padding,
+          top: rect.top - padding,
+          bottom: rect.bottom + padding
+        });
+      });
+      return obstacleRects;
+    }
+    function nearestPointOnRect(x, y, rect) {
+      return {
+        x: clamp(x, rect.left, rect.right),
+        y: clamp(y, rect.top, rect.bottom)
+      };
+    }
+    function updatePointerActivity(nowMs) {
+      if (!pointerState.active) return;
+      if (nowMs - pointerState.lastMoveMs > 1400) {
+        pointerState.active = false;
+      }
+    }
+    function updateSimulation(deltaSeconds, nowMs) {
+      if (!cssWidth || !cssHeight) return;
+      updatePointerActivity(nowMs);
+      const obstacles = collectObstacles(nowMs);
+      wisps.forEach((wisp) => {
+        const rise = clamp01(1 - wisp.y / Math.max(1, cssHeight));
+        const swayA = Math.sin(nowMs * 0.00125 * wisp.frequencyA + wisp.seed * 12 + wisp.y * 0.006) * (wisp.sway * (0.4 + rise * 0.9));
+        const swayB = Math.cos(nowMs * 0.00175 * wisp.frequencyB - wisp.x * 0.003 + wisp.seed * 19) * (8 + rise * 18);
+        const swayC = Math.sin(nowMs * 0.00085 + wisp.seed * 27 + rise * 5.4) * (6 + rise * 16) * wisp.driftSign;
+        wisp.vx += (swayA + swayB + swayC) * deltaSeconds * 0.68;
+        wisp.vy = -(wisp.speed + rise * 42);
+        const influenceBase = (wisp.layer === "front" ? 56 : 72) + rise * 72;
+        for (let index = 0; index < obstacles.length; index += 1) {
+          const obstacle = obstacles[index];
+          const nearest = nearestPointOnRect(wisp.x, wisp.y, obstacle);
+          let dx = wisp.x - nearest.x;
+          let dy = wisp.y - nearest.y;
+          let distance = Math.hypot(dx, dy);
+          if (distance < 1) {
+            const distancesToEdges = [
+              { axis: "x", value: Math.abs(wisp.x - obstacle.left), sign: -1 },
+              { axis: "x", value: Math.abs(obstacle.right - wisp.x), sign: 1 },
+              { axis: "y", value: Math.abs(wisp.y - obstacle.top), sign: -1 },
+              { axis: "y", value: Math.abs(obstacle.bottom - wisp.y), sign: 1 }
+            ].sort((left, right) => left.value - right.value);
+            const nearestEdge = distancesToEdges[0];
+            if (nearestEdge.axis === "x") {
+              dx = nearestEdge.sign;
+              dy = 0.12;
+            } else {
+              dx = 0.12 * wisp.driftSign;
+              dy = nearestEdge.sign;
+            }
+            distance = Math.hypot(dx, dy);
+          }
+          if (distance >= influenceBase) continue;
+          const strength = Math.pow(1 - distance / influenceBase, 2);
+          const invDistance = 1 / Math.max(1, distance);
+          const awayX = dx * invDistance;
+          const awayY = dy * invDistance;
+          const tangentX = -awayY * wisp.driftSign;
+          const tangentY = awayX * wisp.driftSign;
+          wisp.vx += (awayX * 146 + tangentX * 84) * strength * deltaSeconds;
+          if (awayY > -0.2) {
+            wisp.vy += awayY * 24 * strength;
+          }
+          if (nowMs - wisp.lastCollisionMs > 160 && strength > 0.54) {
+            spawnBurst(nearest.x, nearest.y, wisp.layer, "collision", strength);
+            wisp.lastCollisionMs = nowMs;
+          }
+        }
+        if (pointerState.active) {
+          const dx = wisp.x - pointerState.x;
+          const dy = wisp.y - pointerState.y;
+          const distance = Math.hypot(dx, dy);
+          const pointerRadius = wisp.layer === "front" ? 110 : 92;
+          if (distance < pointerRadius) {
+            const strength = Math.pow(1 - distance / pointerRadius, 2);
+            const inverseDistance = 1 / Math.max(8, distance);
+            const tangentX = -dy * inverseDistance * pointerState.swirlSign;
+            const tangentY = dx * inverseDistance * pointerState.swirlSign;
+            wisp.vx += (tangentX * 96 + dx * inverseDistance * 28) * strength * deltaSeconds;
+            wisp.vy += tangentY * 16 * strength;
+            if (nowMs - wisp.lastInteractionMs > 190 && strength > 0.65) {
+              spawnBurst(pointerState.x, pointerState.y, "front", "interaction", strength);
+              wisp.lastInteractionMs = nowMs;
+            }
+          }
+        }
+        wisp.vx *= Math.exp(-deltaSeconds * 2.2);
+        wisp.age += deltaSeconds;
+        wisp.x += wisp.vx * deltaSeconds;
+        wisp.y += wisp.vy * deltaSeconds;
+        for (let index = trailLength - 1; index > 0; index -= 1) {
+          wisp.history[index].x = wisp.history[index - 1].x;
+          wisp.history[index].y = wisp.history[index - 1].y;
+        }
+        wisp.history[0].x = wisp.x;
+        wisp.history[0].y = wisp.y;
+        if (wisp.y < -cssHeight * 0.22 || wisp.x < -cssWidth * 0.24 || wisp.x > cssWidth * 1.24 || wisp.age > 16) {
+          resetWisp(wisp);
+        }
+      });
+      for (let index = bursts.length - 1; index >= 0; index -= 1) {
+        const burst = bursts[index];
+        burst.age += deltaSeconds;
+        if (burst.age >= burst.maxAge) {
+          bursts.splice(index, 1);
+        }
+      }
+    }
+    function pushQuad(vertices, x0, y0, x1, y1, x2, y2, x3, y3, alpha, color, uvMinX, uvMaxX, uvMinY, uvMaxY) {
+      vertices.push(
+        x0, y0, uvMinX, uvMinY, alpha, color[0], color[1], color[2],
+        x1, y1, uvMaxX, uvMinY, alpha, color[0], color[1], color[2],
+        x2, y2, uvMinX, uvMaxY, alpha, color[0], color[1], color[2],
+        x2, y2, uvMinX, uvMaxY, alpha, color[0], color[1], color[2],
+        x1, y1, uvMaxX, uvMinY, alpha, color[0], color[1], color[2],
+        x3, y3, uvMaxX, uvMaxY, alpha, color[0], color[1], color[2]
+      );
+    }
+    function buildGeometryForLayer(layer) {
+      const trailVertices = [];
+      const burstVertices = [];
+      const color = layer === "front" ? [0.42, 0.42, 0.46] : [0.48, 0.49, 0.53];
+      wisps.forEach((wisp) => {
+        if (wisp.layer !== layer) return;
+        for (let index = 0; index < trailLength - 1; index += 1) {
+          const pointA = wisp.history[index];
+          const pointB = wisp.history[index + 1];
+          const dx = pointB.x - pointA.x;
+          const dy = pointB.y - pointA.y;
+          const length = Math.hypot(dx, dy);
+          if (length < 0.9) continue;
+          const ageT = index / Math.max(1, trailLength - 2);
+          const rise = clamp01(1 - (pointA.y + pointB.y) * 0.5 / Math.max(1, cssHeight));
+          const width = wisp.widthBase * (0.22 + rise * 1.2) * (1 - ageT * 0.42);
+          const alpha = wisp.alphaBase * (0.42 + rise * 0.9) * (1 - ageT * 0.5);
+          const nx = -dy / length;
+          const ny = dx / length;
+          const x0 = pointA.x + nx * width;
+          const y0 = pointA.y + ny * width;
+          const x1 = pointA.x - nx * width;
+          const y1 = pointA.y - ny * width;
+          const x2 = pointB.x + nx * width * 1.08;
+          const y2 = pointB.y + ny * width * 1.08;
+          const x3 = pointB.x - nx * width * 1.08;
+          const y3 = pointB.y - ny * width * 1.08;
+          pushQuad(trailVertices, x0, y0, x1, y1, x2, y2, x3, y3, alpha, color, -1, 1, 0, 1);
+        }
+      });
+      bursts.forEach((burst) => {
+        if (burst.layer !== layer) return;
+        const lifeT = clamp01(burst.age / burst.maxAge);
+        const size = burst.radius + burst.growth * lifeT;
+        const alpha = burst.alpha * (1 - lifeT);
+        const burstColor = burst.kind === "interaction" ? [0.54, 0.54, 0.6] : [0.48, 0.48, 0.54];
+        pushQuad(
+          burstVertices,
+          burst.x - size, burst.y - size,
+          burst.x + size, burst.y - size,
+          burst.x - size, burst.y + size,
+          burst.x + size, burst.y + size,
+          alpha,
+          burstColor,
+          -1,
+          1,
+          -1,
+          1
+        );
+      });
+      return {
+        trail: trailVertices.length ? new Float32Array(trailVertices) : new Float32Array(0),
+        bursts: burstVertices.length ? new Float32Array(burstVertices) : new Float32Array(0)
+      };
+    }
+    function drawFrame(nowMs, { frozen = false } = {}) {
+      if (disposed) return;
+      if (!startedAt) {
+        startedAt = nowMs;
+      }
+      const deltaSeconds = frozen ? 0 : clamp((nowMs - (lastFrameAt || nowMs)) * 0.001, 0.001, 0.04);
+      lastFrameAt = nowMs;
+      if (!frozen) {
+        updateSimulation(deltaSeconds, nowMs);
+      }
+      baseRenderer.resize(cssWidth, cssHeight, dpr);
+      frontRenderer.resize(cssWidth, cssHeight, dpr);
+      clearGlowCanvas();
+      drawGlowLayer();
+      const backGeometry = buildGeometryForLayer("back");
+      const frontGeometry = buildGeometryForLayer("front");
+      baseRenderer.render(backGeometry.trail, backGeometry.bursts);
+      frontRenderer.render(frontGeometry.trail, frontGeometry.bursts);
+    }
+    function resize() {
+      cssWidth = Math.max(1, Math.round(window.innerWidth));
+      cssHeight = Math.max(1, Math.round(window.innerHeight));
+      const compactMobile = isCompactMobileLayout();
+      dpr = Math.max(1, Math.min(compactMobile ? 1 : 1.25, window.devicePixelRatio || 1));
+      renderWidth = Math.max(1, Math.round(cssWidth * dpr));
+      renderHeight = Math.max(1, Math.round(cssHeight * dpr));
+      obstaclesDirty = true;
+      if (!wisps.length) {
+        seedWisps();
+      } else {
+        wisps.forEach((wisp) => resetWisp(wisp, true));
+      }
+      drawFrame(performance.now(), { frozen: prefersReducedMotion });
+    }
+    function shouldAnimate() {
+      return !prefersReducedMotion
+        && !document.hidden
+        && !document.body.classList.contains("site-load-playing")
+        && Boolean(root?.classList.contains("state-os-ready"));
+    }
+    function stop() {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+    }
+    function tick(nowMs) {
+      rafId = 0;
+      if (disposed) return;
+      drawFrame(nowMs, { frozen: false });
+      if (shouldAnimate()) {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    }
+    function start() {
+      if (rafId || !shouldAnimate()) return;
+      rafId = window.requestAnimationFrame(tick);
+    }
+    function sync() {
+      if (disposed) return;
+      const motionState = prefersReducedMotion ? "frozen" : "running";
+      setRendererState("webgl-wisps", motionState);
+      if (prefersReducedMotion) {
+        stop();
+        drawFrame(performance.now(), { frozen: true });
+        return;
+      }
+      if (shouldAnimate()) {
+        start();
+      } else {
+        stop();
+      }
+    }
+    function markObstaclesDirty() {
+      obstaclesDirty = true;
+    }
+    function handlePointerMove(event) {
+      if (!(event instanceof PointerEvent)) return;
+      pointerState.x = event.clientX;
+      pointerState.y = event.clientY;
+      pointerState.active = true;
+      pointerState.lastMoveMs = performance.now();
+      pointerState.swirlSign = event.clientX >= cssWidth * 0.5 ? 1 : -1;
+    }
+    function handlePointerOut(event) {
+      if (!(event instanceof PointerEvent)) return;
+      if (event.relatedTarget) return;
+      pointerState.active = false;
+    }
+    function handlePointerDown(event) {
+      if (!(event instanceof PointerEvent)) return;
+      pointerState.x = event.clientX;
+      pointerState.y = event.clientY;
+      pointerState.active = true;
+      pointerState.lastMoveMs = performance.now();
+      pointerState.swirlSign = event.clientX >= cssWidth * 0.5 ? 1 : -1;
+      spawnBurst(pointerState.x, pointerState.y, "front", "interaction", 1);
+    }
+    bodyObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+    if (root instanceof HTMLElement) {
+      bodyObserver.observe(root, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
+    window.addEventListener("resize", resize, { passive: true });
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("pointerdown", handlePointerDown, { passive: true });
+    window.addEventListener("pointerout", handlePointerOut, { passive: true });
+    window.addEventListener("scroll", markObstaclesDirty, { passive: true, capture: true });
+    osStage?.addEventListener("scroll", markObstaclesDirty, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", resize);
+      window.visualViewport.addEventListener("scroll", markObstaclesDirty);
+    }
+    document.addEventListener("visibilitychange", sync);
+    resize();
+    sync();
+    return {
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        stop();
+        bodyObserver.disconnect();
+        window.removeEventListener("resize", resize);
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerdown", handlePointerDown);
+        window.removeEventListener("pointerout", handlePointerOut);
+        window.removeEventListener("scroll", markObstaclesDirty, true);
+        osStage?.removeEventListener("scroll", markObstaclesDirty);
+        if (window.visualViewport) {
+          window.visualViewport.removeEventListener("resize", resize);
+          window.visualViewport.removeEventListener("scroll", markObstaclesDirty);
+        }
+        document.removeEventListener("visibilitychange", sync);
+        baseRenderer.clear();
+        frontRenderer.clear();
         clearGlowCanvas();
-        destroyRenderer();
+        baseRenderer.dispose();
+        frontRenderer.dispose();
+        frontOverlay.remove();
       }
     };
   }

@@ -148,6 +148,7 @@ test("next page redirects to josie", async ({ page }) => {
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   const avatarManifestResponse = await request.get("/assets/avatar-manifest.json");
   expect(avatarManifestResponse.status()).toBe(200);
   const avatarManifest = await avatarManifestResponse.json();
@@ -419,6 +420,7 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
     const activityTitle = document.querySelector(".steam-activity-header-title");
     const accentTitle = document.querySelector(".steam-sidebar-row-title");
     const ambientBackdrop = document.querySelector("#os-ambient-backdrop");
+    const ambientOverlay = document.querySelector("#os-ambient-overlay");
     const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
     return {
       heroName: colorOf(heroName),
@@ -426,25 +428,26 @@ test("josie defaults to auto day theme, persists manual overrides, and renders t
       accentTitle: colorOf(accentTitle),
       pageBg: window.getComputedStyle(document.body).getPropertyValue("--page-bg").trim(),
       ambientRenderer: ambientBackdrop?.getAttribute("data-ambient-renderer") || "",
-      ambientMotion: ambientBackdrop?.getAttribute("data-ambient-motion") || ""
+      ambientMotion: ambientBackdrop?.getAttribute("data-ambient-motion") || "",
+      overlayCanvasCount: ambientOverlay?.querySelectorAll("canvas").length || 0
     };
   });
   expect(dayThemeColors.heroName).toBe("rgb(46, 46, 52)");
   expect(dayThemeColors.activityTitle).toBe("rgb(46, 46, 52)");
   expect(dayThemeColors.accentTitle).toBe("rgb(240, 144, 194)");
-  expect(dayThemeColors.pageBg).toBe("#d0d0d4");
-  expect(["webgl", "static"]).toContain(dayThemeColors.ambientRenderer);
+  expect(dayThemeColors.pageBg).toBe("#ffffff");
+  expect(dayThemeColors.ambientRenderer).toBe("webgl-wisps");
   expect(["running", "frozen"]).toContain(dayThemeColors.ambientMotion);
+  expect(dayThemeColors.overlayCanvasCount).toBe(1);
 
   await page.evaluate(() => {
     window.localStorage.setItem("josieThemeMode", "night");
   });
   await page.reload();
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "night");
-  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-mode", "auto");
+  await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
 
   await page.evaluate(() => {
     window.localStorage.setItem("josieThemeMode", "auto");
@@ -470,12 +473,8 @@ test("josie defaults to auto night theme from the local clock", async ({ page })
 });
 
 test("josie day ambient freezes for reduced motion", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("josieThemeMode", "day");
-    } catch {}
-  });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
@@ -483,19 +482,18 @@ test("josie day ambient freezes for reduced motion", async ({ page }) => {
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
 
   const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
-  expect(["webgl", "static"]).toContain(renderer);
+  expect(renderer).toBe("webgl-wisps");
+  await expect(page.locator("#os-ambient-overlay")).toHaveCount(1);
 });
 
-test("josie day ambient falls back to the static plasma asset when WebGL is unavailable", async ({ page }) => {
+test("josie day ambient falls back cleanly when WebGL is unavailable", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
   await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("josieThemeMode", "day");
-    } catch {}
     const originalGetContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function patchedGetContext(type, ...args) {
       if (
         this instanceof HTMLCanvasElement
-        && this.id === "os-ambient-canvas-base"
+        && (this.id === "os-ambient-canvas-base" || this.id === "os-ambient-canvas-front")
         && (type === "webgl2" || type === "webgl" || type === "experimental-webgl")
       ) {
         return null;
@@ -507,27 +505,24 @@ test("josie day ambient falls back to the static plasma asset when WebGL is unav
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "static");
-  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
-
-  const backgroundImage = await page.locator("#os-ambient-backdrop").evaluate((node) => window.getComputedStyle(node).backgroundImage);
-  expect(backgroundImage).toContain("day-plasma-fallback.webp");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "wisps-fallback");
+  await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
+  await expect(page.locator("#os-ambient-overlay")).toHaveCount(0);
 });
 
 test("josie day ambient renders on mobile without overflow", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 10 });
   await page.setViewportSize({ width: 393, height: 852 });
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("josieThemeMode", "day");
-    } catch {}
-  });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "day");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "day");
 
   const renderer = await page.locator("#os-ambient-backdrop").getAttribute("data-ambient-renderer");
-  expect(["webgl", "static"]).toContain(renderer);
+  expect(["webgl-wisps", "wisps-fallback"]).toContain(renderer);
+  if (renderer === "webgl-wisps") {
+    await expect(page.locator("#os-ambient-overlay")).toHaveCount(1);
+  }
 
   const overflowState = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -725,6 +720,7 @@ test("josie mobile uses the docked desktop player shell", async ({ page }) => {
 });
 
 test("josie shows loved, monthly rank, and discovery context for Last.fm tracks", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   const nowIso = new Date().toISOString();
   const oneHourAgoUts = String(Math.floor(Date.now() / 1000) - 60 * 60);
 
@@ -855,6 +851,7 @@ test("josie shows loved, monthly rank, and discovery context for Last.fm tracks"
 });
 
 test("josie opens a track details panel for Last.fm rows and reuses it for related tracks", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   const apiRequests = [];
   page.on("request", (request) => {
     const url = request.url();

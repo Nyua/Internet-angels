@@ -87,8 +87,8 @@
 }
 
 body[data-theme-resolved="day"] {
-  --page-bg: #d0d0d4;
-  --page-bg-alt: #c7c7cb;
+  --page-bg: #ffffff;
+  --page-bg-alt: #ffffff;
   --surface-bg: rgba(255, 255, 255, 0.92);
   --surface-bg-strong: rgba(255, 255, 255, 0.98);
   --surface-border: rgba(26, 26, 32, 0.12);
@@ -97,9 +97,9 @@ body[data-theme-resolved="day"] {
   --text-secondary: #4b4b55;
   --text-muted: #6a6a75;
   --icon-primary: #34343b;
-  --ambient-line: rgba(255, 255, 255, 0.008);
-  --ambient-glow: rgba(255, 255, 255, 0.05);
-  --ambient-scanline: rgba(255, 255, 255, 0.008);
+  --ambient-line: rgba(116, 116, 116, 0.12);
+  --ambient-glow: rgba(160, 160, 160, 0.1);
+  --ambient-scanline: rgba(255, 255, 255, 0);
   --ambient-scanline-blend: screen;
   --theme-control-bg: rgba(255, 255, 255, 0.92);
   --theme-control-border: rgba(26, 26, 32, 0.12);
@@ -422,6 +422,16 @@ body.has-custom-cursor.has-system-pointer * {
   transition: opacity 220ms ease;
 }
 
+.os-ambient-overlay {
+  position: fixed;
+  inset: 0;
+  overflow: clip;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
 .os-ambient-backdrop::before,
 .os-ambient-backdrop::after {
   content: "";
@@ -460,6 +470,14 @@ body.has-custom-cursor.has-system-pointer * {
   filter: blur(10px);
 }
 
+.os-ambient-canvas--front {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.82;
+  mix-blend-mode: multiply;
+}
+
 .os-ambient-backdrop[data-ambient-variant="night"] .os-ambient-canvas--base {
   opacity: 0.96;
   image-rendering: pixelated;
@@ -478,12 +496,12 @@ body.has-custom-cursor.has-system-pointer * {
 }
 
 .os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--glow {
-  opacity: 0;
-  filter: none;
+  opacity: 0.24;
+  filter: blur(26px);
 }
 
 .os-ambient-backdrop[data-ambient-variant="day"] {
-  background-color: #d0d0d4;
+  background-color: #ffffff;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -497,29 +515,15 @@ body.has-custom-cursor.has-system-pointer * {
 }
 
 .os-ambient-backdrop[data-ambient-variant="day"]::after {
-  opacity: 1;
-  background:
-    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.024), rgba(255, 255, 255, 0) 34%),
-    radial-gradient(circle at 50% 54%, rgba(0, 0, 0, 0.045), rgba(0, 0, 0, 0) 60%);
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"][data-ambient-renderer="static"] {
-  background-image:
-    radial-gradient(circle at 22% 22%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 30%),
-    radial-gradient(circle at 78% 20%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 24%),
-    radial-gradient(circle at 46% 68%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 34%),
-    var(--day-plasma-fallback-image);
-  background-blend-mode: screen, screen, screen, normal;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
-.os-ambient-backdrop[data-ambient-variant="day"][data-ambient-renderer="static"] .os-ambient-canvas--base {
   opacity: 0;
 }
 
 body.site-load-playing .os-ambient-backdrop {
+  opacity: 0;
+}
+
+body.site-load-playing .os-ambient-overlay,
+body[data-theme-resolved="night"] .os-ambient-overlay {
   opacity: 0;
 }
 
