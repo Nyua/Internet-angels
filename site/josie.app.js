@@ -5968,22 +5968,18 @@
     });
     const obstacleSelectors = [
       "#social-hub-profile .steam-hero-shell",
+      "#social-hub-profile .steam-hero-avatar-wrap",
+      "#social-hub-profile .steam-hero-avatar",
       "#social-hub-profile-tagline",
       "#social-hub-sidebar .steam-sidebar-panel",
-      "#social-hub-showcases .steam-showcase",
+      "#social-hub-showcases .steam-showcase:not(.steam-showcase--lastfm-minimal)",
+      "#social-hub-showcases .steam-showcase--lastfm-minimal .lastfm-section",
       ".discord-presence-panel",
       ".lastfm-track-panel-window",
       ".lastfm-artist-panel-window",
       ".lastfm-album-panel-window",
       ".external-link-confirm-window"
     ].join(", ");
-    const pointerState = {
-      x: 0,
-      y: 0,
-      active: false,
-      lastMoveMs: 0,
-      swirlSign: 1
-    };
     const defaultTrailLength = 16;
     const backWashCount = 22;
     const backLineCount = 16;
@@ -6188,10 +6184,10 @@
         kind,
         seed,
         widthBase: isLine
-          ? 0.92 + seededValue(index + 31) * (layer === "front" ? 1.34 : 1.56)
+          ? 1.08 + seededValue(index + 31) * (layer === "front" ? 1.52 : 1.72)
           : 5.4 + seededValue(index + 31) * (layer === "front" ? 3.4 : 4.6),
         alphaBase: isLine
-          ? (layer === "front" ? 0.2 : 0.16) + seededValue(index + 71) * 0.055
+          ? (layer === "front" ? 0.24 : 0.19) + seededValue(index + 71) * 0.07
           : (layer === "front" ? 0.05 : 0.072) + seededValue(index + 71) * 0.026,
         speed: isLine
           ? 132 + seededValue(index + 103) * 92
@@ -6215,6 +6211,9 @@
         targetSpeed: 0,
         nextIntentAt: 0,
         wanderPhase: seededValue(index + 307) * Math.PI * 2,
+        originSide: "left",
+        targetX: 0,
+        targetY: 0,
         x: 0,
         y: 0,
         vx: 0,
@@ -6232,15 +6231,30 @@
         wisp.history[index].y = y;
       }
     }
+    function retargetLineGoal(wisp, nowMs, reason = "autonomy") {
+      if (wisp.kind !== "line") return;
+      const rollA = seededValue(wisp.id * 17.17 + nowMs * 0.00031 + wisp.seed * 41.2);
+      const rollB = seededValue(wisp.id * 23.41 + nowMs * 0.00017 + wisp.seed * 19.4);
+      const interiorMinX = cssWidth * 0.18;
+      const interiorMaxX = cssWidth * 0.82;
+      const travelDepth = reason === "collision" ? 0.52 : 0.68;
+      if (wisp.originSide === "left") {
+        wisp.targetX = interiorMinX + (interiorMaxX - interiorMinX) * (travelDepth + rollA * (1 - travelDepth));
+      } else {
+        wisp.targetX = interiorMinX + (interiorMaxX - interiorMinX) * (rollA * (1 - travelDepth));
+      }
+      wisp.targetY = cssHeight * (0.12 + rollB * 0.72);
+    }
     function retargetWisp(wisp, nowMs, reason = "autonomy") {
       if (wisp.kind !== "line") return;
+      retargetLineGoal(wisp, nowMs, reason);
       const baseRoll = seededValue(wisp.id * 17.17 + nowMs * 0.00031 + wisp.seed * 41.2);
       const sweepRoll = seededValue(wisp.id * 23.41 + nowMs * 0.00017 + wisp.seed * 19.4);
-      const upwardBase = -Math.PI / 2;
-      const lateralBias = wisp.routeBias * (0.16 + sweepRoll * 0.46);
-      const sweep = (baseRoll - 0.5) * (reason === "collision" ? 2.3 : 1.48);
-      const climbCurl = Math.sin(nowMs * 0.0012 + wisp.seed * 29.1 + wisp.y * 0.004) * (0.12 + wisp.autonomy * 0.36);
-      wisp.targetHeading = wrapAngle(upwardBase + lateralBias + sweep + climbCurl);
+      const towardGoal = Math.atan2(wisp.targetY - wisp.y, wisp.targetX - wisp.x);
+      const lateralBias = wisp.routeBias * (0.08 + sweepRoll * 0.24);
+      const sweep = (baseRoll - 0.5) * (reason === "collision" ? 1.42 : 0.96);
+      const curl = Math.sin(nowMs * 0.0012 + wisp.seed * 29.1 + wisp.y * 0.004) * (0.18 + wisp.autonomy * 0.42);
+      wisp.targetHeading = wrapAngle(towardGoal + lateralBias + sweep + curl);
       wisp.targetSpeed = wisp.speed * (reason === "collision"
         ? 0.88 + sweepRoll * 0.62
         : 0.56 + sweepRoll * 0.86);
@@ -6256,27 +6270,25 @@
       const spawnMargin = 42 + seededValue(wisp.id + 389) * 48;
       if (wisp.kind === "line") {
         const edgeRoll = seededValue(wisp.id + (preserveSeed ? 421 : performance.now() * 0.0003));
-        if (edgeRoll < 0.42) {
-          wisp.x = cssWidth * (0.04 + laneSeed * 0.92);
-          wisp.y = cssHeight + spawnMargin;
-          wisp.vx = (seededValue(wisp.id + 433) - 0.5) * 36;
-          wisp.vy = -(wisp.speed * (0.86 + seededValue(wisp.id + 449) * 0.12));
-        } else if (edgeRoll < 0.7) {
+        if (edgeRoll < 0.5) {
+          wisp.originSide = "left";
           wisp.x = -spawnMargin;
           wisp.y = cssHeight * (0.08 + laneSeed * 0.78);
-          wisp.vx = wisp.speed * (0.54 + seededValue(wisp.id + 467) * 0.16);
-          wisp.vy = -(wisp.speed * (0.14 + seededValue(wisp.id + 479) * 0.24));
+          wisp.vx = wisp.speed * (0.76 + seededValue(wisp.id + 467) * 0.22);
+          wisp.vy = (seededValue(wisp.id + 479) - 0.5) * 28;
         } else {
+          wisp.originSide = "right";
           wisp.x = cssWidth + spawnMargin;
           wisp.y = cssHeight * (0.08 + laneSeed * 0.78);
-          wisp.vx = -wisp.speed * (0.54 + seededValue(wisp.id + 491) * 0.16);
-          wisp.vy = -(wisp.speed * (0.14 + seededValue(wisp.id + 503) * 0.24));
+          wisp.vx = -wisp.speed * (0.76 + seededValue(wisp.id + 491) * 0.22);
+          wisp.vy = (seededValue(wisp.id + 503) - 0.5) * 28;
         }
         wisp.heading = Math.atan2(wisp.vy, wisp.vx);
         wisp.targetHeading = wisp.heading;
         wisp.currentSpeed = Math.hypot(wisp.vx, wisp.vy);
         wisp.targetSpeed = wisp.currentSpeed;
         wisp.nextIntentAt = 0;
+        retargetLineGoal(wisp, performance.now() + wisp.id * 23, "reset");
       } else {
         wisp.x = cssWidth * (0.08 + laneSeed * 0.84);
         wisp.y = cssHeight * (1.02 + seededValue(wisp.id + 401) * 0.16 + spawnBand);
@@ -6393,15 +6405,8 @@
         y: clamp(y, rect.top, rect.bottom)
       };
     }
-    function updatePointerActivity(nowMs) {
-      if (!pointerState.active) return;
-      if (nowMs - pointerState.lastMoveMs > 1400) {
-        pointerState.active = false;
-      }
-    }
     function updateSimulation(deltaSeconds, nowMs) {
       if (!cssWidth || !cssHeight) return;
-      updatePointerActivity(nowMs);
       const obstacles = collectObstacles(nowMs);
       wisps.forEach((wisp) => {
         const isLine = wisp.kind === "line";
@@ -6435,7 +6440,7 @@
           wisp.vx += (swayA + swayB + swayC + routeLift) * deltaSeconds * 0.68;
           wisp.vy = -(wisp.speed + rise * 42);
         }
-        const influenceBase = (wisp.layer === "front" ? (isLine ? 64 : 56) : (isLine ? 78 : 72)) + rise * (isLine ? 54 : 72);
+        const influenceBase = (wisp.layer === "front" ? (isLine ? 88 : 56) : (isLine ? 102 : 72)) + rise * (isLine ? 62 : 72);
         for (let index = 0; index < obstacles.length; index += 1) {
           const obstacle = obstacles[index];
           const nearest = nearestPointOnRect(wisp.x, wisp.y, obstacle);
@@ -6464,14 +6469,15 @@
           const invDistance = 1 / Math.max(1, distance);
           const awayX = dx * invDistance;
           const awayY = dy * invDistance;
-          const tangentX = -awayY * wisp.driftSign;
-          const tangentY = awayX * wisp.driftSign;
-          wisp.vx += (awayX * (isLine ? 204 : 146) + tangentX * (isLine ? 156 : 84)) * strength * deltaSeconds;
+          const tangentX = -awayY * (isLine ? wisp.routeBias : wisp.driftSign);
+          const tangentY = awayX * (isLine ? wisp.routeBias : wisp.driftSign);
+          wisp.vx += (awayX * (isLine ? 246 : 146) + tangentX * (isLine ? 182 : 84)) * strength * deltaSeconds;
           if (awayY > -0.24) {
-            wisp.vy += awayY * (isLine ? 82 : 24) * strength;
+            wisp.vy += awayY * (isLine ? 96 : 24) * strength;
           }
           if (isLine) {
-            wisp.vx += tangentY * 8 * strength;
+            wisp.vx += tangentY * 12 * strength;
+            wisp.targetHeading = Math.atan2(tangentY + awayY * 0.45, tangentX + awayX * 0.45);
           }
           if (nowMs - wisp.lastCollisionMs > 160 && strength > 0.54) {
             const collisionKind = isLine ? "collision-line" : "collision";
@@ -6486,28 +6492,6 @@
               if (nowMs - wisp.lastLayerSwapMs > 540 && strength > 0.72 && seededValue(wisp.id * 17.3 + nowMs * 0.0013) > 0.56) {
                 wisp.layer = wisp.layer === "front" ? "back" : "front";
                 wisp.lastLayerSwapMs = nowMs;
-              }
-            }
-          }
-        }
-        if (pointerState.active) {
-          const dx = wisp.x - pointerState.x;
-          const dy = wisp.y - pointerState.y;
-          const distance = Math.hypot(dx, dy);
-          const pointerRadius = wisp.layer === "front" ? (isLine ? 132 : 110) : (isLine ? 108 : 92);
-          if (distance < pointerRadius) {
-            const strength = Math.pow(1 - distance / pointerRadius, 2);
-            const inverseDistance = 1 / Math.max(8, distance);
-            const tangentX = -dy * inverseDistance * pointerState.swirlSign;
-            const tangentY = dx * inverseDistance * pointerState.swirlSign;
-            wisp.vx += (tangentX * (isLine ? 148 : 96) + dx * inverseDistance * (isLine ? 44 : 28)) * strength * deltaSeconds;
-            wisp.vy += tangentY * (isLine ? 42 : 16) * strength;
-            if (nowMs - wisp.lastInteractionMs > 190 && strength > 0.65) {
-              spawnBurst(pointerState.x, pointerState.y, "front", isLine ? "interaction-line" : "interaction", strength);
-              wisp.lastInteractionMs = nowMs;
-              if (isLine) {
-                wisp.heading = Math.atan2(wisp.vy + tangentY * 32, wisp.vx + tangentX * 32);
-                retargetWisp(wisp, nowMs, "collision");
               }
             }
           }
@@ -6704,28 +6688,6 @@
     function markObstaclesDirty() {
       obstaclesDirty = true;
     }
-    function handlePointerMove(event) {
-      if (!(event instanceof PointerEvent)) return;
-      pointerState.x = event.clientX;
-      pointerState.y = event.clientY;
-      pointerState.active = true;
-      pointerState.lastMoveMs = performance.now();
-      pointerState.swirlSign = event.clientX >= cssWidth * 0.5 ? 1 : -1;
-    }
-    function handlePointerOut(event) {
-      if (!(event instanceof PointerEvent)) return;
-      if (event.relatedTarget) return;
-      pointerState.active = false;
-    }
-    function handlePointerDown(event) {
-      if (!(event instanceof PointerEvent)) return;
-      pointerState.x = event.clientX;
-      pointerState.y = event.clientY;
-      pointerState.active = true;
-      pointerState.lastMoveMs = performance.now();
-      pointerState.swirlSign = event.clientX >= cssWidth * 0.5 ? 1 : -1;
-      spawnBurst(pointerState.x, pointerState.y, "front", "interaction", 1);
-    }
     bodyObserver.observe(document.body, {
       attributes: true,
       attributeFilter: ["class"]
@@ -6737,9 +6699,6 @@
       });
     }
     window.addEventListener("resize", resize, { passive: true });
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("pointerdown", handlePointerDown, { passive: true });
-    window.addEventListener("pointerout", handlePointerOut, { passive: true });
     window.addEventListener("scroll", markObstaclesDirty, { passive: true, capture: true });
     osStage?.addEventListener("scroll", markObstaclesDirty, { passive: true });
     if (window.visualViewport) {
@@ -6756,9 +6715,6 @@
         stop();
         bodyObserver.disconnect();
         window.removeEventListener("resize", resize);
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerdown", handlePointerDown);
-        window.removeEventListener("pointerout", handlePointerOut);
         window.removeEventListener("scroll", markObstaclesDirty, true);
         osStage?.removeEventListener("scroll", markObstaclesDirty);
         if (window.visualViewport) {
