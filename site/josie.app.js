@@ -6704,7 +6704,7 @@
       trailContext.setTransform(trailCanvasDpr, 0, 0, trailCanvasDpr, trailCanvas.width * 0.5, trailCanvas.height * 0.5);
       trailContext.lineCap = "round";
       trailContext.lineJoin = "round";
-      trailContext.globalCompositeOperation = "multiply";
+      trailContext.globalCompositeOperation = "source-over";
       for (let index = 0; index < points.length - 1; index += 1) {
         const start = points[index];
         const end = points[index + 1];
@@ -6716,9 +6716,9 @@
         trailContext.moveTo(start.x, start.y);
         trailContext.lineTo(end.x, end.y);
         trailContext.lineWidth = Math.max(0.35, baseWidth * taper);
-        trailContext.strokeStyle = `rgba(18, 18, 22, ${alpha.toFixed(4)})`;
+        trailContext.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(4)})`;
         trailContext.shadowBlur = glowBlur * Math.max(0.24, taper);
-        trailContext.shadowColor = `rgba(18, 18, 22, ${(glowAlpha * taper).toFixed(4)})`;
+        trailContext.shadowColor = `rgba(255, 255, 255, ${(glowAlpha * taper).toFixed(4)})`;
         trailContext.stroke();
       }
       trailContext.restore();
