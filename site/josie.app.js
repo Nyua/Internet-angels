@@ -6168,6 +6168,16 @@
     function createHistoryPoint(x, y) {
       return { x, y };
     }
+    function wrapAngle(angle) {
+      let nextAngle = angle;
+      while (nextAngle <= -Math.PI) nextAngle += Math.PI * 2;
+      while (nextAngle > Math.PI) nextAngle -= Math.PI * 2;
+      return nextAngle;
+    }
+    function steerAngle(current, target, maxDelta) {
+      const delta = wrapAngle(target - current);
+      return wrapAngle(current + clamp(delta, -maxDelta, maxDelta));
+    }
     function createWisp(index, layer, kind) {
       const seed = seededValue(index + 1.73) + index * 0.037;
       const isLine = kind === "line";
@@ -6178,25 +6188,33 @@
         kind,
         seed,
         widthBase: isLine
-          ? 0.68 + seededValue(index + 31) * (layer === "front" ? 1.05 : 1.35)
+          ? 0.92 + seededValue(index + 31) * (layer === "front" ? 1.34 : 1.56)
           : 5.4 + seededValue(index + 31) * (layer === "front" ? 3.4 : 4.6),
         alphaBase: isLine
-          ? (layer === "front" ? 0.11 : 0.092) + seededValue(index + 71) * 0.04
+          ? (layer === "front" ? 0.2 : 0.16) + seededValue(index + 71) * 0.055
           : (layer === "front" ? 0.05 : 0.072) + seededValue(index + 71) * 0.026,
         speed: isLine
-          ? 116 + seededValue(index + 103) * 54
+          ? 132 + seededValue(index + 103) * 92
           : 48 + seededValue(index + 103) * 24,
         sway: isLine
-          ? 22 + seededValue(index + 131) * 34
+          ? 28 + seededValue(index + 131) * 48
           : 14 + seededValue(index + 131) * 32,
         frequencyA: isLine
-          ? 1.18 + seededValue(index + 173) * 1.1
+          ? 1.12 + seededValue(index + 173) * 1.52
           : 0.56 + seededValue(index + 173) * 0.72,
         frequencyB: isLine
-          ? 1.44 + seededValue(index + 211) * 1.18
+          ? 1.38 + seededValue(index + 211) * 1.44
           : 0.38 + seededValue(index + 211) * 0.46,
         driftSign: seededValue(index + 251) > 0.5 ? 1 : -1,
         routeBias: seededValue(index + 271) > 0.5 ? 1 : -1,
+        autonomy: isLine ? 0.44 + seededValue(index + 281) * 0.68 : 0,
+        turnRate: isLine ? 2.1 + seededValue(index + 293) * 2.4 : 0,
+        heading: -Math.PI / 2,
+        targetHeading: -Math.PI / 2,
+        currentSpeed: 0,
+        targetSpeed: 0,
+        nextIntentAt: 0,
+        wanderPhase: seededValue(index + 307) * Math.PI * 2,
         x: 0,
         y: 0,
         vx: 0,
@@ -6213,6 +6231,23 @@
         wisp.history[index].x = x;
         wisp.history[index].y = y;
       }
+    }
+    function retargetWisp(wisp, nowMs, reason = "autonomy") {
+      if (wisp.kind !== "line") return;
+      const baseRoll = seededValue(wisp.id * 17.17 + nowMs * 0.00031 + wisp.seed * 41.2);
+      const sweepRoll = seededValue(wisp.id * 23.41 + nowMs * 0.00017 + wisp.seed * 19.4);
+      const upwardBase = -Math.PI / 2;
+      const lateralBias = wisp.routeBias * (0.16 + sweepRoll * 0.46);
+      const sweep = (baseRoll - 0.5) * (reason === "collision" ? 2.3 : 1.48);
+      const climbCurl = Math.sin(nowMs * 0.0012 + wisp.seed * 29.1 + wisp.y * 0.004) * (0.12 + wisp.autonomy * 0.36);
+      wisp.targetHeading = wrapAngle(upwardBase + lateralBias + sweep + climbCurl);
+      wisp.targetSpeed = wisp.speed * (reason === "collision"
+        ? 0.88 + sweepRoll * 0.62
+        : 0.56 + sweepRoll * 0.86);
+      wisp.turnRate = (reason === "collision" ? 3.9 : 2.1) + baseRoll * 2.6;
+      wisp.nextIntentAt = nowMs + (reason === "collision"
+        ? 220 + baseRoll * 260
+        : 300 + sweepRoll * 980);
     }
     function resetWisp(wisp, preserveSeed = false) {
       if (!cssWidth || !cssHeight) return;
@@ -6237,6 +6272,11 @@
           wisp.vx = -wisp.speed * (0.54 + seededValue(wisp.id + 491) * 0.16);
           wisp.vy = -(wisp.speed * (0.14 + seededValue(wisp.id + 503) * 0.24));
         }
+        wisp.heading = Math.atan2(wisp.vy, wisp.vx);
+        wisp.targetHeading = wisp.heading;
+        wisp.currentSpeed = Math.hypot(wisp.vx, wisp.vy);
+        wisp.targetSpeed = wisp.currentSpeed;
+        wisp.nextIntentAt = 0;
       } else {
         wisp.x = cssWidth * (0.08 + laneSeed * 0.84);
         wisp.y = cssHeight * (1.02 + seededValue(wisp.id + 401) * 0.16 + spawnBand);
@@ -6266,6 +6306,9 @@
       }
       wisps.forEach((wisp) => {
         resetWisp(wisp, true);
+        if (wisp.kind === "line") {
+          retargetWisp(wisp, performance.now() + wisp.id * 31, "reset");
+        }
       });
     }
     function spawnBurst(x, y, layer, kind = "collision", strength = 1) {
@@ -6363,12 +6406,35 @@
       wisps.forEach((wisp) => {
         const isLine = wisp.kind === "line";
         const rise = clamp01(1 - wisp.y / Math.max(1, cssHeight));
-        const swayA = Math.sin(nowMs * (isLine ? 0.0022 : 0.00125) * wisp.frequencyA + wisp.seed * 12 + wisp.y * (isLine ? 0.011 : 0.006)) * (wisp.sway * (isLine ? 0.72 + rise * 0.7 : 0.4 + rise * 0.9));
-        const swayB = Math.cos(nowMs * (isLine ? 0.0027 : 0.00175) * wisp.frequencyB - wisp.x * (isLine ? 0.008 : 0.003) + wisp.seed * 19) * (isLine ? 12 + rise * 26 : 8 + rise * 18);
-        const swayC = Math.sin(nowMs * (isLine ? 0.0017 : 0.00085) + wisp.seed * 27 + rise * 5.4) * (isLine ? 8 + rise * 18 : 6 + rise * 16) * wisp.driftSign;
-        const routeLift = isLine ? Math.sin(nowMs * 0.0013 + wisp.seed * 33 + wisp.y * 0.002) * (10 + rise * 32) * wisp.routeBias : 0;
-        wisp.vx += (swayA + swayB + swayC + routeLift) * deltaSeconds * (isLine ? 1.08 : 0.68);
-        wisp.vy = -(wisp.speed + rise * (isLine ? 28 : 42));
+        const swayA = Math.sin(nowMs * (isLine ? 0.0026 : 0.00125) * wisp.frequencyA + wisp.seed * 12 + wisp.y * (isLine ? 0.013 : 0.006)) * (wisp.sway * (isLine ? 0.82 + rise * 0.84 : 0.4 + rise * 0.9));
+        const swayB = Math.cos(nowMs * (isLine ? 0.0032 : 0.00175) * wisp.frequencyB - wisp.x * (isLine ? 0.01 : 0.003) + wisp.seed * 19) * (isLine ? 16 + rise * 34 : 8 + rise * 18);
+        const swayC = Math.sin(nowMs * (isLine ? 0.0019 : 0.00085) + wisp.seed * 27 + rise * 5.4) * (isLine ? 12 + rise * 22 : 6 + rise * 16) * wisp.driftSign;
+        const routeLift = isLine ? Math.sin(nowMs * 0.0015 + wisp.seed * 33 + wisp.y * 0.002) * (16 + rise * 38) * wisp.routeBias : 0;
+        if (isLine) {
+          if (nowMs >= wisp.nextIntentAt) {
+            retargetWisp(wisp, nowMs, "autonomy");
+          }
+          const wanderA = Math.sin(nowMs * 0.0024 + wisp.wanderPhase + wisp.seed * 43 + wisp.y * 0.007);
+          const wanderB = Math.cos(nowMs * 0.0018 - wisp.wanderPhase * 0.7 + wisp.seed * 31 + wisp.x * 0.004);
+          const desiredHeading = wrapAngle(
+            wisp.targetHeading
+            + wanderA * (0.18 + wisp.autonomy * 0.42)
+            + wanderB * (0.08 + wisp.autonomy * 0.26)
+            + routeLift * 0.012
+          );
+          wisp.heading = steerAngle(wisp.heading, desiredHeading, wisp.turnRate * deltaSeconds);
+          const speedPulse = 0.78 + (Math.sin(nowMs * 0.0013 + wisp.seed * 57 + wisp.age * 0.7) * 0.5 + 0.5) * (0.54 + wisp.autonomy * 0.26);
+          const desiredSpeed = wisp.targetSpeed * speedPulse;
+          wisp.currentSpeed += (desiredSpeed - wisp.currentSpeed) * Math.min(1, deltaSeconds * (1.8 + wisp.autonomy * 1.6));
+          const dirX = Math.cos(wisp.heading);
+          const dirY = Math.sin(wisp.heading);
+          wisp.vx += (dirX * wisp.currentSpeed - wisp.vx) * deltaSeconds * (2.2 + wisp.autonomy * 1.4);
+          wisp.vy += (dirY * wisp.currentSpeed - wisp.vy) * deltaSeconds * (2.2 + wisp.autonomy * 1.4);
+          wisp.vx += (swayA + swayB + swayC + routeLift) * deltaSeconds * 0.58;
+        } else {
+          wisp.vx += (swayA + swayB + swayC + routeLift) * deltaSeconds * 0.68;
+          wisp.vy = -(wisp.speed + rise * 42);
+        }
         const influenceBase = (wisp.layer === "front" ? (isLine ? 64 : 56) : (isLine ? 78 : 72)) + rise * (isLine ? 54 : 72);
         for (let index = 0; index < obstacles.length; index += 1) {
           const obstacle = obstacles[index];
@@ -6415,6 +6481,8 @@
               wisp.driftSign *= -1;
               wisp.routeBias *= -1;
               wisp.vx += tangentX * 120 * strength;
+              wisp.heading = Math.atan2(wisp.vy + tangentY * 22, wisp.vx + tangentX * 22);
+              retargetWisp(wisp, nowMs, "collision");
               if (nowMs - wisp.lastLayerSwapMs > 540 && strength > 0.72 && seededValue(wisp.id * 17.3 + nowMs * 0.0013) > 0.56) {
                 wisp.layer = wisp.layer === "front" ? "back" : "front";
                 wisp.lastLayerSwapMs = nowMs;
@@ -6437,6 +6505,10 @@
             if (nowMs - wisp.lastInteractionMs > 190 && strength > 0.65) {
               spawnBurst(pointerState.x, pointerState.y, "front", isLine ? "interaction-line" : "interaction", strength);
               wisp.lastInteractionMs = nowMs;
+              if (isLine) {
+                wisp.heading = Math.atan2(wisp.vy + tangentY * 32, wisp.vx + tangentX * 32);
+                retargetWisp(wisp, nowMs, "collision");
+              }
             }
           }
         }
@@ -6478,7 +6550,7 @@
       wisps.forEach((wisp) => {
         if (wisp.layer !== layer) return;
         const wispColor = wisp.kind === "line"
-          ? (layer === "front" ? [0.14, 0.14, 0.16] : [0.2, 0.2, 0.22])
+          ? (layer === "front" ? [0.07, 0.07, 0.09] : [0.12, 0.12, 0.14])
           : (layer === "front" ? [0.42, 0.42, 0.46] : [0.48, 0.49, 0.53]);
         for (let index = 0; index < wisp.history.length - 1; index += 1) {
           const pointA = wisp.history[index];
@@ -6490,10 +6562,10 @@
           const ageT = index / Math.max(1, wisp.history.length - 2);
           const rise = clamp01(1 - (pointA.y + pointB.y) * 0.5 / Math.max(1, cssHeight));
           const width = wisp.kind === "line"
-            ? wisp.widthBase * (0.72 + rise * 0.38) * (1 - ageT * 0.22)
+            ? wisp.widthBase * (0.92 + rise * 0.42) * (1 - ageT * 0.18)
             : wisp.widthBase * (0.22 + rise * 1.2) * (1 - ageT * 0.42);
           const alpha = wisp.kind === "line"
-            ? wisp.alphaBase * (0.9 + rise * 0.5) * (1 - ageT * 0.34)
+            ? wisp.alphaBase * (1.08 + rise * 0.56) * (1 - ageT * 0.24)
             : wisp.alphaBase * (0.42 + rise * 0.9) * (1 - ageT * 0.5);
           const nx = -dy / length;
           const ny = dx / length;

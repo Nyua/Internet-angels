@@ -474,7 +474,7 @@ body.has-custom-cursor.has-system-pointer * {
   position: absolute;
   inset: 0;
   z-index: 0;
-  opacity: 0.82;
+  opacity: 0.96;
   mix-blend-mode: multiply;
 }
 
@@ -496,7 +496,7 @@ body.has-custom-cursor.has-system-pointer * {
 }
 
 .os-ambient-backdrop[data-ambient-variant="day"] .os-ambient-canvas--glow {
-  opacity: 0.24;
+  opacity: 0.3;
   filter: blur(26px);
 }
 
