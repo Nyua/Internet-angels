@@ -942,6 +942,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   });
 
   await stubWindowOpen(page);
+  await stubSpotifyIframeApi(page);
 
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
@@ -1182,10 +1183,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(panelTypography.lovedBadgeText).toBe("");
   expect(panelTypography.lovedBadgeIconCount).toBe(1);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
-  const previewPlayer = page.locator("[data-track-preview-player]");
-  await expect(previewPlayer).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-similar")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-stack .lastfm-track-panel-similar")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-similar")).toContainText("Sounds like");
@@ -1194,11 +1194,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   const summaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(summaryLink).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
-  await previewPlayer.locator("[data-track-preview-toggle]").click();
-  await expect(previewPlayer).toHaveClass(/is-playing/);
+  await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
   await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
-  await previewPlayer.locator("[data-track-preview-toggle]").click();
-  await expect(previewPlayer).not.toHaveClass(/is-playing/);
+  await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } }));
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
   const trackCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" });
   const artistCta = page.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" });
@@ -1235,8 +1233,8 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
   await page.locator(".lastfm-track-panel-related-button").first().click();
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Talk");
-  await expect(page.locator(".lastfm-track-panel-primary [data-track-preview-player]")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
@@ -1249,6 +1247,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
 
 test("josie track details panel skips the spotify player when no spotify match exists", async ({ page }) => {
   await stubWindowOpen(page);
+  await stubSpotifyIframeApi(page);
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1327,7 +1326,9 @@ test("josie track details panel skips the spotify player when no spotify match e
   await page.locator(".lastfm-recent-button").first().click();
 
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot.is-disabled")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" })).toBeVisible();
   await page.locator(".lastfm-track-panel-cta", { hasText: "Open Spotify Search" }).click();
@@ -1346,6 +1347,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   });
 
   await stubWindowOpen(page);
+  await stubSpotifyIframeApi(page);
 
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
@@ -1486,6 +1488,17 @@ test("josie opens artist and album detail panels from top charts and follows alb
             { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
             { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
           ]
+        },
+        spotify: {
+          matchStatus: "matched",
+          embedUrl: "https://open.spotify.com/embed/track/spotify-talk-1?utm_source=generator",
+          openUrl: "https://open.spotify.com/track/spotify-talk-1",
+          searchUrl: "https://open.spotify.com/search/Talk%20beabadoobee",
+          previewUrl: "",
+          title: "Talk",
+          artist: "beabadoobee",
+          album: "Beatopia",
+          artworkUrl: "https://i.scdn.co/image/spotify-beatopia.jpg"
         },
         tracks: {
           items: [
@@ -1636,6 +1649,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(albumAmbientFromArtistPopup.hasAmbient).toBe("true");
   expect(albumAmbientFromArtistPopup.backgroundImage).toContain("beatopia-detail.jpg");
   expect(Number.parseFloat(albumAmbientFromArtistPopup.opacity)).toBeGreaterThan(0.2);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
@@ -1659,6 +1674,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(albumAmbient.hasAmbient).toBe("true");
   expect(albumAmbient.backgroundImage).toContain("beatopia-detail.jpg");
   expect(Number.parseFloat(albumAmbient.opacity)).toBeGreaterThan(0.2);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
   const albumPanelFit = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     const bodyEl = document.querySelector(".lastfm-track-panel-body");
@@ -1702,7 +1719,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
 });
 
-test("josie keeps track details on the compact preview layout when spotify has no preview clip", async ({ page }) => {
+test("josie keeps track details on the inline spotify layout when spotify has no preview clip", async ({ page }) => {
   const apiRequests = [];
   page.on("request", (outboundRequest) => {
     const url = outboundRequest.url();
@@ -1712,6 +1729,7 @@ test("josie keeps track details on the compact preview layout when spotify has n
   });
 
   await stubWindowOpen(page);
+  await stubSpotifyIframeApi(page);
 
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
@@ -1796,7 +1814,12 @@ test("josie keeps track details on the compact preview layout when spotify has n
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" })).toBeVisible();
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
+  await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
+  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } }));
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
   await page.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" }).click();
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
   const windowOpenCalls = await drainWindowOpenCalls(page);

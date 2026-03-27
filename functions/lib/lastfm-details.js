@@ -611,6 +611,39 @@ function buildAlbumSummary(albumInfo, artistInfo, trackItems) {
   };
 }
 
+function buildEmptySpotifyTrackMatch() {
+  return {
+    matchStatus: "unavailable",
+    embedUrl: "",
+    openUrl: "",
+    searchUrl: "",
+    title: "",
+    artist: "",
+    album: "",
+    artworkUrl: "",
+    previewUrl: ""
+  };
+}
+
+function pickAlbumSpotifySeedTrack(trackItems) {
+  const items = Array.isArray(trackItems) ? trackItems : [];
+  if (!items.length) {
+    return null;
+  }
+  const sortedItems = [...items].sort((left, right) => {
+    const userPlayDelta = parseInteger(right?.userPlaycount) - parseInteger(left?.userPlaycount);
+    if (userPlayDelta !== 0) return userPlayDelta;
+    const rankDelta = parseInteger(left?.rank) - parseInteger(right?.rank);
+    if (rankDelta !== 0) return rankDelta;
+    return String(left?.title || "").localeCompare(String(right?.title || ""));
+  });
+  const chosenItem = sortedItems.find((entry) => String(entry?.title || "").trim()) || null;
+  return chosenItem ? {
+    title: String(chosenItem.title || "").trim(),
+    artist: String(chosenItem.artist || "").trim()
+  } : null;
+}
+
 export function buildEmptyLastFmTrackDetailsPayload(nowMs = Date.now(), sourceStatus = "ERROR", query = {}) {
   return {
     sourceStatus,
@@ -622,17 +655,7 @@ export function buildEmptyLastFmTrackDetailsPayload(nowMs = Date.now(), sourceSt
       album: String(query.album || "").trim()
     },
     track: null,
-    spotify: {
-      matchStatus: "unavailable",
-      embedUrl: "",
-      openUrl: "",
-      searchUrl: "",
-      title: "",
-      artist: "",
-      album: "",
-      artworkUrl: "",
-      previewUrl: ""
-    },
+    spotify: buildEmptySpotifyTrackMatch(),
     scrobbles: {
       total: 0,
       items: []
@@ -674,7 +697,12 @@ export function buildEmptyLastFmAlbumDetailsPayload(nowMs = Date.now(), sourceSt
       album: String(query.album || "").trim()
     },
     album: null,
+    spotify: buildEmptySpotifyTrackMatch(),
     tracks: {
+      items: []
+    },
+    relatedTracks: {
+      artist: "",
       items: []
     }
   };
@@ -815,6 +843,7 @@ export async function fetchLastFmArtistDetails({
 
 export async function fetchLastFmAlbumDetails({
   apiKey,
+  env,
   artist,
   album,
   nowMs = Date.now()
@@ -837,6 +866,16 @@ export async function fetchLastFmAlbumDetails({
     getArtistUrlFromEntry(artistInfo),
     nowMs
   );
+  const spotifySeedTrack = pickAlbumSpotifySeedTrack(trackItems);
+  const spotifyMatch = spotifySeedTrack
+    ? await findSpotifyTrackMatch({
+      artist: spotifySeedTrack.artist || canonicalArtist,
+      track: spotifySeedTrack.title,
+      album: canonicalAlbum,
+      env,
+      nowMs
+    }).catch(() => buildEmptySpotifyTrackMatch())
+    : buildEmptySpotifyTrackMatch();
   const albumTrackKeys = new Set(trackItems.map((entry) => normalizeTrackKey(entry.artist, entry.title)));
   const relatedTracks = (await buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 8 }))
     .filter((entry) => !albumTrackKeys.has(normalizeTrackKey(entry.artist, entry.title)))
@@ -854,6 +893,17 @@ export async function fetchLastFmAlbumDetails({
       album: canonicalAlbum
     },
     album: albumSummary,
+    spotify: {
+      matchStatus: String(spotifyMatch?.matchStatus || "unavailable"),
+      embedUrl: String(spotifyMatch?.embedUrl || "").trim(),
+      openUrl: String(spotifyMatch?.openUrl || "").trim(),
+      searchUrl: String(spotifyMatch?.searchUrl || "").trim(),
+      title: String(spotifyMatch?.title || "").trim(),
+      artist: String(spotifyMatch?.artist || "").trim(),
+      album: String(spotifyMatch?.album || "").trim(),
+      artworkUrl: String(spotifyMatch?.artworkUrl || "").trim(),
+      previewUrl: String(spotifyMatch?.previewUrl || "").trim()
+    },
     tracks: {
       items: trackItems
     },

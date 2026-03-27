@@ -81,6 +81,7 @@ export async function onRequest(context) {
   try {
     const payload = await fetchLastFmAlbumDetails({
       apiKey,
+      env,
       artist: query.artist,
       album: query.album,
       nowMs

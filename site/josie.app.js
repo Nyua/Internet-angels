@@ -841,6 +841,7 @@
   function normalizeLastFmAlbumDetailsPayload(payload, fallbackQuery = {}) {
     const safePayload = payload && typeof payload === "object" ? payload : {};
     const safeAlbum = safePayload.album && typeof safePayload.album === "object" ? safePayload.album : {};
+    const safeSpotify = safePayload.spotify && typeof safePayload.spotify === "object" ? safePayload.spotify : {};
     const safeTracks = safePayload.tracks && typeof safePayload.tracks === "object" ? safePayload.tracks : {};
     const safeRelatedTracks = safePayload.relatedTracks && typeof safePayload.relatedTracks === "object" ? safePayload.relatedTracks : {};
     const safeQuery = safePayload.query && typeof safePayload.query === "object" ? safePayload.query : fallbackQuery;
@@ -870,6 +871,17 @@
           name: firstNonEmpty(entry?.name, ""),
           url: sanitizeUrl(entry?.url)
         })).filter((entry) => entry.name).slice(0, 4) : []
+      },
+      spotify: {
+        matchStatus: firstNonEmpty(safeSpotify.matchStatus, "unavailable"),
+        embedUrl: sanitizeUrl(safeSpotify.embedUrl),
+        openUrl: sanitizeUrl(safeSpotify.openUrl),
+        searchUrl: sanitizeUrl(safeSpotify.searchUrl),
+        title: firstNonEmpty(safeSpotify.title, ""),
+        artist: firstNonEmpty(safeSpotify.artist, ""),
+        album: firstNonEmpty(safeSpotify.album, ""),
+        artworkUrl: sanitizeUrl(safeSpotify.artworkUrl),
+        previewUrl: sanitizeUrl(safeSpotify.previewUrl)
       },
       tracks: {
         items: Array.isArray(safeTracks.items) ? safeTracks.items.map((entry, index) => ({
@@ -2873,6 +2885,40 @@
       buildSpotifyTrackAppUrlFromUrl(spotify?.openUrl)
     );
   }
+  function canRenderSpotifyEmbedSlot(spotify) {
+    const matchStatus = String(spotify?.matchStatus || "").trim().toLowerCase();
+    return matchStatus === "matched" && Boolean(firstNonEmpty(
+      sanitizeUrl(spotify?.embedUrl),
+      sanitizeUrl(spotify?.openUrl)
+    ));
+  }
+  function renderLastFmTrackPanelSpotifySlot(spotify, options = {}) {
+    const label = firstNonEmpty(options.label, "Spotify preview");
+    const unavailableTitle = firstNonEmpty(options.unavailableTitle, "Unavailable");
+    const unavailableMeta = firstNonEmpty(options.unavailableMeta, "Spotify player unavailable for this track.");
+    if (!canRenderSpotifyEmbedSlot(spotify)) {
+      return `
+        <div class="lastfm-track-panel-spotify-slot is-disabled" data-spotify-track-embed-slot>
+          <div class="lastfm-track-panel-spotify-slot-head">
+            <span class="lastfm-track-panel-spotify-slot-label">${escapeHtml(label)}</span>
+          </div>
+          <div class="lastfm-track-panel-spotify-slot-body">
+            ${renderLastFmTrackPanelSpotifyDisabled(unavailableTitle, unavailableMeta)}
+          </div>
+        </div>
+      `;
+    }
+    return `
+      <div class="lastfm-track-panel-spotify-slot" data-spotify-track-embed-slot>
+        <div class="lastfm-track-panel-spotify-slot-head">
+          <span class="lastfm-track-panel-spotify-slot-label">${escapeHtml(label)}</span>
+        </div>
+        <div class="lastfm-track-panel-spotify-slot-body">
+          <div class="lastfm-track-panel-spotify-embed-host" data-spotify-track-embed-target></div>
+        </div>
+      </div>
+    `;
+  }
   function renderLastFmTrackPanelSkeleton(query = {}) {
     return `
       <div class="lastfm-track-panel-window is-loading" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
@@ -2880,7 +2926,6 @@
         <div class="lastfm-track-panel-layout">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art lastfm-track-panel-skeleton" aria-hidden="true"></div>
-            <div class="lastfm-track-panel-preview lastfm-track-panel-skeleton" aria-hidden="true"></div>
           </div>
           <div class="lastfm-track-panel-secondary">
             <header class="lastfm-track-panel-header">
@@ -2888,8 +2933,9 @@
               <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(firstNonEmpty(query.track, "Track details"))}</h3>
               <p class="lastfm-track-panel-meta">${escapeHtml(firstNonEmpty(query.artist, "Last.fm"))}</p>
             </header>
-            <div class="lastfm-track-panel-stats lastfm-track-panel-stats--single" aria-hidden="true">
+            <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify" aria-hidden="true">
               <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+              <div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton"></div>
             </div>
             <div class="lastfm-track-panel-history lastfm-track-panel-skeleton" aria-hidden="true"></div>
             <div class="lastfm-track-panel-related lastfm-track-panel-skeleton" aria-hidden="true"></div>
@@ -2916,7 +2962,6 @@
     const scrobbles = detail?.scrobbles || {};
     const artistTopTracks = detail?.artistTopTracks || {};
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
-    const spotifyPreviewUrl = sanitizeUrl(spotify.previewUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
     const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
@@ -2937,32 +2982,9 @@
       </div>
     ` : "";
     const ambientPanelAttrs = renderLastFmPanelAmbientAttributes(artworkUrl);
-    const spotifyPreviewMarkup = spotify.matchStatus === "matched" && spotifyPreviewUrl ? `
-      <div
-        class="lastfm-track-panel-preview"
-        data-track-preview-player
-        data-track-preview-url="${escapeHtml(spotifyPreviewUrl)}"
-        data-track-preview-title="${escapeHtml(track.title || spotify.title || "Track preview")}"
-      >
-        <div class="lastfm-track-panel-preview-head">
-          <button class="lastfm-track-panel-preview-toggle" type="button" data-track-preview-toggle aria-label="Play Spotify preview">
-            <span class="lastfm-track-panel-preview-toggle-icon" data-track-preview-toggle-icon aria-hidden="true">▶</span>
-          </button>
-          <div class="lastfm-track-panel-preview-copy">
-            <p class="lastfm-track-panel-preview-title">${escapeHtml(track.title || spotify.title || "Track preview")}</p>
-            <p class="lastfm-track-panel-preview-meta">Spotify preview clip</p>
-          </div>
-          <span class="lastfm-track-panel-preview-time" data-track-preview-time>0:00 / 0:30</span>
-        </div>
-        <div class="lastfm-track-panel-preview-progress" aria-hidden="true">
-          <span class="lastfm-track-panel-preview-progress-fill" data-track-preview-progress></span>
-        </div>
-        <label class="lastfm-track-panel-preview-volume">
-          <span class="lastfm-track-panel-preview-volume-label">Volume</span>
-          <input class="lastfm-track-panel-preview-volume-slider" data-track-preview-volume type="range" min="0" max="1" step="0.01" value="0.20" aria-label="Spotify preview volume" />
-        </label>
-      </div>
-    ` : "";
+    const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
+      unavailableMeta: "Spotify player unavailable for this track."
+    });
     const soundsLikeMarkup = similarItems.length ? `
       <section class="lastfm-track-panel-similar">
         <div class="lastfm-track-panel-section-head">
@@ -3040,7 +3062,6 @@
               <div class="lastfm-track-panel-art">
                 ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
               </div>
-              ${spotifyPreviewMarkup}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
@@ -3053,8 +3074,9 @@
                 </p>
                 ${track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : ""}
               </header>
-              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--single">
+              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
                 ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
+                ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
               <div class="lastfm-track-panel-actions">
@@ -3282,13 +3304,17 @@
   }
   function renderLastFmAlbumPanelContent(detail) {
     const album = detail?.album || {};
+    const spotify = detail?.spotify || {};
     const trackSection = detail?.tracks || {};
     const relatedTracks = detail?.relatedTracks || {};
     const trackItems = Array.isArray(trackSection.items) ? trackSection.items : [];
     const relatedItems = Array.isArray(relatedTracks.items) ? relatedTracks.items.slice(0, 3) : [];
-    const artworkUrl = sanitizeUrl(album.artworkUrl);
+    const artworkUrl = sanitizeUrl(album.artworkUrl || spotify.artworkUrl);
     const ambientPanelAttrs = renderLastFmPanelAmbientAttributes(artworkUrl);
     const albumArtistInline = renderLastFmArtistLinkButton(album.artist, album.artistLastFmUrl);
+    const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
+      unavailableMeta: "Spotify player unavailable for this album."
+    });
     const tagsMarkup = renderLastFmDetailTagMarkup(album.topTags, "Album genres");
     const summaryMarkup = renderLastFmSummarySection("About this album", album.summary, album.lastfmUrl, album.summaryHasMore);
     const trackListMarkup = `
@@ -3385,10 +3411,9 @@
                   ${album.runtimeLabel ? `<span class="lastfm-track-panel-meta-separator">•</span><span>${escapeHtml(album.runtimeLabel)}</span>` : ""}
                 </p>
               </header>
-              <div class="lastfm-track-panel-stats">
+              <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
                 ${renderLastFmTrackPanelStat("Tracks", formatCountNumber(album.trackCount || trackItems.length, "0"))}
-                ${renderLastFmTrackPanelStat("Global plays", formatCountNumber(album.playcount))}
-                ${renderLastFmTrackPanelStat("Listeners", formatCountNumber(album.listeners))}
+                ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
               <div class="lastfm-track-panel-actions">
@@ -4584,6 +4609,7 @@
         const payload = await loadLastFmAlbumDetails(normalizedQuery);
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         setLastFmTrackDetailsContent(renderLastFmAlbumPanelContent(payload));
+        void mountSpotifyEmbedController(payload, cacheKey);
         const nextFocusTarget = panel.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });

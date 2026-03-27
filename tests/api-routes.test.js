@@ -1004,12 +1004,38 @@ test("lastfm album details route assembles album detail data and track popularit
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-album-details?artist=beabadoobee&album=Beatopia");
+  const callUrls = [];
 
   try {
     globalThis.caches = { default: cache };
     globalThis.fetch = async (resource) => {
       const resourceUrl = String(resource);
+      callUrls.push(resourceUrl);
+      if (resourceUrl === "https://accounts.spotify.com/api/token") {
+        return Response.json({ access_token: "spotify-token" });
+      }
       const requestUrl = new URL(resourceUrl);
+      if (requestUrl.origin === "https://api.spotify.com" && requestUrl.pathname === "/v1/search") {
+        return Response.json({
+          tracks: {
+            items: [
+              {
+                id: "spotify-talk-1",
+                name: "Talk",
+                preview_url: "https://p.scdn.co/mp3-preview/talk-preview.mp3",
+                artists: [{ name: "beabadoobee" }],
+                album: {
+                  name: "Beatopia",
+                  images: [{ url: "https://i.scdn.co/image/spotify-beatopia.jpg" }]
+                },
+                external_urls: {
+                  spotify: "https://open.spotify.com/track/spotify-talk-1"
+                }
+              }
+            ]
+          }
+        });
+      }
       const method = requestUrl.searchParams.get("method");
       if (method === "album.getinfo") {
         return Response.json({
@@ -1086,7 +1112,11 @@ test("lastfm album details route assembles album detail data and track popularit
 
     const response = await onLastFmAlbumDetailsRequest({
       request,
-      env: { LASTFM_API_KEY: "test-key" }
+      env: {
+        LASTFM_API_KEY: "test-key",
+        SPOTIFY_CLIENT_ID: "spotify-client",
+        SPOTIFY_CLIENT_SECRET: "spotify-secret"
+      }
     });
     const payload = await response.json();
 
@@ -1103,8 +1133,13 @@ test("lastfm album details route assembles album detail data and track popularit
     assert.equal(payload.tracks.items[0].userPlaycount, 9);
     assert.equal(payload.tracks.items[0].artistLastFmUrl, "https://www.last.fm/music/beabadoobee");
     assert.equal(payload.tracks.items[1].globalPlaycount, 29424507);
+    assert.equal(payload.spotify.matchStatus, "matched");
+    assert.equal(payload.spotify.title, "Talk");
+    assert.equal(payload.spotify.embedUrl, "https://open.spotify.com/embed/track/spotify-talk-1?utm_source=generator");
+    assert.equal(payload.spotify.previewUrl, "https://p.scdn.co/mp3-preview/talk-preview.mp3");
     assert.equal(payload.relatedTracks.artist, "beabadoobee");
     assert.ok(Array.isArray(payload.relatedTracks.items));
+    assert.equal(callUrls.filter((url) => url === "https://accounts.spotify.com/api/token").length, 1);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
