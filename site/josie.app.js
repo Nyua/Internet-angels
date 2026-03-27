@@ -12,6 +12,7 @@
   var socialHubShowcases = document.querySelector("#social-hub-showcases");
   var socialHubSidebar = document.querySelector("#social-hub-sidebar");
   var socialHubProfileTagline = document.querySelector("#social-hub-profile-tagline");
+  var mobileSpeakerToggle = document.querySelector("[data-mobile-speaker-toggle]");
   var CUSTOM_CURSOR_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button:not([disabled])",
@@ -1675,6 +1676,7 @@
     let initialTrackQueued = false;
     let reactiveBeat = 0;
     let reactiveFlash = 0;
+    const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const WAVE_BLEED_X = 72;
     const WAVE_BLEED_TOP = 48;
@@ -1719,6 +1721,23 @@
         target.style.setProperty("--shuffle-accent-strong", theme.accentStrong);
         target.style.setProperty("--shuffle-secondary", theme.secondary);
         target.style.setProperty("--shuffle-sparkle", theme.sparkle);
+      });
+    }
+    function buildPublicState() {
+      return {
+        muted: Boolean(audioEl.muted),
+        playing: Boolean(currentTrack) && !audioEl.paused,
+        blocked: loadState === "blocked",
+        hasTrack: Boolean(currentTrack)
+      };
+    }
+    function notifyStateSubscribers() {
+      const state = buildPublicState();
+      stateSubscribers.forEach((listener) => {
+        try {
+          listener(state);
+        } catch {
+        }
       });
     }
     function syncReactiveVisuals(rawBeat = 0, rawFlash = 0) {
@@ -1804,6 +1823,7 @@
         waveSurface.classList.toggle("is-blocked", loadState === "blocked");
         waveSurface.classList.toggle("is-playing", Boolean(currentTrack) && !audioEl.paused);
       }
+      notifyStateSubscribers();
     }
     function isSiteLoadPending() {
       return Boolean(document.body?.classList.contains("site-load-playing") || window.__josieHandoffPending);
@@ -2287,6 +2307,38 @@
         bindRoot(root2);
       }
     }
+    function setMuted(nextMuted) {
+      audioEl.muted = Boolean(nextMuted);
+      syncUi();
+    }
+    function toggleMuted() {
+      setMuted(!audioEl.muted);
+      return audioEl.muted;
+    }
+    function isMuted() {
+      return Boolean(audioEl.muted);
+    }
+    async function ensureStarted() {
+      if (disposed) return;
+      await ensureManifest();
+      if (disposed) return;
+      if (audioEl.muted) {
+        audioEl.muted = false;
+      }
+      if (!currentTrack) {
+        await queueInitialTrackPlayback();
+        if (!currentTrack && waveformTracks.length) {
+          await chooseNextTrack({ autoplay: true, excludeCurrent: false });
+        }
+        syncUi();
+        return;
+      }
+      if (audioEl.paused || loadState === "blocked") {
+        await attemptPlay();
+        return;
+      }
+      syncUi();
+    }
     function pauseForExternalAudio() {
       if (disposed || !currentTrack || audioEl.paused) return false;
       audioEl.pause();
@@ -2299,6 +2351,20 @@
     }
     function isPlaying() {
       return Boolean(!disposed && currentTrack && !audioEl.paused);
+    }
+    function subscribe(listener) {
+      if (typeof listener !== "function") {
+        return () => {
+        };
+      }
+      stateSubscribers.add(listener);
+      try {
+        listener(buildPublicState());
+      } catch {
+      }
+      return () => {
+        stateSubscribers.delete(listener);
+      };
     }
     function dispose() {
       if (disposed) return;
@@ -2336,6 +2402,7 @@
       syncUi();
     });
     audioEl.addEventListener("pause", syncUi);
+    audioEl.addEventListener("volumechange", syncUi);
     audioEl.addEventListener("seeked", syncUi);
     audioEl.addEventListener("ended", () => {
       void chooseNextTrack({ autoplay: true });
@@ -2353,6 +2420,12 @@
       attach,
       dispose,
       isPlaying,
+      ensureStarted,
+      toggleMuted,
+      setMuted,
+      isMuted,
+      getState: buildPublicState,
+      subscribe,
       pauseForExternalAudio,
       resumeAfterExternalAudio
     };
@@ -2545,15 +2618,15 @@
     const heroOrnament = renderHeroOrnamentMarkup();
     const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
     return `
-    <section class="steam-hero-shell" aria-label="Profile hero">
-      <div class="steam-hero-content">
+    <section class="steam-hero-shell${compact ? " steam-hero-shell--compact-mobile" : ""}" aria-label="Profile hero">
+      <div class="steam-hero-content${compact ? " steam-hero-content--compact-mobile" : ""}">
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
           ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
           ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" decoding="async" aria-hidden="true" />` : ""}
         </div>
-        <div class="steam-hero-copy">
-          <h2 class="steam-hero-name">${heroName}</h2>
-          <div class="steam-hero-ornament" aria-hidden="true">${heroOrnament}</div>
+        <div class="steam-hero-copy${compact ? " steam-hero-copy--compact-mobile" : ""}">
+          <h2 class="steam-hero-name${compact ? " steam-hero-name--compact-mobile" : ""}">${heroName}</h2>
+          <div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>
           ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
@@ -2919,6 +2992,37 @@
       </div>
     `;
   }
+  function renderLastFmPanelArtFlip(options = {}) {
+    const artworkUrl = sanitizeUrl(options.artworkUrl);
+    const fallbackGlyph = firstNonEmpty(options.fallbackGlyph, "♫");
+    const toggleLabel = firstNonEmpty(options.toggleLabel, "Show panel actions");
+    const backLabel = firstNonEmpty(options.backLabel, "Panel actions");
+    const actions = Array.isArray(options.actions) ? options.actions.filter(Boolean) : [];
+    return `
+      <div class="lastfm-track-panel-art lastfm-track-panel-art--flip" data-panel-face="front">
+        <div class="lastfm-track-panel-art-flipper">
+          <div class="lastfm-track-panel-art-face lastfm-track-panel-art-face--front">
+            <button
+              class="lastfm-track-panel-art-toggle"
+              type="button"
+              data-lastfm-panel-art-toggle
+              aria-label="${escapeHtml(toggleLabel)}"
+              aria-pressed="false"
+            >
+              ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : `<span class="lastfm-track-panel-art-fallback" aria-hidden="true">${escapeHtml(fallbackGlyph)}</span>`}
+            </button>
+          </div>
+          <div class="lastfm-track-panel-art-face lastfm-track-panel-art-face--back">
+            <div class="lastfm-track-panel-art-back" data-lastfm-panel-art-back aria-hidden="true" aria-label="${escapeHtml(backLabel)}">
+              <div class="lastfm-track-panel-art-action-stack">
+                ${actions.join("")}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   function renderLastFmTrackPanelSkeleton(query = {}) {
     return `
       <div class="lastfm-track-panel-window is-loading" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
@@ -2975,7 +3079,6 @@
         return String(left?.title || "").localeCompare(String(right?.title || ""));
       }).slice(0, 3)
       : [];
-    const similarItems = Array.isArray(track.similarTracks) ? track.similarTracks.slice(0, 2) : [];
     const tagsMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
       <div class="lastfm-track-panel-tags" aria-label="Track tags">
         ${track.topTags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}
@@ -2985,21 +3088,17 @@
     const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
       unavailableMeta: "Spotify player unavailable for this track."
     });
-    const soundsLikeMarkup = similarItems.length ? `
-      <section class="lastfm-track-panel-similar">
-        <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">Sounds like</h4>
-        </div>
-        <div class="lastfm-track-panel-similar-list">
-          ${similarItems.map((entry) => `
-            <button class="lastfm-track-panel-similar-chip" type="button" ${entry.url ? `data-open-url="${escapeHtml(entry.url)}"` : ""}>
-              <span class="lastfm-track-panel-similar-title">${escapeHtml(entry.title)}</span>
-              <span class="lastfm-track-panel-similar-artist">${escapeHtml(entry.artist)}</span>
-            </button>
-          `).join("")}
-        </div>
-      </section>
-    ` : "";
+    const artMarkup = renderLastFmPanelArtFlip({
+      artworkUrl,
+      fallbackGlyph: "♫",
+      toggleLabel: "Show track actions",
+      backLabel: "Track actions",
+      actions: [
+        track.lastfmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : "",
+        track.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(track.artistLastFmUrl)}">Open Artist on Last.fm</button>` : "",
+        spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
+      ]
+    });
     const summaryMarkup = renderLastFmSummarySection("About this track", track.summary, track.lastfmUrl, track.summaryHasMore);
     const historyMarkup = `
       <section class="lastfm-track-panel-history">
@@ -3059,9 +3158,7 @@
         <div class="lastfm-track-panel-body">
           <div class="lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy">
             <div class="lastfm-track-panel-primary">
-              <div class="lastfm-track-panel-art">
-                ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
-              </div>
+              ${artMarkup}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
@@ -3079,18 +3176,12 @@
                 ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
-              <div class="lastfm-track-panel-actions">
-                ${track.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : ""}
-                ${track.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(track.artistLastFmUrl)}">Open Artist on Last.fm</button>` : ""}
-                ${spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""}
-              </div>
             </div>
           </div>
           <div class="lastfm-track-panel-stack lastfm-track-panel-stack--split">
             ${summaryMarkup}
             ${historyMarkup}
             ${relatedMarkup}
-            ${soundsLikeMarkup}
           </div>
         </div>
       </div>
@@ -3315,6 +3406,20 @@
     const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
       unavailableMeta: "Spotify player unavailable for this album."
     });
+    const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
+    const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
+    const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
+    const artMarkup = renderLastFmPanelArtFlip({
+      artworkUrl,
+      fallbackGlyph: "♫",
+      toggleLabel: "Show album actions",
+      backLabel: "Album actions",
+      actions: [
+        album.lastfmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(album.lastfmUrl)}">Open Album on Last.fm</button>` : "",
+        album.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(album.artistLastFmUrl)}">Open Artist on Last.fm</button>` : "",
+        spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
+      ]
+    });
     const tagsMarkup = renderLastFmDetailTagMarkup(album.topTags, "Album genres");
     const summaryMarkup = renderLastFmSummarySection("About this album", album.summary, album.lastfmUrl, album.summaryHasMore);
     const trackListMarkup = `
@@ -3397,9 +3502,7 @@
         <div class="lastfm-track-panel-body">
           <div class="lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary">
             <div class="lastfm-track-panel-primary">
-              <div class="lastfm-track-panel-art">
-                ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">♫</span>'}
-              </div>
+              ${artMarkup}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
@@ -3416,10 +3519,6 @@
                 ${spotifySlotMarkup}
               </div>
               ${tagsMarkup}
-              <div class="lastfm-track-panel-actions">
-                ${album.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(album.lastfmUrl)}">Open Album on Last.fm</button>` : ""}
-                ${album.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(album.artistLastFmUrl)}">Open Artist on Last.fm</button>` : ""}
-              </div>
             </div>
           </div>
           <div class="lastfm-track-panel-stack">
@@ -3656,13 +3755,22 @@
   }
   function renderSidebar(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
-    const rows = sites.map((site) => {
+    const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
+    const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
       const onlineState = resolveLinkOnlineState(site.id, payload);
       const statusDot = onlineState === null ? "" : `<span class="steam-link-status-dot steam-link-status-dot--${onlineState ? "online" : "offline"}" aria-hidden="true" title="${onlineState ? "Online" : "Offline"}"></span>`;
       const siteLabel = escapeHtml(SITE_THEME_LABEL[site.id] || site.label);
       const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
+      if (compact) {
+        const iconLinkMarkup = openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
+        return `
+      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}">
+        ${iconLinkMarkup}
+      </li>
+    `;
+      }
       const linkMarkup = openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${siteLabel}</a>` : `<span class="steam-sidebar-link">${siteLabel}</span>`;
       return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}"${openUrl ? ` data-open-url="${escapeHtml(openUrl)}"` : ""}>
@@ -3682,9 +3790,9 @@
     const cinnaGifs = ['cinna_sleep.gif', 'cinna_wink.gif'];
     const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
     return `
-    <section class="steam-sidebar-panel">
-      <h3 class="steam-sidebar-title">Profile Links:</h3>
-      <ul class="steam-sidebar-list">
+    <section class="steam-sidebar-panel${compact ? " steam-sidebar-panel--mobile-home" : ""}">
+      ${compact ? "" : '<h3 class="steam-sidebar-title">Profile Links:</h3>'}
+      <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}">
         ${rows}
       </ul>
       <div class="cinna-mobile-gif-wrap" aria-hidden="true">
@@ -3728,6 +3836,8 @@
     let spotifyIframeApiPromise = null;
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
+    let mobileSpeakerToggleUnsubscribe = null;
+    const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -3752,6 +3862,33 @@
       cinnaMobileGifController = null;
       if (!enabled || !(sidebar instanceof HTMLElement)) return;
       cinnaMobileGifController = createCinnaMobileGifController(sidebar);
+    }
+    function syncMobileSpeakerToggle(enabled) {
+      if (!(mobileSpeakerButton instanceof HTMLButtonElement)) return;
+      mobileSpeakerButton.hidden = !enabled;
+      mobileSpeakerButton.setAttribute("aria-hidden", enabled ? "false" : "true");
+      if (!enabled) return;
+      const state = shufflePlayerController.getState();
+      const idleState = !state.hasTrack || state.blocked || !state.playing;
+      const label = idleState ? "Enable audio" : state.muted ? "Unmute audio" : "Mute audio";
+      mobileSpeakerButton.dataset.audioMuted = String(state.muted);
+      mobileSpeakerButton.dataset.audioPlaying = String(state.playing);
+      mobileSpeakerButton.dataset.audioBlocked = String(state.blocked);
+      mobileSpeakerButton.dataset.audioHasTrack = String(state.hasTrack);
+      mobileSpeakerButton.setAttribute("aria-label", label);
+      mobileSpeakerButton.setAttribute("title", label);
+    }
+    async function onMobileSpeakerToggleClick(event) {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) return;
+      event.preventDefault();
+      if (!isCompactMobileLayout()) return;
+      const state = shufflePlayerController.getState();
+      if (!state.hasTrack || state.blocked || !state.playing) {
+        shufflePlayerController.setMuted(false);
+        await shufflePlayerController.ensureStarted();
+        return;
+      }
+      shufflePlayerController.toggleMuted();
     }
     function launchExternal(url, target = "_blank") {
       const safeUrl = sanitizeUrl(url);
@@ -4298,6 +4435,38 @@
         });
       });
     }
+    function setLastFmPanelArtFace(artShell, nextFace, options = {}) {
+      if (!(artShell instanceof HTMLElement)) return;
+      const face = nextFace === "back" ? "back" : "front";
+      const isBack = face === "back";
+      artShell.classList.toggle("is-flipped", isBack);
+      artShell.dataset.panelFace = face;
+      const toggle = artShell.querySelector("[data-lastfm-panel-art-toggle]");
+      if (toggle instanceof HTMLButtonElement) {
+        toggle.setAttribute("aria-pressed", isBack ? "true" : "false");
+        toggle.tabIndex = isBack ? -1 : 0;
+      }
+      artShell.querySelectorAll(".lastfm-track-panel-cta").forEach((button) => {
+        if (button instanceof HTMLButtonElement) {
+          button.tabIndex = isBack ? 0 : -1;
+        }
+      });
+      const backFace = artShell.querySelector("[data-lastfm-panel-art-back]");
+      if (backFace instanceof HTMLElement) {
+        backFace.setAttribute("aria-hidden", isBack ? "false" : "true");
+      }
+      if (!options.focusTarget) return;
+      if (isBack) {
+        const firstCta = artShell.querySelector(".lastfm-track-panel-cta");
+        if (firstCta instanceof HTMLElement) {
+          firstCta.focus({ preventScroll: true });
+        }
+        return;
+      }
+      if (toggle instanceof HTMLElement) {
+        toggle.focus({ preventScroll: true });
+      }
+    }
     function setTrackPanelOpenState(isOpen) {
       document.body?.classList.toggle("lastfm-track-panel-open", isOpen);
     }
@@ -4325,6 +4494,18 @@
         if (previewToggle instanceof HTMLElement) {
           event.preventDefault();
           void toggleTrackPreview(previewToggle.closest("[data-track-preview-player]"));
+          return;
+        }
+        const artToggle = target.closest("[data-lastfm-panel-art-toggle]");
+        if (artToggle instanceof HTMLElement) {
+          event.preventDefault();
+          setLastFmPanelArtFace(artToggle.closest(".lastfm-track-panel-art--flip"), "back", { focusTarget: true });
+          return;
+        }
+        const artBack = target.closest("[data-lastfm-panel-art-back]");
+        if (artBack instanceof HTMLElement && !target.closest(".lastfm-track-panel-cta")) {
+          event.preventDefault();
+          setLastFmPanelArtFace(artBack.closest(".lastfm-track-panel-art--flip"), "front", { focusTarget: true });
           return;
         }
         const artistButton = target.closest("[data-lastfm-artist-name]");
@@ -4708,10 +4889,11 @@
           ...showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id)))
         ].join("");
       }
-      const shuffleRoot = compactMobile ? syncMobileAudioDock(true) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
+      const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
       shufflePlayerController?.attach(shuffleRoot);
       sidebar.innerHTML = renderSidebar(payloadById, sites, { compact: compactMobile });
       syncCinnaMobileGif(compactMobile);
+      syncMobileSpeakerToggle(compactMobile);
       if (lastRefreshLabel instanceof HTMLElement) {
         lastRefreshLabel.textContent = "";
         lastRefreshLabel.hidden = true;
@@ -4724,12 +4906,24 @@
     if (root2 instanceof HTMLElement) {
       root2.setAttribute("data-social-hub-ready", "true");
     }
+    if (mobileSpeakerButton instanceof HTMLButtonElement) {
+      mobileSpeakerButton.addEventListener("click", onMobileSpeakerToggleClick);
+      mobileSpeakerToggleUnsubscribe = shufflePlayerController.subscribe(() => {
+        syncMobileSpeakerToggle(isCompactMobileLayout());
+      });
+    }
     root2?.addEventListener("click", onRootClick);
     refreshButton?.addEventListener("click", onRefreshClick);
     function dispose() {
       if (disposed) return;
       disposed = true;
       hideExternalPrompt();
+      mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
+      mobileSpeakerToggleUnsubscribe?.();
+      mobileSpeakerToggleUnsubscribe = null;
+      if (mobileSpeakerButton instanceof HTMLButtonElement) {
+        mobileSpeakerButton.hidden = true;
+      }
       externalPromptRoot?.remove();
       externalPromptRoot = null;
       externalPromptUrlEl = null;

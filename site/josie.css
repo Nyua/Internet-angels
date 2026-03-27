@@ -973,6 +973,78 @@ body.lastfm-track-panel-open {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
+.lastfm-track-panel-art--flip {
+  perspective: 1600px;
+}
+
+.lastfm-track-panel-art-flipper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transform-style: preserve-3d;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.lastfm-track-panel-art--flip.is-flipped .lastfm-track-panel-art-flipper {
+  transform: rotateY(180deg);
+}
+
+.lastfm-track-panel-art-face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.lastfm-track-panel-art-face--back {
+  transform: rotateY(180deg);
+}
+
+.lastfm-track-panel-art-toggle,
+.lastfm-track-panel-art-back {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+}
+
+.lastfm-track-panel-art-toggle {
+  padding: 0;
+  display: block;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.lastfm-track-panel-art-toggle:focus-visible {
+  outline: 1px solid rgba(var(--accent-rgb), 0.42);
+  outline-offset: 2px;
+}
+
+.lastfm-track-panel-art-back {
+  padding: 12px;
+  display: grid;
+  background: rgba(0, 0, 0, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 18px 40px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.lastfm-track-panel-art-action-stack {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art {
   width: clamp(184px, 18vw, 228px);
   max-width: none;
@@ -982,6 +1054,17 @@ body.lastfm-track-panel-open {
   box-shadow: none;
   border-radius: 0;
   overflow: visible;
+}
+
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-flipper,
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-face,
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-toggle,
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-back {
+  border-radius: 16px;
+}
+
+.lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-back {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
 }
 
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-art-image {
@@ -1110,7 +1193,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-stat {
   min-height: 48px;
-  padding: 8px;
+  padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.84);
@@ -1136,16 +1219,16 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-stat-value {
   color: var(--text-primary);
   font-size: 16px;
-  line-height: 1;
+  line-height: 2;
   font-weight: 700;
 }
 
 .lastfm-track-panel-spotify-slot {
   grid-column: 2 / 4;
   min-height: 52px;
-  padding: 0 8px 0 10px;
+  padding: 0px 0px 0px 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
+  border-radius: 15px;
   background: rgba(0, 0, 0, 0.9);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1228,7 +1311,6 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-section-head {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: 8px;
 }
@@ -1293,6 +1375,18 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-cta--ghost {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+.lastfm-track-panel-cta--stacked {
+  width: 100%;
+  min-height: 0;
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .lastfm-track-panel-cta:hover,
@@ -1518,7 +1612,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-related-title {
   color: var(--text-primary);
   font-family: var(--hub-font);
-  font-size: 20px;
+  font-size: 32px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -2391,6 +2485,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-sidebar-row {
+  --sidebar-row-accent-rgb: var(--accent-rgb);
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2407,8 +2502,29 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   transition: background-color 180ms ease, filter 180ms ease;
 }
 
+.steam-sidebar-row::before {
+  content: "";
+  position: absolute;
+  inset: 2px 0;
+  opacity: 0;
+  border-radius: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--sidebar-row-accent-rgb), 0.18),
+    rgba(255, 255, 255, 0.03) 56%,
+    rgba(var(--sidebar-row-accent-rgb), 0.08)
+  );
+  transform: translateX(-14px) scaleX(0.985);
+  transform-origin: left center;
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .steam-sidebar-row-main {
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .steam-sidebar-row::after {
@@ -2438,6 +2554,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   opacity: 1;
   filter: drop-shadow(0 0 5px rgba(214, 227, 241, 0.36));
   transition-duration: 140ms;
+}
+
+.steam-sidebar-row:hover::before,
+.steam-sidebar-row:focus-within::before {
+  opacity: 1;
+  transform: translateX(0) scaleX(1);
 }
 
 .steam-sidebar-row-title {
@@ -2602,24 +2724,48 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   color: var(--icon-primary);
 }
 
+.steam-sidebar-row--twitter {
+  --sidebar-row-accent-rgb: 210, 214, 223;
+}
+
 .steam-sidebar-row--steam .steam-sidebar-site-icon {
   color: #b9e8ff;
+}
+
+.steam-sidebar-row--steam {
+  --sidebar-row-accent-rgb: 185, 232, 255;
 }
 
 .steam-sidebar-row--discord .steam-sidebar-site-icon {
   color: #cfd5ff;
 }
 
+.steam-sidebar-row--discord {
+  --sidebar-row-accent-rgb: 207, 213, 255;
+}
+
 .steam-sidebar-row--lastfm .steam-sidebar-site-icon {
   color: #ffafbf;
+}
+
+.steam-sidebar-row--lastfm {
+  --sidebar-row-accent-rgb: 255, 175, 191;
 }
 
 .steam-sidebar-row--spotify .steam-sidebar-site-icon {
   color: #9bf1bf;
 }
 
+.steam-sidebar-row--spotify {
+  --sidebar-row-accent-rgb: 155, 241, 191;
+}
+
 .steam-sidebar-row--soundcloud .steam-sidebar-site-icon {
   color: #ffd4c3;
+}
+
+.steam-sidebar-row--soundcloud {
+  --sidebar-row-accent-rgb: 255, 212, 195;
 }
 
 .steam-sidebar-row--twitter,
@@ -3147,6 +3293,65 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .josie-mobile-audio-dock {
   display: none;
+}
+
+.mobile-speaker-toggle {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  z-index: 40;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 12, 16, 0.62);
+  color: #a7acb4;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  outline: none;
+}
+
+.mobile-speaker-toggle[hidden] {
+  display: none !important;
+}
+
+.mobile-speaker-toggle:focus-visible {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 0 4px rgba(167, 172, 180, 0.16);
+}
+
+.mobile-speaker-toggle-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.mobile-speaker-toggle-icon svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+}
+
+.mobile-speaker-toggle[data-audio-muted="true"] .mobile-speaker-toggle-icon--unmuted,
+.mobile-speaker-toggle[data-audio-muted="false"] .mobile-speaker-toggle-icon--muted {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.mobile-speaker-toggle[data-audio-muted="true"] .mobile-speaker-toggle-icon--muted,
+.mobile-speaker-toggle[data-audio-muted="false"] .mobile-speaker-toggle-icon--unmuted {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .josie-mobile-audio-player {
@@ -4183,7 +4388,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   position: absolute;
   inset: 2px 0;
   opacity: 0;
-  border-radius: 12px;
+  border-radius: 1px;
   background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.13), rgba(255, 255, 255, 0.03) 56%, rgba(var(--accent-rgb), 0.06));
   transform: translateX(-14px) scaleX(0.985);
   transform-origin: left center;
@@ -4732,8 +4937,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .social-hub-scale-frame {
-    width: min(100%, 438px);
-    margin: 2px auto 0;
+    width: 100%;
+    max-width: 390px;
+    min-height: 100dvh;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px 0;
     display: flex;
     justify-content: center;
     align-items: stretch;
@@ -4741,10 +4949,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .social-hub {
-    gap: 12px;
-    transform-origin: top center;
-    height: 100%;
-    flex-grow: 1;
+    gap: 0;
+    width: 100%;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -4753,34 +4960,37 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .social-hub-content {
     padding-top: 0;
-    flex-grow: 1;
     display: flex;
     flex-direction: column;
     width: 100%;
+    min-height: 100dvh;
     align-items: center;
   }
 
   .social-hub-left-rail {
-    gap: 10px;
-    flex-grow: 1;
+    gap: 0;
     display: flex;
     flex-direction: column;
     width: 100%;
+    min-height: 100dvh;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 98px);
     align-items: center;
+    justify-content: flex-start;
   }
 
   .social-hub-sidebar {
-    flex-grow: 1;
     display: flex;
     flex-direction: column;
     width: 100%;
     align-items: center;
+    justify-content: flex-start;
+    margin-top: 14px;
   }
 
   .social-hub-profile,
   .social-hub-profile-tagline,
-  .steam-sidebar-panel {
-    width: min(100%, 430px);
+  .steam-sidebar-panel--mobile-home {
+    width: min(100%, 336px);
     margin-inline: auto;
   }
 
@@ -4788,17 +4998,23 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     display: none !important;
   }
 
-  .steam-hero-shell {
-    padding: 16px 12px 10px;
+  .mobile-speaker-toggle:not([hidden]) {
+    display: inline-flex;
+  }
+
+  .steam-hero-shell,
+  .steam-hero-shell--compact-mobile {
+    padding: 24px 0 0;
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
-  .steam-hero-content {
-    gap: 10px;
+  .steam-hero-content,
+  .steam-hero-content--compact-mobile {
+    gap: 12px;
     align-items: center;
-    padding-top: 4px;
+    padding-top: 0;
   }
 
   .steam-hero-toolbar {
@@ -4806,42 +5022,61 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .steam-hero-avatar-wrap {
-    width: min(100%, clamp(180px, 37.2vh, 235px));
-    margin: 10px auto 0;
+    width: min(100%, 136px);
+    margin: 0 auto;
   }
 
   .steam-hero-avatar-wrap.steam-hero-avatar-wrap--decorated {
-    width: min(100%, clamp(216px, 44.6vh, 282px));
-    margin: 10px auto 0;
+    width: min(100%, 164px);
+    margin: 0 auto;
   }
 
   .steam-hero-avatar-decoration {
-    width: 121%;
-    height: 121%;
+    width: 128%;
+    height: 128%;
   }
 
-  .steam-hero-name {
-    font-size: clamp(56px, 16vw, 72px);
-    margin-top: 20px;
+  .steam-hero-copy,
+  .steam-hero-copy--compact-mobile {
+    gap: 4px;
   }
 
-  .steam-hero-ornament {
-    margin-top: 0;
-    font-size: clamp(26px, 6.1vw, 30px);
-    letter-spacing: 0.05em;
+  .steam-hero-name,
+  .steam-hero-name--compact-mobile {
+    margin-top: 8px;
+    font-size: clamp(36px, 10.4vw, 46px);
+    line-height: 1;
+    letter-spacing: 0.01em;
+  }
+
+  .steam-hero-ornament,
+  .steam-hero-ornament--compact-mobile {
+    margin-top: -2px;
+    font-size: clamp(13px, 4.2vw, 17px);
+    letter-spacing: 0.08em;
+    opacity: 0.92;
   }
 
   .steam-hero-description {
     display: none;
   }
 
+  .social-hub-profile-tagline {
+    margin-top: 10px;
+  }
+
   .steam-sidebar-panel {
     gap: 0;
     align-items: stretch;
-    flex-grow: 1;
     display: flex;
     flex-direction: column;
     width: 100%;
+  }
+
+  .steam-sidebar-panel--mobile-home {
+    align-items: center;
+    flex-grow: 0;
+    margin-top: 12px;
   }
 
   body.site-load-active #social-hub-sidebar .steam-sidebar-panel,
@@ -4852,6 +5087,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .steam-sidebar-title {
+    display: none;
     margin: 0 0 12px;
     width: 100%;
     padding: 0 1rem;
@@ -5028,42 +5264,202 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     animation: sidebarSoundcloudFloat 1.3s ease-in-out infinite;
   }
 
+  .steam-sidebar-list {
+    padding: 0;
+    min-height: 0;
+    flex-grow: 0;
+  }
+
+  .steam-sidebar-list--mobile-icons {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-evenly;
+    gap: 0;
+    width: min(100%, 334px);
+    margin: 0 auto;
+    padding: 0 8px;
+  }
+
+  .steam-sidebar-list--mobile-icons::before,
+  .steam-sidebar-list--mobile-icons::after {
+    content: "✦";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(230, 194, 215, 0.55);
+    font-size: 12px;
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.26);
+  }
+
+  .steam-sidebar-list--mobile-icons::before {
+    left: 0;
+  }
+
+  .steam-sidebar-list--mobile-icons::after {
+    right: 0;
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-sidebar-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+
+  .steam-sidebar-link--icon-only {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    color: inherit;
+  }
+
+  .steam-sidebar-link--icon-only.is-disabled {
+    opacity: 0.38;
+    pointer-events: none;
+  }
+
+  .steam-sidebar-link--icon-only .steam-sidebar-site-icon-shell {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  .steam-sidebar-link--icon-only .steam-sidebar-site-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-site-icon,
+  .steam-sidebar-row--steam .steam-sidebar-site-icon,
+  .steam-sidebar-row--discord .steam-sidebar-site-icon,
+  .steam-sidebar-row--lastfm .steam-sidebar-site-icon,
+  .steam-sidebar-row--spotify .steam-sidebar-site-icon,
+  .steam-sidebar-row--soundcloud .steam-sidebar-site-icon {
+    animation: none;
+    transform: none;
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-sidebar-row {
+    --sidebar-row-accent-rgb: 248, 249, 252;
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only,
+  .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only:visited {
+    color: rgba(248, 249, 252, 0.94);
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-sidebar-site-icon {
+    color: rgba(248, 249, 252, 0.94);
+    opacity: 1;
+    filter:
+      drop-shadow(0 0 6px rgba(255, 255, 255, 0.28))
+      drop-shadow(0 0 14px rgba(255, 255, 255, 0.15));
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-sidebar-site-icon svg [fill]:not([fill="none"]) {
+    stroke-opacity: 0.08;
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-link-status-dot,
+  .steam-sidebar-list--mobile-icons .steam-link-status-dot--online,
+  .steam-sidebar-list--mobile-icons .steam-link-status-dot--offline {
+    background: rgba(248, 249, 252, 0.94);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.3),
+      0 0 10px rgba(255, 255, 255, 0.3);
+  }
+
+  .steam-sidebar-list--mobile-icons .steam-link-status-dot::before {
+    inset: -5px;
+    opacity: 1;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0.16) 44%, rgba(255, 255, 255, 0) 76%);
+    filter: blur(5px);
+    animation: none;
+  }
+
+  .discord-presence-panel {
+    width: min(100%, 334px);
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(6, 6, 8, 0.42);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .discord-presence-card {
+    min-height: 58px;
+    padding: 8px 10px;
+    gap: 8px;
+    border-radius: 3px;
+    background: rgba(6, 6, 8, 0.56);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .discord-presence-avatar-wrap,
+  .discord-presence-avatar,
+  .discord-presence-avatar--fallback {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .discord-presence-name {
+    font-size: 13px;
+  }
+
+  .discord-presence-headline {
+    font-size: 11.5px;
+  }
+
+  .discord-presence-meta {
+    font-size: 10px;
+  }
+
+  .steam-link-status-dot {
+    width: 10px;
+    height: 10px;
+    right: -2px;
+    bottom: -2px;
+  }
+
   .josie-mobile-audio-dock {
-    display: block;
+    display: none !important;
   }
 
   .josie-mobile-audio-player {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + 1rem);
-    width: min(430px, calc(100vw - 16px));
+    display: none !important;
   }
 
   .josie-mobile-audio-player .josie-audio-player-wave-shell {
-    min-height: 92px;
+    display: none !important;
   }
 
   .josie-mobile-audio-player .josie-audio-player-overlay {
-    padding: 12px 14px;
-  }
-
-  .steam-sidebar-list {
-    flex-grow: 1;
-    justify-content: space-evenly;
+    display: none !important;
   }
 
   .cinna-mobile-gif-wrap {
     display: flex;
-    width: 100%;
+    width: auto;
     justify-content: center;
     align-items: center;
-    padding-top: 10px;
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 136px);
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1px);
+    transform: translateX(-50%);
+    padding: 0;
+    pointer-events: none;
+    z-index: 3;
   }
 
   .cinna-mobile-gif {
     display: block;
     height: auto;
     object-fit: contain;
-    max-width: 140px;
+    max-width: none;
   }
 
   .cinna-mobile-gif[hidden] {
@@ -5071,7 +5467,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .cinna-mobile-gif--canvas {
-    width: min(140px, 42vw);
+    width: min(136px, 38vw);
     height: auto;
   }
 

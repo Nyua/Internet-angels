@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260327-josie-89" />
+    <link rel="stylesheet" href="/josie.css?v=20260328-josie-94" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -159,6 +159,28 @@
         document.body.classList.remove("site-load-active", "site-load-playing");
       })();
     </script>
+    <button
+      type="button"
+      class="mobile-speaker-toggle"
+      data-mobile-speaker-toggle
+      data-audio-muted="false"
+      data-audio-playing="false"
+      hidden
+      aria-label="Enable audio"
+    >
+      <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--unmuted" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
+          <path d="M16.1 9.2a4.26 4.26 0 0 1 0 5.6M18.52 6.98a7.42 7.42 0 0 1 0 10.04" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
+        </svg>
+      </span>
+      <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--muted" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
+          <path d="m16.3 8.1 4.5 4.5m0-4.5-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
+        </svg>
+      </span>
+    </button>
     <main class="corner-shell theme-chrome state-os-ready">
       <section id="os-stage" class="os-stage" aria-hidden="false">
         <div id="os-ambient-backdrop" class="os-ambient-backdrop" aria-hidden="true">
@@ -179,7 +201,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260327-josie-89"></script>
+    <script src="/josie.client.js?v=20260328-josie-94"></script>
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
@@ -256,7 +278,6 @@
         const referenceWidthPx = 2560;
         const minScale = 0.58;
         const compactMobileBreakpointPx = 820;
-        const mobileFloatingAudioReservePx = 144;
         let rafId = 0;
         function applyHubScale() {
           const root = document.querySelector("#social-hub-root");
@@ -267,16 +288,9 @@
             root.style.removeProperty("will-change");
             root.style.removeProperty("width");
             root.style.margin = "0 auto";
-            root.style.transformOrigin = "top center";
-            root.style.transform = "scale(1)";
+            root.style.removeProperty("transform-origin");
+            root.style.removeProperty("transform");
             frame.style.removeProperty("height");
-            const naturalWidth = root.offsetWidth || frame.clientWidth || window.innerWidth;
-            const naturalHeight = root.offsetHeight || frame.clientHeight || window.innerHeight;
-            const availableWidth = Math.max(1, frame.clientWidth || window.innerWidth);
-            const availableHeight = Math.max(1, window.innerHeight - mobileFloatingAudioReservePx);
-            const scale = Math.max(0.68, Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight));
-            root.style.transform = `scale(${scale.toFixed(4)})`;
-            frame.style.height = `${Math.ceil(naturalHeight * scale)}px`;
             return;
           }
           root.style.removeProperty("transform");
