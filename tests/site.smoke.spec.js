@@ -493,7 +493,18 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
             avatar: "avatar-hash",
             premium_type: 2
           },
-          activities: [],
+          activities: [
+            {
+              type: 4,
+              name: "Custom Status",
+              state: "ame_jam",
+              emoji: {
+                id: "123456789012345678",
+                name: "ameheart",
+                animated: false
+              }
+            }
+          ],
           discord_status: "online",
           listening_to_spotify: true,
           spotify: {
@@ -545,11 +556,14 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
+  await expect(page.locator(".discord-presence-card--foundlifeless")).toHaveCount(1);
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
   await expect(page.locator(".discord-presence-meta")).toContainText("by idkwhyy");
   await expect(page.locator(".discord-presence-nitro-badge")).toHaveCount(1);
   await expect(page.locator(".discord-presence-album-art")).toHaveAttribute("src", /example-up-down/);
+  await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
+  await expect(page.locator(".discord-presence-status-dot")).toHaveCount(0);
   await expect(page.locator("#site-theme-toggle-anchor")).toHaveCount(0);
 
   const layoutPositions = await page.evaluate(() => {
@@ -567,6 +581,44 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   expect(layoutPositions.profileLinksTop).not.toBeNull();
   expect(layoutPositions.heroDescriptionTop).toBeLessThan(layoutPositions.discordPanelTop);
   expect(layoutPositions.discordPanelTop).toBeLessThan(layoutPositions.profileLinksTop);
+
+  const discordCardStyles = await page.evaluate(() => {
+    const card = document.querySelector(".discord-presence-card--foundlifeless");
+    const avatar = document.querySelector(".discord-presence-avatar-wrap");
+    const albumArt = document.querySelector(".discord-presence-album-art-wrap");
+    const badge = document.querySelector(".discord-presence-status-badge");
+    const name = document.querySelector(".discord-presence-name");
+    const sizeOf = (node) => {
+      if (!(node instanceof HTMLElement)) return null;
+      const style = window.getComputedStyle(node);
+      return {
+        width: style.width,
+        height: style.height
+      };
+    };
+    return {
+      cardRadius: card instanceof HTMLElement ? window.getComputedStyle(card).borderRadius : "",
+      cardBackground: card instanceof HTMLElement ? window.getComputedStyle(card).backgroundColor : "",
+      cardBorderWidth: card instanceof HTMLElement ? window.getComputedStyle(card).borderTopWidth : "",
+      avatarRect: sizeOf(avatar),
+      albumArtRect: sizeOf(albumArt),
+      badgeRect: sizeOf(badge),
+      nameFontFamily: name instanceof HTMLElement ? window.getComputedStyle(name).fontFamily : "",
+      nameColor: name instanceof HTMLElement ? window.getComputedStyle(name).color : ""
+    };
+  });
+  expect(discordCardStyles.cardRadius).toBe("25px");
+  expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.2)");
+  expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeGreaterThan(1.5);
+  expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeLessThanOrEqual(2.1);
+  expect(Number.parseFloat(discordCardStyles.avatarRect?.width || "0")).toBeGreaterThan(69);
+  expect(Number.parseFloat(discordCardStyles.avatarRect?.height || "0")).toBeGreaterThan(69);
+  expect(Number.parseFloat(discordCardStyles.albumArtRect?.width || "0")).toBeGreaterThan(69);
+  expect(Number.parseFloat(discordCardStyles.albumArtRect?.height || "0")).toBeGreaterThan(69);
+  expect(Number.parseFloat(discordCardStyles.badgeRect?.width || "0")).toBeGreaterThan(16);
+  expect(Number.parseFloat(discordCardStyles.badgeRect?.height || "0")).toBeGreaterThan(16);
+  expect(discordCardStyles.nameFontFamily.toLowerCase()).toContain("pixelmplus12");
+  expect(discordCardStyles.nameColor).toBe("rgb(190, 186, 189)");
 
   const nightThemeColors = await page.evaluate(() => {
     const heroName = document.querySelector(".steam-hero-name");
@@ -592,6 +644,80 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
 
   expect(requests.some((url) => url.includes("/api/discord"))).toBe(true);
   expect(requests.some((url) => url.includes("api.lanyard.rest"))).toBe(false);
+});
+
+test("josie discord presence collapses the spotify art slot when spotify is inactive", async ({ page }) => {
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless",
+            global_name: "FoundLifeless",
+            avatar: "avatar-hash",
+            premium_type: 2
+          },
+          activities: [
+            {
+              type: 0,
+              name: "Balatro",
+              details: "Balatro",
+              state: "Deep in endless mode"
+            }
+          ],
+          discord_status: "online",
+          listening_to_spotify: false,
+          spotify: {},
+          active_on_discord_web: true,
+          active_on_discord_desktop: true,
+          active_on_discord_mobile: false,
+          kv: {}
+        },
+        presence: {
+          displayName: "foundlifeless",
+          username: "foundlifeless",
+          statusKey: "online",
+          statusLabel: "Online",
+          avatarUrl: "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256",
+          avatarDecorationUrl: "",
+          bannerUrl: "",
+          hasNitro: true,
+          nitroBadgeIconUrl: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png",
+          customStatusText: "",
+          primaryActivity: {
+            type: "0",
+            label: "Playing",
+            name: "Balatro",
+            subtitle: "Deep in endless mode"
+          },
+          spotify: {
+            isListening: false,
+            song: "",
+            artist: "",
+            album: "",
+            albumArtUrl: "",
+            trackUrl: ""
+          }
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
+  await expect(page.locator(".discord-presence-album-art-wrap")).toHaveCount(0);
+  await expect(page.locator(".discord-presence-headline")).toContainText("Playing Balatro");
+  await expect(page.locator(".discord-presence-meta")).toContainText("Deep in endless mode");
+  await expect(page.locator(".discord-presence-custom-emoji")).toHaveCount(0);
 });
 
 test("josie night ambient reports frozen motion for reduced motion users", async ({ page }) => {
@@ -781,7 +907,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".steam-sidebar-title")).toBeHidden();
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
   await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
-  await expect(page.locator(".discord-presence-card")).toBeVisible();
+  await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
@@ -806,6 +932,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
     const viewportCenter = window.innerWidth / 2;
     const heroAvatar = document.querySelector(".steam-hero-avatar-wrap");
     const presencePanel = document.querySelector(".discord-presence-panel");
+    const presenceCard = document.querySelector(".discord-presence-card--foundlifeless");
+    const presenceAvatar = document.querySelector(".discord-presence-avatar-wrap");
     const iconLinks = Array.from(document.querySelectorAll(".steam-sidebar-link--icon-only"));
     const cinna = document.querySelector(".cinna-mobile-gif--canvas");
     const speakerButton = document.querySelector("[data-mobile-speaker-toggle]");
@@ -833,6 +961,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
     return {
       heroOffset: centerOffset(heroAvatar),
       presenceOffset: centerOffset(presencePanel),
+      presenceCardWidth: presenceCard instanceof HTMLElement ? Math.round(presenceCard.getBoundingClientRect().width) : null,
+      presenceAvatarWidth: presenceAvatar instanceof HTMLElement ? Math.round(presenceAvatar.getBoundingClientRect().width) : null,
       speakerRect: rectSnapshot(speakerButton),
       cinnaRect: rectSnapshot(cinna),
       iconRowRect: rectSnapshot(document.querySelector(".steam-sidebar-list--mobile-icons")),
@@ -844,6 +974,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(mobileCentering.presenceOffset).not.toBeNull();
   expect(mobileCentering.heroOffset).toBeLessThan(4);
   expect(mobileCentering.presenceOffset).toBeLessThan(4);
+  expect(mobileCentering.presenceCardWidth).toBeLessThanOrEqual(320);
+  expect(mobileCentering.presenceAvatarWidth).toBe(56);
   expect(mobileCentering.speakerRect).not.toBeNull();
   expect(mobileCentering.speakerRect.left).toBeLessThan(24);
   expect(mobileCentering.speakerRect.top).toBeLessThan(32);
@@ -1190,6 +1322,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     const bodyEl = document.querySelector(".lastfm-track-panel-body");
     const backdropEl = document.querySelector(".lastfm-track-panel-backdrop");
+    const artEl = document.querySelector(".lastfm-track-panel-art");
     if (!(windowEl instanceof HTMLElement)) {
       return null;
     }
@@ -1201,16 +1334,20 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       overflowY: styles.overflowY,
       bodyHeight: bodyEl instanceof HTMLElement ? bodyEl.scrollHeight : 0,
       clientHeight: windowEl.clientHeight,
+      artWidth: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().width : 0,
+      artHeight: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().height : 0,
       backgroundColor: styles.backgroundColor,
       backdropFilter: backdropEl instanceof HTMLElement ? window.getComputedStyle(backdropEl).backdropFilter : "",
       compactDebugBadgeCount: document.querySelectorAll(".lastfm-track-panel-badge").length
     };
   });
   expect(panelBox).not.toBeNull();
-  expect(panelBox.width).toBeLessThanOrEqual(900);
+  expect(panelBox.width).toBeLessThanOrEqual(1000);
   expect(panelBox.scrollbarWidth).toBe("none");
   expect(panelBox.overflowY).toBe("hidden");
   expect(panelBox.bodyHeight).toBeLessThanOrEqual(panelBox.clientHeight + 2);
+  expect(panelBox.artWidth).toBeGreaterThanOrEqual(220);
+  expect(panelBox.artHeight).toBeGreaterThanOrEqual(220);
   expect(panelBox.backgroundColor).toBe("rgb(0, 0, 0)");
   expect(panelBox.backdropFilter).toContain("blur");
   expect(panelBox.compactDebugBadgeCount).toBeLessThanOrEqual(1);
@@ -1650,12 +1787,16 @@ test("josie opens artist and album detail panels from top charts and follows alb
     return {
       className: layout instanceof HTMLElement ? layout.className : "",
       primaryWidth: primary instanceof HTMLElement ? primary.getBoundingClientRect().width : 0,
+      artWidth: art instanceof HTMLElement ? art.getBoundingClientRect().width : 0,
+      artHeight: art instanceof HTMLElement ? art.getBoundingClientRect().height : 0,
       artBackground: art instanceof HTMLElement ? window.getComputedStyle(art).backgroundColor : "",
       artBorderWidth: art instanceof HTMLElement ? window.getComputedStyle(art).borderTopWidth : ""
     };
   });
   expect(artistPanelLayout.className).toContain("lastfm-track-panel-layout--compact-primary");
-  expect(artistPanelLayout.primaryWidth).toBeGreaterThan(180);
+  expect(artistPanelLayout.primaryWidth).toBeGreaterThan(220);
+  expect(artistPanelLayout.artWidth).toBeGreaterThanOrEqual(220);
+  expect(artistPanelLayout.artHeight).toBeGreaterThanOrEqual(220);
   expect(artistPanelLayout.artBackground).toBe("rgba(0, 0, 0, 0)");
   expect(artistPanelLayout.artBorderWidth).toBe("0px");
   const artistPanelFit = await page.evaluate(() => {
@@ -1695,6 +1836,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1);
   const albumAmbientFromArtistPopup = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
+    const artEl = document.querySelector(".lastfm-track-panel-art");
     if (!(windowEl instanceof HTMLElement)) {
       return null;
     }
@@ -1702,13 +1844,17 @@ test("josie opens artist and album detail panels from top charts and follows alb
     return {
       hasAmbient: windowEl.getAttribute("data-has-ambient-light"),
       backgroundImage: before.backgroundImage,
-      opacity: before.opacity
+      opacity: before.opacity,
+      artWidth: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().width : 0,
+      artHeight: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().height : 0
     };
   });
   expect(albumAmbientFromArtistPopup).not.toBeNull();
   expect(albumAmbientFromArtistPopup.hasAmbient).toBe("true");
   expect(albumAmbientFromArtistPopup.backgroundImage).toContain("beatopia-detail.jpg");
   expect(Number.parseFloat(albumAmbientFromArtistPopup.opacity)).toBeGreaterThan(0.2);
+  expect(albumAmbientFromArtistPopup.artWidth).toBeGreaterThanOrEqual(220);
+  expect(albumAmbientFromArtistPopup.artHeight).toBeGreaterThanOrEqual(220);
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   const albumArtShellFromArtistPopup = await showLastFmPanelArtActions(page);
   await expect(albumArtShellFromArtistPopup.locator(".lastfm-track-panel-cta", { hasText: "Open Album on Last.fm" })).toBeVisible();
@@ -1725,6 +1871,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1);
   const albumAmbient = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
+    const artEl = document.querySelector(".lastfm-track-panel-art");
     if (!(windowEl instanceof HTMLElement)) {
       return null;
     }
@@ -1732,13 +1879,17 @@ test("josie opens artist and album detail panels from top charts and follows alb
     return {
       hasAmbient: windowEl.getAttribute("data-has-ambient-light"),
       backgroundImage: before.backgroundImage,
-      opacity: before.opacity
+      opacity: before.opacity,
+      artWidth: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().width : 0,
+      artHeight: artEl instanceof HTMLElement ? artEl.getBoundingClientRect().height : 0
     };
   });
   expect(albumAmbient).not.toBeNull();
   expect(albumAmbient.hasAmbient).toBe("true");
   expect(albumAmbient.backgroundImage).toContain("beatopia-detail.jpg");
   expect(Number.parseFloat(albumAmbient.opacity)).toBeGreaterThan(0.2);
+  expect(albumAmbient.artWidth).toBeGreaterThanOrEqual(220);
+  expect(albumAmbient.artHeight).toBeGreaterThanOrEqual(220);
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);

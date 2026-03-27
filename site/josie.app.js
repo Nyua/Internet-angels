@@ -238,6 +238,7 @@
       items: [
         { id: "seed-discord-1", title: "Activity unavailable", meta: "Awaiting live presence feed" }
       ],
+      activities: [],
       presence: {
         displayName: "foundlifeless",
         username: "foundlifeless",
@@ -1177,6 +1178,11 @@
     if (!safeAsset) return "";
     return `https://cdn.discordapp.com/avatar-decoration-presets/${safeAsset}.png?size=160&passthrough=true`;
   }
+  function buildDiscordEmojiUrl(emojiId, animated) {
+    const safeEmojiId = String(emojiId || "").trim();
+    if (!/^\d+$/.test(safeEmojiId)) return "";
+    return `https://cdn.discordapp.com/emojis/${safeEmojiId}.${animated ? "gif" : "png"}?size=64&quality=lossless`;
+  }
   function mapDiscordPresenceFromProxy(proxyPayload, discordUser, profile, userId) {
     const safePresence = proxyPayload?.presence && typeof proxyPayload.presence === "object" ? proxyPayload.presence : {};
     const safeSpotify = safePresence.spotify && typeof safePresence.spotify === "object" ? safePresence.spotify : {};
@@ -1332,6 +1338,7 @@
           { label: "Presence Source", value: statusSource ? presenceSource : "Unavailable" },
           { label: "Activities", value: String(activityItems.length || activities.length || 0) }
         ],
+        activities,
         presence: mapDiscordPresenceFromProxy(discordPayload, discordUser, profilePatch, userId),
         items: activityItems.length ? activityItems : [
           {
@@ -2558,19 +2565,39 @@
   function renderHeroDescriptionMarkup() {
     return escapeHtml(HERO_DESCRIPTION_TEXT);
   }
-  function renderDiscordPresencePanel(payload) {
+  function extractDiscordCustomStatusEmojiData(activities) {
+    const list = Array.isArray(activities) ? activities : [];
+    const customStatus = list.find((activity) => Number(activity?.type) === 4) || null;
+    const emoji = customStatus?.emoji && typeof customStatus.emoji === "object" ? customStatus.emoji : null;
+    if (!emoji) {
+      return {
+        url: "",
+        alt: ""
+      };
+    }
+    const alt = firstNonEmpty(emoji.name, "Discord custom emoji");
+    return {
+      url: sanitizeUrl(buildDiscordEmojiUrl(emoji.id, Boolean(emoji.animated))),
+      alt
+    };
+  }
+  function buildDiscordPresenceCardModel(payload) {
     const safePayload = payload && typeof payload === "object" ? payload : null;
     const presence = safePayload?.presence && typeof safePayload.presence === "object" ? safePayload.presence : null;
     const profile = safePayload?.profile && typeof safePayload.profile === "object" ? safePayload.profile : {};
+    const activities = Array.isArray(safePayload?.activities) ? safePayload.activities : [];
     const displayName = firstNonEmpty(presence?.displayName, profile.name, "foundlifeless");
-    const statusKey = firstNonEmpty(presence?.statusKey, profile.statusKey, "offline").toLowerCase();
+    const username = firstNonEmpty(presence?.username, displayName, "foundlifeless");
+    const statusKey = resolveDiscordStatusKey(presence?.statusKey, profile.statusText);
     const avatarUrl = sanitizeUrl(firstNonEmpty(presence?.avatarUrl, profile.avatarUrl));
     const avatarDecorationUrl = sanitizeUrl(firstNonEmpty(presence?.avatarDecorationUrl, profile.decorationUrl));
-    const nitroBadgeIconUrl = sanitizeUrl(presence?.hasNitro ? presence?.nitroBadgeIconUrl : "");
+    const hasNitro = Boolean(presence?.hasNitro);
+    const nitroBadgeIconUrl = sanitizeUrl(hasNitro ? presence?.nitroBadgeIconUrl : "");
     const spotify = presence?.spotify && typeof presence.spotify === "object" ? presence.spotify : {};
     const isListeningToSpotify = Boolean(spotify?.isListening);
     const albumArtUrl = sanitizeUrl(spotify?.albumArtUrl);
-    const headline = isListeningToSpotify
+    const customEmoji = extractDiscordCustomStatusEmojiData(activities);
+    let headline = isListeningToSpotify
       ? `Listening to ${firstNonEmpty(spotify?.song, "Unknown track")}`
       : firstNonEmpty(
         presence?.customStatusText,
@@ -2579,30 +2606,63 @@
         profile.statusText,
         "Discord presence unavailable"
       );
-    const metaLine = isListeningToSpotify
-      ? firstNonEmpty(spotify?.artist ? `by ${spotify.artist}` : "", spotify?.album)
-      : firstNonEmpty(
-        presence?.primaryActivity?.subtitle,
-        presence?.statusLabel,
-        profile.statusText
-      );
+    if (!customEmoji.url && customEmoji.alt) {
+      headline = `${customEmoji.alt} ${headline}`.trim();
+    }
+    return {
+      displayName,
+      username,
+      hasNitro,
+      nitroBadgeIconUrl,
+      avatarUrl,
+      avatarDecorationUrl,
+      statusKey,
+      headline,
+      meta: isListeningToSpotify
+        ? firstNonEmpty(spotify?.artist ? `by ${spotify.artist}` : "", spotify?.album)
+        : firstNonEmpty(
+          presence?.primaryActivity?.subtitle,
+          presence?.statusLabel,
+          profile.statusText
+        ),
+      showAlbumArt: Boolean(isListeningToSpotify && albumArtUrl),
+      albumArtUrl,
+      customStatusEmojiUrl: customEmoji.url,
+      customStatusEmojiAlt: customEmoji.url ? customEmoji.alt : ""
+    };
+  }
+  function renderDiscordPresencePanel(payload) {
+    const model = buildDiscordPresenceCardModel(payload);
     return `
       <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
-        <div class="discord-presence-card">
-          <div class="discord-presence-avatar-wrap discord-presence-avatar-wrap--${escapeHtml(statusKey || "offline")}">
-            ${avatarUrl ? `<img class="discord-presence-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="discord-presence-avatar discord-presence-avatar--fallback">D</div>'}
-            ${avatarDecorationUrl ? `<img class="discord-presence-avatar-decoration" src="${escapeHtml(avatarDecorationUrl)}" alt="" loading="lazy" decoding="async" aria-hidden="true" />` : ""}
-            <span class="discord-presence-status-dot discord-presence-status-dot--${escapeHtml(statusKey || "offline")}" aria-hidden="true"></span>
+        <div class="discord-presence-shell">
+          <div class="discord-presence-reveal">
+            <article class="discord-presence-card discord-presence-card--foundlifeless" data-spotify-active="${model.showAlbumArt ? "true" : "false"}">
+              <div class="discord-presence-body">
+                <div class="discord-presence-avatar-stack">
+                  <div class="discord-presence-avatar-wrap discord-presence-avatar-wrap--${escapeHtml(model.statusKey || "offline")}">
+                    ${model.avatarUrl ? `<img class="discord-presence-avatar" src="${escapeHtml(model.avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="discord-presence-avatar discord-presence-avatar--fallback">D</div>'}
+                    ${model.avatarDecorationUrl ? `<img class="discord-presence-avatar-decoration" src="${escapeHtml(model.avatarDecorationUrl)}" alt="" loading="lazy" decoding="async" aria-hidden="true" />` : ""}
+                    <span class="discord-presence-status-badge" data-status="${escapeHtml(model.statusKey || "offline")}" aria-hidden="true"></span>
+                  </div>
+                </div>
+                <div class="discord-presence-main">
+                  <div class="discord-presence-copy">
+                    <div class="discord-presence-identity-row">
+                      <span class="discord-presence-name">${escapeHtml(model.displayName)}</span>
+                      ${model.nitroBadgeIconUrl ? `<img class="discord-presence-nitro-badge" src="${escapeHtml(model.nitroBadgeIconUrl)}" alt="Discord Nitro" loading="lazy" decoding="async" />` : ""}
+                    </div>
+                    <div class="discord-presence-subline">
+                      ${model.customStatusEmojiUrl ? `<img class="discord-presence-custom-emoji" src="${escapeHtml(model.customStatusEmojiUrl)}" alt="${escapeHtml(model.customStatusEmojiAlt || "")}" loading="lazy" decoding="async" />` : ""}
+                      <p class="discord-presence-headline">${escapeHtml(model.headline)}</p>
+                    </div>
+                    ${model.meta ? `<p class="discord-presence-meta">${escapeHtml(model.meta)}</p>` : ""}
+                  </div>
+                  ${model.showAlbumArt ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(model.albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
+                </div>
+              </div>
+            </article>
           </div>
-          <div class="discord-presence-copy">
-            <div class="discord-presence-topline">
-              <span class="discord-presence-name">${escapeHtml(displayName)}</span>
-              ${nitroBadgeIconUrl ? `<img class="discord-presence-nitro-badge" src="${escapeHtml(nitroBadgeIconUrl)}" alt="Discord Nitro" loading="lazy" decoding="async" />` : ""}
-            </div>
-            <p class="discord-presence-headline">${escapeHtml(headline)}</p>
-            ${metaLine ? `<p class="discord-presence-meta">${escapeHtml(metaLine)}</p>` : ""}
-          </div>
-          ${albumArtUrl ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
         </div>
       </section>
     `;
@@ -3760,7 +3820,7 @@
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
       const onlineState = resolveLinkOnlineState(site.id, payload);
-      const statusDot = onlineState === null ? "" : `<span class="steam-link-status-dot steam-link-status-dot--${onlineState ? "online" : "offline"}" aria-hidden="true" title="${onlineState ? "Online" : "Offline"}"></span>`;
+      const statusDot = onlineState === null ? "" : `<span class="steam-link-status-dot steam-link-status-dot--${onlineState ? "online" : "offline"}" data-status="${onlineState ? "online" : "offline"}" aria-hidden="true" title="${onlineState ? "Online" : "Offline"}"></span>`;
       const siteLabel = escapeHtml(SITE_THEME_LABEL[site.id] || site.label);
       const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
       if (compact) {
