@@ -193,7 +193,7 @@ body.has-custom-cursor.has-system-pointer * {
   display: block;
   opacity: var(--cursor-tail-opacity);
   transition: opacity 72ms linear;
-  filter: saturate(1.02);
+  filter: brightness(1.45) saturate(0);
 }
 
 .site-pointer-head {
@@ -325,6 +325,14 @@ body[data-theme-resolved="night"] .site-pointer-hand-outline {
 
 body[data-theme-resolved="night"] .site-pointer-arrow::before {
   background: rgba(255, 255, 255, 0.84);
+}
+
+body[data-theme-resolved="night"] .site-pointer-trail-canvas {
+  filter:
+    brightness(2.4)
+    saturate(0)
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.72))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.38));
 }
 
 .site-pointer.is-interactive .site-pointer-core {

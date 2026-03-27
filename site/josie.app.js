@@ -6830,14 +6830,14 @@
         x: point.x - headX,
         y: point.y - headY
       }));
-      const tailOpacity = clamp((0.12 + motionStrength * 0.72) * (1 - idleFade * 0.98), 0, 0.88);
+      const tailOpacity = clamp((0.22 + motionStrength * 0.84) * (1 - idleFade * 0.96), 0, 1);
       const coreWidth = 3.6 + motionStrength * 2.2 + (scrollDirection !== 0 ? 0.4 : 0);
       const glowWidth = 11 + motionStrength * 6 + (scrollDirection !== 0 ? 1.2 : 0);
       const sampledPoints = sampleTrailPoints(relativePoints, trailSubdivisionCount);
       cursorEl.style.setProperty("--cursor-tail-opacity", tailOpacity.toFixed(3));
       clearTrailCanvas();
-      drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.14, 8 + motionStrength * 3, 0.08);
-      drawTrailRibbon(sampledPoints, coreWidth, tailOpacity * 0.4, 3 + motionStrength * 1.5, 0.04);
+      drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.28, 11 + motionStrength * 4, 0.24);
+      drawTrailRibbon(sampledPoints, coreWidth, tailOpacity * 0.72, 5 + motionStrength * 2, 0.12);
     }
     function tick(nowMs) {
       if (disposed) return;
