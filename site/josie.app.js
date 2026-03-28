@@ -6847,6 +6847,7 @@
   function createSiteCursorController() {
     if (!shouldEnableCustomCursor()) return null;
     if (!(document.body instanceof HTMLElement)) return null;
+    const interactiveMorphTokens = ["bean", "soft-square", "petal", "comet", "knot"];
     const tailPointCount = 10;
     const tailLifetimeMs = 148;
     const trailCanvasSize = 110;
@@ -6876,6 +6877,7 @@
     `;
     document.body.appendChild(cursorEl);
     document.body.classList.add("has-custom-cursor");
+    cursorEl.dataset.cursorMorph = "orb";
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
     const trailContext = trailCanvas instanceof HTMLCanvasElement ? trailCanvas.getContext("2d") : null;
     if (!(trailCanvas instanceof HTMLCanvasElement) || !trailContext) {
@@ -6914,6 +6916,7 @@
     let headY = -120;
     let pointerEnergy = 0;
     let currentInteractiveTarget = null;
+    let currentMorphToken = "orb";
     const trailHistory = [];
     const pointerMoveEventName = "pointermove";
     function trimTrailHistory(nowMs = performance.now()) {
@@ -7042,9 +7045,13 @@
     function syncInteractiveTarget(target) {
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
       if (nextTarget === currentInteractiveTarget) return;
+      if (nextTarget) {
+        applyCursorMorph(pickNextInteractiveMorph());
+      } else {
+        applyCursorMorph("orb");
+      }
       currentInteractiveTarget = nextTarget;
       cursorEl.classList.toggle("is-interactive", Boolean(currentInteractiveTarget));
-      document.body.classList.toggle("has-system-pointer", Boolean(currentInteractiveTarget));
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
       if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
@@ -7136,35 +7143,52 @@
       currentInteractiveTarget = null;
       pointerEnergy = 0;
       cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down");
-      document.body.classList.remove("has-system-pointer");
+      applyCursorMorph("orb");
+    }
+    function isTouchLikeCursorEvent(event) {
+      return event instanceof PointerEvent && event.pointerType === "touch";
+    }
+    function readCursorEventPoint(event) {
+      if (!(event instanceof MouseEvent || event instanceof PointerEvent)) {
+        return null;
+      }
+      return {
+        x: event.clientX,
+        y: event.clientY,
+        target: event.target
+      };
     }
     function onPointerMove(event) {
-      if (!(event instanceof PointerEvent)) return;
-      if (event.pointerType === "touch") return;
-      syncPosition(event.clientX, event.clientY);
-      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+      if (isTouchLikeCursorEvent(event)) return;
+      const point = readCursorEventPoint(event);
+      if (!point) return;
+      syncPosition(point.x, point.y);
+      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
     }
     function onPointerOver(event) {
-      if (!(event instanceof PointerEvent)) return;
-      if (event.pointerType === "touch") return;
-      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+      if (isTouchLikeCursorEvent(event)) return;
+      const point = readCursorEventPoint(event);
+      if (!point) return;
+      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
     }
     function onPointerDown(event) {
-      if (!(event instanceof PointerEvent)) return;
-      if (event.pointerType === "touch" || event.button !== 0) return;
+      if (isTouchLikeCursorEvent(event)) return;
+      if (!(event instanceof MouseEvent || event instanceof PointerEvent) || event.button !== 0) return;
       syncPosition(event.clientX, event.clientY);
       syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
       pressed = true;
       cursorEl.classList.add("is-pressed");
     }
     function onPointerUp(event) {
-      if (!(event instanceof PointerEvent)) return;
-      if (event.pointerType === "touch") return;
+      if (isTouchLikeCursorEvent(event)) return;
+      const point = readCursorEventPoint(event);
       if (pressed) {
         pressed = false;
         cursorEl.classList.remove("is-pressed");
       }
-      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+      if (point) {
+        syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
+      }
     }
     function onWheel(event) {
       setScrollDirectionFromWheel(event.deltaY);
@@ -7209,7 +7233,6 @@
         window.removeEventListener("blur", hideCursor);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         document.body.classList.remove("has-custom-cursor");
-        document.body.classList.remove("has-system-pointer");
         cursorEl.remove();
       }
     };
@@ -7302,3 +7325,13 @@
     siteCursorController = null;
   });
 })();
+    function applyCursorMorph(token) {
+      const safeToken = typeof token === "string" && token ? token : "orb";
+      currentMorphToken = safeToken;
+      cursorEl.dataset.cursorMorph = safeToken;
+    }
+    function pickNextInteractiveMorph() {
+      const candidates = interactiveMorphTokens.filter((token) => token !== currentMorphToken);
+      const pool = candidates.length ? candidates : interactiveMorphTokens;
+      return pool[Math.floor(Math.random() * pool.length)] || "orb";
+    }

@@ -108,6 +108,46 @@ async function showLastFmPanelArtActions(page) {
   return artShell;
 }
 
+async function readLastFmPanelArtHoverState(page) {
+  return page.evaluate(() => {
+    const artShell = document.querySelector(".lastfm-track-panel-art");
+    const artImage = document.querySelector(".lastfm-track-panel-art-image");
+    if (!(artShell instanceof HTMLElement)) {
+      return null;
+    }
+    const shellStyles = window.getComputedStyle(artShell);
+    const imageStyles = artImage instanceof HTMLElement ? window.getComputedStyle(artImage) : null;
+    const beforeStyles = window.getComputedStyle(artShell, "::before");
+    return {
+      shellTransform: shellStyles.transform,
+      imageTransform: imageStyles?.transform || "",
+      imageFilter: imageStyles?.filter || "",
+      overlayOpacity: beforeStyles.opacity
+    };
+  });
+}
+
+async function emitCustomCursorHover(page, selector) {
+  await page.evaluate((targetSelector) => {
+    const target = document.querySelector(targetSelector);
+    if (!(target instanceof HTMLElement)) return;
+    const rect = target.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window
+    };
+    target.dispatchEvent(new MouseEvent("mouseover", init));
+    target.dispatchEvent(new MouseEvent("mousemove", init));
+    window.dispatchEvent(new MouseEvent("mousemove", init));
+  }, selector);
+}
+
 async function mockClientTime(page, parts) {
   await page.addInitScript((value) => {
     const RealDate = Date;
@@ -604,6 +644,8 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
       albumArtRect: sizeOf(albumArt),
       badgeRect: sizeOf(badge),
       nameFontFamily: name instanceof HTMLElement ? window.getComputedStyle(name).fontFamily : "",
+      headlineFontFamily: document.querySelector(".discord-presence-headline") instanceof HTMLElement ? window.getComputedStyle(document.querySelector(".discord-presence-headline")).fontFamily : "",
+      metaFontFamily: document.querySelector(".discord-presence-meta") instanceof HTMLElement ? window.getComputedStyle(document.querySelector(".discord-presence-meta")).fontFamily : "",
       nameColor: name instanceof HTMLElement ? window.getComputedStyle(name).color : ""
     };
   });
@@ -618,6 +660,8 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   expect(Number.parseFloat(discordCardStyles.badgeRect?.width || "0")).toBeGreaterThan(16);
   expect(Number.parseFloat(discordCardStyles.badgeRect?.height || "0")).toBeGreaterThan(16);
   expect(discordCardStyles.nameFontFamily.toLowerCase()).toContain("pixelmplus12");
+  expect(discordCardStyles.headlineFontFamily.toLowerCase()).toContain("gg sans");
+  expect(discordCardStyles.metaFontFamily.toLowerCase()).toContain("gg sans");
   expect(discordCardStyles.nameColor).toBe("rgb(190, 186, 189)");
 
   const nightThemeColors = await page.evaluate(() => {
@@ -855,12 +899,38 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   const steamRow = page.locator(".steam-activity-row-button").first();
 
   await recentRow.hover();
+  await emitCustomCursorHover(page, ".lastfm-recent-button");
   await expect.poll(async () => page.locator(".lastfm-recent-art").first().evaluate((node) => window.getComputedStyle(node).transform)).toMatch(/^matrix/);
   await expect.poll(async () => page.locator(".lastfm-recent-image").first().evaluate((node) => window.getComputedStyle(node).transform)).toMatch(/^matrix/);
+  const cursorStateAfterRecentHover = await page.evaluate(() => {
+    const recentButton = document.querySelector(".lastfm-recent-button");
+    const cursor = document.querySelector(".site-pointer");
+    return {
+      targetCursor: recentButton instanceof HTMLElement ? window.getComputedStyle(recentButton).cursor : "",
+      hasSystemPointer: document.body.classList.contains("has-system-pointer"),
+      hasCustomCursor: cursor instanceof HTMLElement
+    };
+  });
 
   await steamRow.hover();
+  await emitCustomCursorHover(page, ".steam-activity-row-button");
   await expect.poll(async () => page.locator(".steam-activity-capsule").first().evaluate((node) => window.getComputedStyle(node).transform)).toMatch(/^matrix/);
   await expect.poll(async () => page.locator(".steam-activity-capsule-image").first().evaluate((node) => window.getComputedStyle(node).transform)).toMatch(/^matrix/);
+  const cursorStateAfterSteamHover = await page.evaluate(() => {
+    const steamButton = document.querySelector(".steam-activity-row-button");
+    const cursor = document.querySelector(".site-pointer");
+    return {
+      targetCursor: steamButton instanceof HTMLElement ? window.getComputedStyle(steamButton).cursor : "",
+      hasSystemPointer: document.body.classList.contains("has-system-pointer"),
+      hasCustomCursor: cursor instanceof HTMLElement
+    };
+  });
+  expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
+  expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(false);
+  expect(cursorStateAfterRecentHover.hasCustomCursor).toBe(true);
+  expect(cursorStateAfterSteamHover.targetCursor).toBe("none");
+  expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
+  expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
 
   await recentRow.click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
@@ -1390,6 +1460,20 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   const summaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(summaryLink).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
+  const trackArtHoverBefore = await readLastFmPanelArtHoverState(page);
+  await page.locator(".lastfm-track-panel-art").hover();
+  await page.waitForFunction(() => {
+    const art = document.querySelector(".lastfm-track-panel-art");
+    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
+  });
+  const trackArtHoverAfter = await readLastFmPanelArtHoverState(page);
+  expect(trackArtHoverBefore).not.toBeNull();
+  expect(trackArtHoverAfter).not.toBeNull();
+  expect(trackArtHoverBefore.overlayOpacity).toBe("0");
+  expect(Number.parseFloat(trackArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
+  expect(trackArtHoverAfter.shellTransform).not.toBe(trackArtHoverBefore.shellTransform);
+  expect(trackArtHoverAfter.imageTransform).not.toBe(trackArtHoverBefore.imageTransform);
+  await page.locator(".lastfm-track-panel-close").hover();
   const artShell = await showLastFmPanelArtActions(page);
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
   await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
@@ -1815,6 +1899,20 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(artistPanelFit).not.toBeNull();
   expect(artistPanelFit.overflowY).toBe("hidden");
   expect(artistPanelFit.bodyHeight).toBeLessThanOrEqual(artistPanelFit.clientHeight + 2);
+  const artistArtHoverBefore = await readLastFmPanelArtHoverState(page);
+  await page.locator(".lastfm-track-panel-art").hover();
+  await page.waitForFunction(() => {
+    const art = document.querySelector(".lastfm-track-panel-art");
+    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
+  });
+  const artistArtHoverAfter = await readLastFmPanelArtHoverState(page);
+  expect(artistArtHoverBefore).not.toBeNull();
+  expect(artistArtHoverAfter).not.toBeNull();
+  expect(artistArtHoverBefore.overlayOpacity).toBe("0");
+  expect(Number.parseFloat(artistArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
+  expect(artistArtHoverAfter.shellTransform).not.toBe(artistArtHoverBefore.shellTransform);
+  expect(artistArtHoverAfter.imageTransform).not.toBe(artistArtHoverBefore.imageTransform);
+  await page.locator(".lastfm-track-panel-close").hover();
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(1);
@@ -1897,6 +1995,20 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
+  const albumArtHoverBefore = await readLastFmPanelArtHoverState(page);
+  await page.locator(".lastfm-track-panel-art").hover();
+  await page.waitForFunction(() => {
+    const art = document.querySelector(".lastfm-track-panel-art");
+    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
+  });
+  const albumArtHoverAfter = await readLastFmPanelArtHoverState(page);
+  expect(albumArtHoverBefore).not.toBeNull();
+  expect(albumArtHoverAfter).not.toBeNull();
+  expect(albumArtHoverBefore.overlayOpacity).toBe("0");
+  expect(Number.parseFloat(albumArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
+  expect(albumArtHoverAfter.shellTransform).not.toBe(albumArtHoverBefore.shellTransform);
+  expect(albumArtHoverAfter.imageTransform).not.toBe(albumArtHoverBefore.imageTransform);
+  await page.locator(".lastfm-track-panel-close").hover();
   const albumPanelFit = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     const bodyEl = document.querySelector(".lastfm-track-panel-body");
