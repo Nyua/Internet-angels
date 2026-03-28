@@ -984,8 +984,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(mobileCentering.cinnaRect).not.toBeNull();
   expect(mobileCentering.iconRowRect).not.toBeNull();
   expect(Math.abs(mobileCentering.maxGap - mobileCentering.minGap)).toBeLessThan(12);
-  expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(100);
-  expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(108);
+  expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(92);
+  expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(100);
   expect(852 - mobileCentering.cinnaRect.bottom).toBeLessThan(18);
   expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(140);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);

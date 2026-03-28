@@ -5505,11 +5505,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .cinna-mobile-gif {
     display: block;
-    width: min(96px, 24vw);
+    width: min(88px, 22vw);
     height: auto;
     object-fit: contain;
-    max-width: min(96px, 24vw);
-    max-height: min(104px, 12svh);
+    max-width: min(88px, 22vw);
+    max-height: min(96px, 11svh);
   }
 
   .cinna-mobile-gif[hidden] {
@@ -5517,9 +5517,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .cinna-mobile-gif--canvas {
-    width: min(96px, 24vw);
-    max-width: min(96px, 24vw);
-    max-height: min(104px, 12svh);
+    width: min(88px, 22vw);
+    max-width: min(88px, 22vw);
+    max-height: min(96px, 11svh);
     height: auto;
   }
 
