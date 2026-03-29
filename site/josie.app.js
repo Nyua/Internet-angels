@@ -1670,6 +1670,7 @@
     let previewCtx = null;
     let mediaSourceNode = null;
     let analyserNode = null;
+    let outputGainNode = null;
     let analyserSamples = new Float32Array(0);
     let waveformTracks = [];
     let currentTrack = null;
@@ -1685,9 +1686,6 @@
     let reactiveFlash = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
-    const WAVE_BLEED_X = 72;
-    const WAVE_BLEED_TOP = 48;
-    const WAVE_BLEED_BOTTOM = 72;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -1737,6 +1735,18 @@
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack)
       };
+    }
+    function syncAudioOutputGain() {
+      const gainNode = outputGainNode;
+      if (!gainNode || !gainNode.gain) return;
+      const nextValue = audioEl.muted ? 0 : 1;
+      try {
+        const ctxTime = previewCtx && typeof previewCtx.currentTime === "number" ? previewCtx.currentTime : 0;
+        gainNode.gain.cancelScheduledValues(ctxTime);
+        gainNode.gain.setValueAtTime(nextValue, ctxTime);
+      } catch {
+        gainNode.gain.value = nextValue;
+      }
     }
     function notifyStateSubscribers() {
       const state = buildPublicState();
@@ -1888,11 +1898,14 @@
       await chooseNextTrack({ autoplay: true, excludeCurrent: false });
     }
     function ensureWavePortal() {
-      if (!(wavePortal instanceof HTMLDivElement)) {
+      const layerHost = document.getElementById("os-shuffle-visualizer-layer");
+      if (!(layerHost instanceof HTMLDivElement)) return null;
+      if (!(wavePortal instanceof HTMLDivElement) || wavePortal.parentElement !== layerHost) {
         wavePortal = document.createElement("div");
         wavePortal.className = "josie-audio-player-bleed-layer";
         wavePortal.setAttribute("aria-hidden", "true");
         wavePortal.hidden = true;
+        layerHost.insertBefore(wavePortal, layerHost.firstChild);
       }
       if (!(waveCanvas instanceof HTMLCanvasElement)) {
         waveCanvas = document.createElement("canvas");
@@ -1900,12 +1913,10 @@
         waveCanvas.setAttribute("aria-hidden", "true");
         wavePortal.appendChild(waveCanvas);
       }
-      if (!wavePortal.isConnected) {
-        document.body.appendChild(wavePortal);
-      }
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
         waveCtx = waveCanvas.getContext("2d");
       }
+      return wavePortal;
     }
     function hideWavePortal() {
       if (wavePortal instanceof HTMLElement) {
@@ -1913,29 +1924,22 @@
       }
     }
     function syncWavePortalLayout() {
-      ensureWavePortal();
-      if (!(wavePortal instanceof HTMLElement) || !(waveSurface instanceof HTMLElement)) return null;
+      const portal = ensureWavePortal();
+      if (!(portal instanceof HTMLElement) || !(waveSurface instanceof HTMLElement)) return null;
       const rect = waveSurface.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1) {
+      const viewportWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement?.clientWidth || rect.width));
+      const viewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement?.clientHeight || rect.height));
+      if (rect.width < 1 || rect.height < 1 || viewportWidth < 1 || viewportHeight < 1) {
         hideWavePortal();
         return null;
       }
-      const bleedX = Math.max(WAVE_BLEED_X, Math.round(rect.width * 0.055));
-      const bleedTop = Math.max(WAVE_BLEED_TOP, Math.round(rect.height * 0.34));
-      const bleedBottom = Math.max(WAVE_BLEED_BOTTOM, Math.round(rect.height * 0.5));
-      const canvasWidth = Math.round(rect.width + bleedX * 2);
-      const canvasHeight = Math.round(rect.height + bleedTop + bleedBottom);
-      wavePortal.hidden = false;
-      wavePortal.style.left = `${Math.round(rect.left - bleedX)}px`;
-      wavePortal.style.top = `${Math.round(rect.top - bleedTop)}px`;
-      wavePortal.style.width = `${canvasWidth}px`;
-      wavePortal.style.height = `${canvasHeight}px`;
+      portal.hidden = false;
       return {
-        canvasWidth,
-        canvasHeight,
-        drawLeft: bleedX,
-        drawTop: bleedTop,
-        drawWidth: Math.round(rect.width),
+        canvasWidth: viewportWidth,
+        canvasHeight: viewportHeight,
+        drawLeft: 0,
+        drawTop: Math.max(0, Math.round(rect.top)),
+        drawWidth: viewportWidth,
         drawHeight: Math.round(rect.height)
       };
     }
@@ -2009,10 +2013,13 @@
         }
         if (!mediaSourceNode) return null;
         analyserNode = ctx.createAnalyser();
+        outputGainNode = ctx.createGain();
         analyserNode.fftSize = SHUFFLE_ANALYSER_FFT_SIZE;
         analyserNode.smoothingTimeConstant = 0.34;
         mediaSourceNode.connect(analyserNode);
-        analyserNode.connect(ctx.destination);
+        analyserNode.connect(outputGainNode);
+        outputGainNode.connect(ctx.destination);
+        syncAudioOutputGain();
       }
       if (!(analyserSamples instanceof Float32Array) || analyserSamples.length !== analyserNode.fftSize) {
         analyserSamples = new Float32Array(analyserNode.fftSize);
@@ -2137,17 +2144,8 @@
         14,
         Math.min(baselineY - overscanPad, height - baselineY - overscanPad)
       );
-      const amplitude = Math.min(desiredAmplitude, maxAmplitude);
+      const amplitude = Math.min(desiredAmplitude * 2, maxAmplitude);
       baselineY = clamp2(baselineY, overscanPad + amplitude, height - overscanPad - amplitude);
-      const edgeFadeWidth = Math.max(16, Math.round(width * 0.065));
-      const resolveEdgeFade = (index) => {
-        if (edgeFadeWidth <= 0) return 1;
-        const left = clamp2(index / edgeFadeWidth, 0, 1);
-        const right = clamp2((width - 1 - index) / edgeFadeWidth, 0, 1);
-        const leftSmooth = left * left * (3 - 2 * left);
-        const rightSmooth = right * right * (3 - 2 * right);
-        return Math.min(leftSmooth, rightSmooth);
-      };
       waveCtx.clearRect(0, 0, canvasWidth, canvasHeight);
       waveCtx.strokeStyle = "rgba(248, 253, 255, 0.08)";
       waveCtx.lineWidth = 1;
@@ -2165,7 +2163,7 @@
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       for (let x = 0; x < width; x += 1) {
-        const value = (traceValues[x] || 0) * resolveEdgeFade(x);
+        const value = traceValues[x] || 0;
         const y = originY + baselineY - value * amplitude;
         waveCtx.lineTo(originX + x, y);
       }
@@ -2179,7 +2177,7 @@
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       for (let x = 0; x < width; x += 1) {
-        const value = (traceValues[x] || 0) * resolveEdgeFade(x);
+        const value = traceValues[x] || 0;
         const y = originY + baselineY - value * amplitude;
         waveCtx.lineTo(originX + x, y);
       }
@@ -2316,6 +2314,7 @@
     }
     function setMuted(nextMuted) {
       audioEl.muted = Boolean(nextMuted);
+      syncAudioOutputGain();
       syncUi();
     }
     function toggleMuted() {
@@ -2329,9 +2328,6 @@
       if (disposed) return;
       await ensureManifest();
       if (disposed) return;
-      if (audioEl.muted) {
-        audioEl.muted = false;
-      }
       if (!currentTrack) {
         await queueInitialTrackPlayback();
         if (!currentTrack && waveformTracks.length) {
@@ -2389,6 +2385,7 @@
       audioEl.load();
       mediaSourceNode = null;
       analyserNode = null;
+      outputGainNode = null;
       analyserSamples = new Float32Array(0);
       traceSmoothingValues = new Float32Array(0);
       unbindRoot();
@@ -2925,17 +2922,6 @@
         </div>
       </div>
     </div>
-  `;
-  }
-  function renderJosieDescriptionShowcase() {
-    return `
-    <article class="steam-showcase steam-showcase--josie-intro steam-showcase--shuffle-player" data-site-id="josie" data-showcase-variant="josie-description">
-      <div class="steam-showcase-body steam-showcase-body--single">
-        <section class="steam-showcase-content steam-showcase-content--full josie-intro-content">
-          ${renderShufflePlayerMarkup()}
-        </section>
-      </div>
-    </article>
   `;
   }
   function renderCompactMobileAudioPlayer() {
@@ -3898,6 +3884,8 @@
     let lastFmSpotifyEmbedLoadToken = 0;
     let mobileSpeakerToggleUnsubscribe = null;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
+    const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
+    const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -3941,7 +3929,6 @@
     async function onMobileSpeakerToggleClick(event) {
       if (!(event.currentTarget instanceof HTMLButtonElement)) return;
       event.preventDefault();
-      if (!isCompactMobileLayout()) return;
       const state = shufflePlayerController.getState();
       if (!state.hasTrack || state.blocked || !state.playing) {
         shufflePlayerController.setMuted(false);
@@ -4944,16 +4931,16 @@
         showcases.hidden = true;
       } else {
         showcases.hidden = false;
-        showcases.innerHTML = [
-          renderJosieDescriptionShowcase(),
-          ...showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id)))
-        ].join("");
+        showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
-      const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), showcases.querySelector("[data-shuffle-player]"));
+      if (desktopShuffleVisualizerLayer instanceof HTMLElement) {
+        desktopShuffleVisualizerLayer.hidden = compactMobile;
+      }
+      const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
       shufflePlayerController?.attach(shuffleRoot);
       sidebar.innerHTML = renderSidebar(payloadById, sites, { compact: compactMobile });
       syncCinnaMobileGif(compactMobile);
-      syncMobileSpeakerToggle(compactMobile);
+      syncMobileSpeakerToggle(true);
       if (lastRefreshLabel instanceof HTMLElement) {
         lastRefreshLabel.textContent = "";
         lastRefreshLabel.hidden = true;
@@ -4969,7 +4956,7 @@
     if (mobileSpeakerButton instanceof HTMLButtonElement) {
       mobileSpeakerButton.addEventListener("click", onMobileSpeakerToggleClick);
       mobileSpeakerToggleUnsubscribe = shufflePlayerController.subscribe(() => {
-        syncMobileSpeakerToggle(isCompactMobileLayout());
+        syncMobileSpeakerToggle(true);
       });
     }
     root2?.addEventListener("click", onRootClick);

@@ -601,9 +601,57 @@ body.site-load-playing .os-ambient-backdrop {
   mix-blend-mode: var(--ambient-scanline-blend);
 }
 
+.os-shuffle-visualizer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.os-shuffle-visualizer-layer[hidden] {
+  display: none !important;
+}
+
+.os-shuffle-visualizer-player {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.os-shuffle-visualizer-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  width: 100vw;
+  height: clamp(224px, 20vw, 284px);
+  min-height: clamp(224px, 20vw, 284px);
+  transform: translateY(-50%);
+  overflow: visible;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+.os-shuffle-visualizer-copy {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 2;
+  width: min(420px, calc(100vw - 32px));
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  pointer-events: none;
+}
+
 .social-hub-scale-frame {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   width: min(var(--desktop-hub-design-width), calc(100% - 28px));
   margin: 14px auto 36px;
   overflow: visible;
@@ -611,7 +659,7 @@ body.site-load-playing .os-ambient-backdrop {
 
 .social-hub {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   width: var(--desktop-hub-design-width);
   margin: 0 auto;
   display: flex;
@@ -3457,11 +3505,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .josie-audio-player-bleed-layer {
-  position: fixed;
-  inset: 0 auto auto 0;
-  z-index: 5;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   display: block;
-  overflow: visible;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -3492,7 +3540,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   padding: 0;
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(12, 12, 16, 0.62);
@@ -5185,8 +5233,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     display: none !important;
   }
 
-  .mobile-speaker-toggle:not([hidden]) {
-    display: inline-flex;
+  .os-shuffle-visualizer-layer {
+    display: none !important;
   }
 
   .steam-hero-shell,

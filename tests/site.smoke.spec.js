@@ -379,6 +379,46 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     timeout: 30_000
   });
 
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toBeVisible();
+  const desktopSpeakerRect = await page.locator("[data-mobile-speaker-toggle]").evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  });
+  expect(desktopSpeakerRect.left).toBeLessThan(28);
+  expect(desktopSpeakerRect.top).toBeLessThan(28);
+  expect(desktopSpeakerRect.width).toBeGreaterThanOrEqual(40);
+  expect(desktopSpeakerRect.height).toBeGreaterThanOrEqual(40);
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction(() => {
+    const button = document.querySelector("[data-mobile-speaker-toggle]");
+    return button instanceof HTMLElement
+      && button.dataset.audioHasTrack === "true"
+      && button.dataset.audioPlaying === "true";
+  });
+  const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction((expectedState) => {
+    const button = document.querySelector("[data-mobile-speaker-toggle]");
+    return button instanceof HTMLElement
+      && button.dataset.audioHasTrack === "true"
+      && button.dataset.audioPlaying === "true"
+      && button.dataset.audioMuted !== expectedState;
+  }, firstDesktopMuteState);
+  const secondDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction((expectedState) => {
+    const button = document.querySelector("[data-mobile-speaker-toggle]");
+    return button instanceof HTMLElement
+      && button.dataset.audioHasTrack === "true"
+      && button.dataset.audioPlaying === "true"
+      && button.dataset.audioMuted !== expectedState;
+  }, secondDesktopMuteState);
+
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
@@ -395,9 +435,70 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#site-theme-toggle-anchor")).toHaveCount(0);
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
+  await expect(page.locator(".steam-showcase--josie-intro")).toHaveCount(0);
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
+  await expect(page.locator("#os-shuffle-visualizer-player")).toHaveCount(1);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
+  const visualizerLayout = await page.evaluate(() => {
+    const layer = document.querySelector("#os-shuffle-visualizer-layer");
+    const backdrop = document.querySelector("#os-ambient-backdrop");
+    const frame = document.querySelector("#social-hub-scale-frame");
+    const surface = document.querySelector("#os-shuffle-visualizer-surface");
+    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    const firstShowcaseTitle = document.querySelector(".social-hub-showcases article h3, .social-hub-showcases article h4");
+    const rectOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect() : null;
+    const styleOf = (node) => node instanceof HTMLElement ? window.getComputedStyle(node) : null;
+    const canvasEdgeAlpha = () => {
+      if (!(canvas instanceof HTMLCanvasElement)) return null;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return null;
+      const bandRect = rectOf(surface);
+      if (!bandRect) return null;
+      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round((bandRect.top + bandRect.height / 2) * (canvas.height / window.innerHeight))));
+      const leftPixels = ctx.getImageData(0, sampleY, Math.min(8, canvas.width), 1).data;
+      const rightWidth = Math.min(8, canvas.width);
+      const rightPixels = ctx.getImageData(Math.max(0, canvas.width - rightWidth), sampleY, rightWidth, 1).data;
+      const maxAlpha = (pixels) => {
+        let alpha = 0;
+        for (let index = 3; index < pixels.length; index += 4) {
+          alpha = Math.max(alpha, pixels[index]);
+        }
+        return alpha;
+      };
+      return {
+        left: maxAlpha(leftPixels),
+        right: maxAlpha(rightPixels)
+      };
+    };
+    return {
+      layerZ: styleOf(layer)?.zIndex || "",
+      frameZ: styleOf(frame)?.zIndex || "",
+      backdropZ: styleOf(backdrop)?.zIndex || "",
+      pointerEvents: styleOf(layer)?.pointerEvents || "",
+      surfaceRect: rectOf(surface),
+      canvasRect: rectOf(canvas),
+      copyRect: rectOf(copy),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      firstShowcaseTitle: firstShowcaseTitle instanceof HTMLElement ? firstShowcaseTitle.textContent.trim() : "",
+      edgeAlpha: canvasEdgeAlpha()
+    };
+  });
+  expect(visualizerLayout.pointerEvents).toBe("none");
+  expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
+  expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
+  expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
+  expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
+  expect(Math.abs(visualizerLayout.surfaceRect.top + visualizerLayout.surfaceRect.height / 2 - visualizerLayout.viewportHeight / 2)).toBeLessThan(12);
+  expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
+  expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
+  expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
+  expect(visualizerLayout.firstShowcaseTitle).toBe("Recent Activity");
+  expect(visualizerLayout.edgeAlpha.left).toBeGreaterThan(0);
+  expect(visualizerLayout.edgeAlpha.right).toBeGreaterThan(0);
   const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
   expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
   const smallCopyStyles = await page.locator(".steam-sidebar-row-title").first().evaluate((node) => {
@@ -979,6 +1080,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
   await page.locator("[data-mobile-speaker-toggle]").click();
@@ -1379,7 +1481,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
 
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await page.locator("[data-shuffle-surface]").first().click();
+  await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
@@ -2162,7 +2264,7 @@ test("josie keeps track details on the inline spotify layout when spotify has no
 
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  await page.locator("[data-shuffle-surface]").first().click();
+  await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
 
   await page.locator(".lastfm-recent-button").first().click();

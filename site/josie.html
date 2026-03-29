@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260329-josie-99" />
+    <link rel="stylesheet" href="/josie.css?v=20260329-josie-101" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -96,7 +96,7 @@
       body.site-load-playing :is(
         .steam-hero-shell,
         #social-hub-sidebar .steam-sidebar-panel:first-child,
-        .steam-showcase--josie-intro,
+        #os-shuffle-visualizer-copy,
         .steam-showcase--steam-activity,
         .steam-showcase--lastfm-minimal
       ) {
@@ -187,6 +187,26 @@
           <canvas id="os-ambient-canvas-base" class="os-ambient-canvas os-ambient-canvas--base" aria-hidden="true"></canvas>
           <canvas id="os-ambient-canvas-glow" class="os-ambient-canvas os-ambient-canvas--glow" aria-hidden="true"></canvas>
         </div>
+        <div id="os-shuffle-visualizer-layer" class="os-shuffle-visualizer-layer" aria-hidden="true">
+          <div
+            id="os-shuffle-visualizer-player"
+            class="os-shuffle-visualizer-player josie-audio-player"
+            data-shuffle-player
+            data-shuffle-mode="desktop-stage"
+          >
+            <div
+              id="os-shuffle-visualizer-surface"
+              class="os-shuffle-visualizer-surface"
+              data-shuffle-surface
+              aria-label="Audio visualizer"
+            >
+              <div id="os-shuffle-visualizer-copy" class="os-shuffle-visualizer-copy">
+                <p id="os-shuffle-visualizer-title" class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
+                <p id="os-shuffle-visualizer-artist" class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div id="social-hub-scale-frame" class="social-hub-scale-frame">
           <div id="social-hub-root" class="social-hub" aria-label="Josie social hub">
             <div id="social-hub-content" class="social-hub-content">
@@ -201,7 +221,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260329-josie-99"></script>
+    <script src="/josie.client.js?v=20260329-josie-101"></script>
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
@@ -381,7 +401,7 @@
           profilePicture: ".steam-hero-shell",
           profileLinks: "#social-hub-sidebar .steam-sidebar-panel:first-child",
           loadingIcon: "#social-hub-sidebar .steam-sidebar-panel:first-child",
-          titlebar: ".steam-showcase--josie-intro",
+          titlebar: "#os-shuffle-visualizer-copy",
           recentActivity: ".steam-showcase--steam-activity",
           lastfmShowcase: ".steam-showcase--lastfm-minimal"
         };
