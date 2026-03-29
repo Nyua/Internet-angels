@@ -13,6 +13,7 @@
   var socialHubSidebar = document.querySelector("#social-hub-sidebar");
   var socialHubProfileTagline = document.querySelector("#social-hub-profile-tagline");
   var mobileSpeakerToggle = document.querySelector("[data-mobile-speaker-toggle]");
+  var interactionSfx = window.__internetAngelInteractionSfx || null;
   var CUSTOM_CURSOR_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button:not([disabled])",
@@ -1666,6 +1667,8 @@
     let timeRemainingEl = null;
     let compactPlayerMode = false;
     let resizeObserver = null;
+    let viewportGeometryListener = null;
+    let cachedWaveLayout = null;
     let manifestPromise = null;
     let previewCtx = null;
     let mediaSourceNode = null;
@@ -1686,6 +1689,9 @@
     let reactiveFlash = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
+    const SHUFFLE_STAGE_VERTICAL_OFFSET_PX = 90;
+    const SHUFFLE_TRACE_OPACITY_SCALE = 1;
+    const SHUFFLE_MAX_CANVAS_DPR = 1.25;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -1918,6 +1924,9 @@
       }
       return wavePortal;
     }
+    function invalidateWaveLayout() {
+      cachedWaveLayout = null;
+    }
     function hideWavePortal() {
       if (wavePortal instanceof HTMLElement) {
         wavePortal.hidden = true;
@@ -1926,25 +1935,37 @@
     function syncWavePortalLayout() {
       const portal = ensureWavePortal();
       if (!(portal instanceof HTMLElement) || !(waveSurface instanceof HTMLElement)) return null;
-      const rect = waveSurface.getBoundingClientRect();
-      const viewportWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement?.clientWidth || rect.width));
-      const viewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement?.clientHeight || rect.height));
-      if (rect.width < 1 || rect.height < 1 || viewportWidth < 1 || viewportHeight < 1) {
+      const surfaceRect = waveSurface.getBoundingClientRect();
+      const viewportWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement?.clientWidth || surfaceRect.width));
+      const viewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement?.clientHeight || surfaceRect.height));
+      const drawHeight = Math.max(1, Math.round(surfaceRect.height || waveSurface.offsetHeight || 0));
+      if (surfaceRect.width < 1 || drawHeight < 1 || viewportWidth < 1 || viewportHeight < 1) {
         hideWavePortal();
+        invalidateWaveLayout();
         return null;
       }
+      const drawTop = clamp2(
+        Math.round((viewportHeight - drawHeight) / 2 - SHUFFLE_STAGE_VERTICAL_OFFSET_PX),
+        0,
+        Math.max(0, viewportHeight - drawHeight)
+      );
       portal.hidden = false;
-      return {
+      portal.style.left = "0px";
+      portal.style.top = `${drawTop}px`;
+      portal.style.width = `${viewportWidth}px`;
+      portal.style.height = `${drawHeight}px`;
+      cachedWaveLayout = {
         canvasWidth: viewportWidth,
-        canvasHeight: viewportHeight,
+        canvasHeight: drawHeight,
         drawLeft: 0,
-        drawTop: Math.max(0, Math.round(rect.top)),
+        drawTop: 0,
         drawWidth: viewportWidth,
-        drawHeight: Math.round(rect.height)
+        drawHeight
       };
+      return cachedWaveLayout;
     }
     function ensureWaveCanvasSize() {
-      const layout = syncWavePortalLayout();
+      const layout = cachedWaveLayout || syncWavePortalLayout();
       if (!(waveCanvas instanceof HTMLCanvasElement) || !(waveCtx instanceof CanvasRenderingContext2D) || !layout) {
         return {
           canvasWidth: 0,
@@ -1958,7 +1979,7 @@
       }
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const dpr = Math.min(SHUFFLE_MAX_CANVAS_DPR, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
       if (waveCanvas.width !== pixelWidth || waveCanvas.height !== pixelHeight) {
@@ -2015,7 +2036,7 @@
         analyserNode = ctx.createAnalyser();
         outputGainNode = ctx.createGain();
         analyserNode.fftSize = SHUFFLE_ANALYSER_FFT_SIZE;
-        analyserNode.smoothingTimeConstant = 0.34;
+        analyserNode.smoothingTimeConstant = 0.48;
         mediaSourceNode.connect(analyserNode);
         analyserNode.connect(outputGainNode);
         outputGainNode.connect(ctx.destination);
@@ -2147,19 +2168,19 @@
       const amplitude = Math.min(desiredAmplitude * 2, maxAmplitude);
       baselineY = clamp2(baselineY, overscanPad + amplitude, height - overscanPad - amplitude);
       waveCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-      waveCtx.strokeStyle = "rgba(248, 253, 255, 0.08)";
+      waveCtx.strokeStyle = `rgba(248, 253, 255, ${(0.08 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
       waveCtx.lineWidth = 1;
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       waveCtx.lineTo(originX + width, baselineY + originY);
       waveCtx.stroke();
       waveCtx.save();
-      waveCtx.shadowColor = "rgba(228, 248, 255, 0.95)";
-      waveCtx.shadowBlur = 16 + impact * 18 + peakSurge * (8 * structureDamping) + absolutePeakSurge * (6 * structureDamping);
+      waveCtx.shadowColor = `rgba(228, 248, 255, ${(0.95 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+      waveCtx.shadowBlur = (16 + impact * 18 + peakSurge * (8 * structureDamping) + absolutePeakSurge * (6 * structureDamping)) * 0.58;
       waveCtx.lineWidth = 2.1 + impact * 1.9 + peakSurge * (0.7 * structureDamping) + absolutePeakSurge * (0.58 * structureDamping);
       waveCtx.lineCap = "round";
       waveCtx.lineJoin = "round";
-      waveCtx.strokeStyle = `rgba(229, 248, 255, ${Math.min(0.44 + impact * 0.56 + peakSurge * 0.04 + absolutePeakSurge * 0.03, 0.98)})`;
+      waveCtx.strokeStyle = `rgba(229, 248, 255, ${(Math.min(0.44 + impact * 0.56 + peakSurge * 0.04 + absolutePeakSurge * 0.03, 0.98) * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       for (let x = 0; x < width; x += 1) {
@@ -2173,7 +2194,7 @@
       waveCtx.lineWidth = 1.2;
       waveCtx.lineCap = "round";
       waveCtx.lineJoin = "round";
-      waveCtx.strokeStyle = "#f8fdff";
+      waveCtx.strokeStyle = `rgba(248, 253, 255, ${SHUFFLE_TRACE_OPACITY_SCALE.toFixed(3)})`;
       waveCtx.beginPath();
       waveCtx.moveTo(originX, baselineY + originY);
       for (let x = 0; x < width; x += 1) {
@@ -2271,6 +2292,7 @@
       }
       if ("ResizeObserver" in window && playerRoot) {
         resizeObserver = new ResizeObserver(() => {
+          invalidateWaveLayout();
           ensureWaveCanvasSize();
         });
         resizeObserver.observe(playerRoot);
@@ -2278,6 +2300,17 @@
           resizeObserver.observe(waveSurface);
         }
       }
+      viewportGeometryListener = () => {
+        invalidateWaveLayout();
+        if (playbackUnlocked && !compactPlayerMode) {
+          ensureWaveCanvasSize();
+          return;
+        }
+        hideWavePortal();
+      };
+      window.addEventListener("resize", viewportGeometryListener, { passive: true });
+      window.visualViewport?.addEventListener("resize", viewportGeometryListener, { passive: true });
+      window.visualViewport?.addEventListener("scroll", viewportGeometryListener, { passive: true });
       if (playbackUnlocked && !compactPlayerMode) {
         ensureWaveCanvasSize();
       } else {
@@ -2290,9 +2323,16 @@
         resizeObserver.disconnect();
         resizeObserver = null;
       }
+      if (viewportGeometryListener) {
+        window.removeEventListener("resize", viewportGeometryListener);
+        window.visualViewport?.removeEventListener("resize", viewportGeometryListener);
+        window.visualViewport?.removeEventListener("scroll", viewportGeometryListener);
+        viewportGeometryListener = null;
+      }
       playerRoot = null;
       waveSurface = null;
       hideWavePortal();
+      invalidateWaveLayout();
       traceValues = new Float32Array(0);
       traceSmoothingValues = new Float32Array(0);
       titleEl = null;
@@ -3886,6 +3926,19 @@
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
     const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
+    const interactionSfxController = interactionSfx && typeof interactionSfx.play === "function" ? interactionSfx : null;
+    const interactionSfxCleanup = interactionSfxController?.bindDelegatedRoot?.(document);
+    function primeInteractionSfx(source) {
+      if (!interactionSfxController) return;
+      void interactionSfxController.initFromGesture(source);
+    }
+    function playInteractionSfx(soundId, source, meta = {}) {
+      if (!interactionSfxController) return;
+      interactionSfxController.play({ soundId, source, meta });
+    }
+    function setInteractionSfxExternalAudioActive(active) {
+      interactionSfxController?.setExternalAudioActive?.(Boolean(active));
+    }
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -3929,6 +3982,8 @@
     async function onMobileSpeakerToggleClick(event) {
       if (!(event.currentTarget instanceof HTMLButtonElement)) return;
       event.preventDefault();
+      primeInteractionSfx("mobileSpeakerToggle");
+      playInteractionSfx("toggle_soft", "mobileSpeakerToggle");
       const state = shufflePlayerController.getState();
       if (!state.hasTrack || state.blocked || !state.playing) {
         shufflePlayerController.setMuted(false);
@@ -3988,17 +4043,23 @@
         const target = event.target;
         if (!(target instanceof HTMLElement)) return;
         if (target.closest("[data-external-confirm-cancel]")) {
-          hideExternalPrompt();
+          primeInteractionSfx(describeTargetForPrompt(target));
+          playInteractionSfx("cancel_soft", describeTargetForPrompt(target));
+          hideExternalPrompt("silent");
           return;
         }
         if (target.closest("[data-external-confirm-accept]")) {
           const targetUrl = pendingExternalUrl;
-          hideExternalPrompt();
+          primeInteractionSfx("externalConfirmAccept");
+          playInteractionSfx("confirm_soft", "externalConfirmAccept");
+          hideExternalPrompt("silent");
           launchExternal(targetUrl, "_self");
         }
         if (target.closest("[data-external-confirm-new-tab]")) {
           const targetUrl = pendingExternalUrl;
-          hideExternalPrompt();
+          primeInteractionSfx("externalConfirmNewTab");
+          playInteractionSfx("confirm_soft", "externalConfirmNewTab");
+          hideExternalPrompt("silent");
           launchExternal(targetUrl, "_blank");
         }
       });
@@ -4006,21 +4067,36 @@
         if (!(event instanceof KeyboardEvent)) return;
         if (event.key === "Escape") {
           event.preventDefault();
-          hideExternalPrompt();
+          playInteractionSfx("cancel_soft", "externalConfirmEscape");
+          hideExternalPrompt("silent");
           return;
         }
         if (event.key === "Enter") {
           const targetUrl = pendingExternalUrl;
           if (!targetUrl) return;
           event.preventDefault();
-          hideExternalPrompt();
+          playInteractionSfx("confirm_soft", "externalConfirmEnter");
+          hideExternalPrompt("silent");
           launchExternal(targetUrl, "_self");
         }
       });
       return dialog;
     }
-    function hideExternalPrompt() {
+    function describeTargetForPrompt(target) {
+      if (!(target instanceof HTMLElement)) return "externalConfirm";
+      if (target.closest(".external-link-confirm-backdrop")) return "externalConfirmBackdrop";
+      if (target.closest(".external-link-confirm-close")) return "externalConfirmClose";
+      if (target.closest(".external-link-confirm-button--cancel")) return "externalConfirmCancel";
+      if (target.closest(".external-link-confirm-button--accept")) return "externalConfirmAccept";
+      if (target.closest(".external-link-confirm-button--new-tab")) return "externalConfirmNewTab";
+      return "externalConfirm";
+    }
+    function hideExternalPrompt(reason = "cancel") {
       if (!(externalPromptRoot instanceof HTMLElement)) return;
+      const wasOpen = externalPromptRoot.classList.contains("is-open");
+      if (wasOpen && reason === "cancel") {
+        playInteractionSfx("cancel_soft", "externalConfirmDismiss");
+      }
       pendingExternalUrl = "";
       externalPromptRoot.classList.remove("is-open");
       externalPromptRoot.hidden = true;
@@ -4034,6 +4110,7 @@
       const safeUrl = sanitizeUrl(url);
       if (!safeUrl) return;
       const dialog = ensureExternalPrompt();
+      playInteractionSfx("open_soft", "externalConfirmOpen");
       pendingExternalUrl = safeUrl;
       lastFocusedTrigger = trigger instanceof HTMLElement ? trigger : null;
       if (externalPromptUrlEl instanceof HTMLElement) {
@@ -4223,6 +4300,7 @@
     async function resumeShuffleAfterTrackPreview() {
       if (!lastFmTrackPreviewPausedShuffle) return;
       lastFmTrackPreviewPausedShuffle = false;
+      setInteractionSfxExternalAudioActive(false);
       try {
         await shufflePlayerController?.resumeAfterExternalAudio?.();
       } catch {
@@ -4275,6 +4353,7 @@
         }
         lastFmTrackPreviewSuppressAutoResume = false;
       }
+      setInteractionSfxExternalAudioActive(false);
       if (resumeShuffle) {
         await resumeShuffleAfterTrackPreview();
       }
@@ -4295,7 +4374,9 @@
       pauseShuffleForTrackPreview();
       try {
         await audio.play();
+        setInteractionSfxExternalAudioActive(true);
       } catch {
+        setInteractionSfxExternalAudioActive(false);
         await resumeShuffleAfterTrackPreview();
       }
       queueTrackPreviewUiSync();
@@ -4341,6 +4422,7 @@
       const controller = lastFmSpotifyEmbedController;
       lastFmSpotifyEmbedController = null;
       lastFmSpotifyEmbedLoadToken += 1;
+      setInteractionSfxExternalAudioActive(false);
       if (controller?.pause instanceof Function) {
         try {
           controller.pause();
@@ -4432,14 +4514,17 @@
               controller?.addListener?.("playback_started", () => {
                 if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
                 pauseShuffleForTrackPreview();
+                setInteractionSfxExternalAudioActive(true);
               });
               controller?.addListener?.("playback_update", (event) => {
                 if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
                 if (Boolean(event?.data?.isPaused)) {
+                  setInteractionSfxExternalAudioActive(false);
                   void resumeShuffleAfterTrackPreview();
                   return;
                 }
                 pauseShuffleForTrackPreview();
+                setInteractionSfxExternalAudioActive(true);
               });
               scheduleLastFmTrackPanelFit();
               resolve();
@@ -4485,7 +4570,9 @@
     function setLastFmPanelArtFace(artShell, nextFace, options = {}) {
       if (!(artShell instanceof HTMLElement)) return;
       const face = nextFace === "back" ? "back" : "front";
+      if ((artShell.dataset.panelFace || "front") === face) return;
       const isBack = face === "back";
+      playInteractionSfx("flip_soft", isBack ? "lastfmPanelArtFlipBack" : "lastfmPanelArtFlipFront");
       artShell.classList.toggle("is-flipped", isBack);
       artShell.dataset.panelFace = face;
       const toggle = artShell.querySelector("[data-lastfm-panel-art-toggle]");
@@ -4534,12 +4621,13 @@
         const target = event.target;
         if (!(target instanceof Element)) return;
         if (target.closest("[data-track-panel-close]")) {
-          hideLastFmTrackDetails();
+          hideLastFmTrackDetails("close");
           return;
         }
         const previewToggle = target.closest("[data-track-preview-toggle]");
         if (previewToggle instanceof HTMLElement) {
           event.preventDefault();
+          playInteractionSfx("preview_soft", "trackPreviewToggle");
           void toggleTrackPreview(previewToggle.closest("[data-track-preview-player]"));
           return;
         }
@@ -4588,6 +4676,7 @@
         const openButton = target.closest("[data-open-url]");
         if (openButton instanceof HTMLElement) {
           event.preventDefault();
+          playInteractionSfx("confirm_soft", "lastfmTrackPanelOpen");
           launchPanelExternal(
             openButton.getAttribute("data-open-url") || "",
             { appUrl: openButton.getAttribute("data-open-app-url") || "" }
@@ -4595,6 +4684,19 @@
           return;
         }
       });
+      overlay.addEventListener("pointerdown", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!target.matches("[data-track-preview-volume]")) return;
+        primeInteractionSfx("trackPreviewVolumePointerDown");
+        playInteractionSfx("toggle_soft", "trackPreviewVolumePointerDown");
+      }, true);
+      overlay.addEventListener("pointerup", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!target.matches("[data-track-preview-volume]")) return;
+        playInteractionSfx("toggle_soft", "trackPreviewVolumePointerUp");
+      }, true);
       overlay.addEventListener("input", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLInputElement)) return;
@@ -4606,7 +4708,7 @@
         if (!(event instanceof KeyboardEvent)) return;
         if (event.key === "Escape") {
           event.preventDefault();
-          hideLastFmTrackDetails();
+          hideLastFmTrackDetails("close");
           return;
         }
         if (event.key !== "Tab") return;
@@ -4646,7 +4748,7 @@
       });
       scheduleLastFmTrackPanelFit();
     }
-    function hideLastFmTrackDetails() {
+    function hideLastFmTrackDetails(reason = "close") {
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
       if (lastFmTrackPanelFitRaf) {
@@ -4656,6 +4758,9 @@
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
+      if (lastFmTrackPanelRoot.classList.contains("is-open") && reason === "close") {
+        playInteractionSfx("close_soft", "lastfmTrackPanelClose");
+      }
       lastFmTrackPanelActiveKey = "";
       lastFmTrackPanelRoot.classList.remove("is-open");
       lastFmTrackPanelRoot.hidden = true;
@@ -4757,6 +4862,7 @@
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
       panel.classList.add("is-open");
+      playInteractionSfx("open_soft", "lastfmTrackPanelOpen");
       setTrackPanelOpenState(true);
       const initialFocusTarget = panel.querySelector(".lastfm-track-panel-close");
       if (initialFocusTarget instanceof HTMLElement) {
@@ -4794,6 +4900,7 @@
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
       panel.classList.add("is-open");
+      playInteractionSfx("open_soft", "lastfmArtistPanelOpen");
       setTrackPanelOpenState(true);
       const initialFocusTarget = panel.querySelector(".lastfm-track-panel-close");
       if (initialFocusTarget instanceof HTMLElement) {
@@ -4828,6 +4935,7 @@
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
       panel.classList.add("is-open");
+      playInteractionSfx("open_soft", "lastfmAlbumPanelOpen");
       setTrackPanelOpenState(true);
       const initialFocusTarget = panel.querySelector(".lastfm-track-panel-close");
       if (initialFocusTarget instanceof HTMLElement) {
@@ -4904,6 +5012,7 @@
     }
     function onRefreshClick() {
       if (typeof onRefreshRequested !== "function") return;
+      playInteractionSfx("activate_soft", "refreshButton");
       onRefreshRequested();
     }
     function render(snapshot) {
@@ -4916,7 +5025,7 @@
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
       root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
       if (compactMobile) {
-        hideLastFmTrackDetails();
+        hideLastFmTrackDetails("silent");
       }
       profile.innerHTML = renderHero(payloadById, sites, { compact: compactMobile });
       if (profileTagline instanceof HTMLElement) {
@@ -4964,7 +5073,9 @@
     function dispose() {
       if (disposed) return;
       disposed = true;
-      hideExternalPrompt();
+      interactionSfxCleanup?.();
+      setInteractionSfxExternalAudioActive(false);
+      hideExternalPrompt("silent");
       mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
       mobileSpeakerToggleUnsubscribe?.();
       mobileSpeakerToggleUnsubscribe = null;
@@ -4976,7 +5087,7 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
-      hideLastFmTrackDetails();
+      hideLastFmTrackDetails("silent");
       lastFmTrackPanelRoot?.remove();
       lastFmTrackPanelRoot = null;
       lastFmTrackPanelContent = null;
@@ -6906,6 +7017,16 @@
     let currentMorphToken = "orb";
     const trailHistory = [];
     const pointerMoveEventName = "pointermove";
+    function applyCursorMorph(token) {
+      const safeToken = typeof token === "string" && token ? token : "orb";
+      currentMorphToken = safeToken;
+      cursorEl.dataset.cursorMorph = safeToken;
+    }
+    function pickNextInteractiveMorph() {
+      const candidates = interactiveMorphTokens.filter((token) => token !== currentMorphToken);
+      const pool = candidates.length ? candidates : interactiveMorphTokens;
+      return pool[Math.floor(Math.random() * pool.length)] || "orb";
+    }
     function trimTrailHistory(nowMs = performance.now()) {
       while (trailHistory.length > tailPointCount) {
         trailHistory.pop();
@@ -7312,13 +7433,3 @@
     siteCursorController = null;
   });
 })();
-    function applyCursorMorph(token) {
-      const safeToken = typeof token === "string" && token ? token : "orb";
-      currentMorphToken = safeToken;
-      cursorEl.dataset.cursorMorph = safeToken;
-    }
-    function pickNextInteractiveMorph() {
-      const candidates = interactiveMorphTokens.filter((token) => token !== currentMorphToken);
-      const pool = candidates.length ? candidates : interactiveMorphTokens;
-      return pool[Math.floor(Math.random() * pool.length)] || "orb";
-    }

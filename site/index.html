@@ -246,6 +246,7 @@
     </button>
   </div>
 
+  <script src="/interaction-sfx.js?v=20260329-josie-102"></script>
   <script>
     (() => {
       const mobileIntroBypassMaxWidthPx = 820;
@@ -261,6 +262,10 @@
       const introStartButton = document.getElementById("introStartButton");
       const handoffFrameWrap = document.getElementById("handoffFrameWrap");
       const handoffFrame = document.getElementById("handoffFrame");
+      const interactionSfx = window.__createInternetAngelInteractionSfx?.({
+        page: "intro"
+      }) || null;
+      window.__internetAngelInteractionSfx = interactionSfx;
       let introStarted = false;
       let iframePreloading = false;
       let iframeReady = false;
@@ -357,6 +362,7 @@
         iframePreloading = true;
         setState("preloading_josie");
         handoffFrame.src = resolveJosieHandoffUrl().toString();
+        interactionSfx?.setTrustedProxyWindow?.(handoffFrame.contentWindow);
       }
 
       function isTransitionWindowOpen() {
@@ -392,6 +398,11 @@
         }
         handoffVisible = true;
         setState("handoff_visible");
+        interactionSfx?.setPage?.("josie");
+        interactionSfx?.play?.({
+          soundId: "open_soft",
+          source: "introHandoffVisible"
+        });
         updateTopLevelUrlForJosie();
         document.body.classList.add("is-handoff-visible");
         handoffFrameWrap.removeAttribute("aria-hidden");
@@ -408,6 +419,7 @@
         }
         handoffCompleted = true;
         setState("handoff_complete");
+        interactionSfx?.setPage?.("josie");
         clearMonitorLoop();
         clearRepeatVisitTimer();
         document.body.classList.remove("is-handoff-visible");
@@ -557,6 +569,11 @@
       });
 
       introStartButton?.addEventListener("click", () => {
+        void interactionSfx?.initFromGesture?.("introStartButton");
+        interactionSfx?.play?.({
+          soundId: "activate_soft",
+          source: "introStartButton"
+        });
         void tryPlayIntro();
       });
     })();

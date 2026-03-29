@@ -100,6 +100,26 @@ async function drainWindowOpenCalls(page) {
   });
 }
 
+async function readInteractionSfxLog(page) {
+  return page.evaluate(() => Array.isArray(window.__internetAngelInteractionSfxLog) ? window.__internetAngelInteractionSfxLog.slice() : []);
+}
+
+async function clearInteractionSfxLog(page) {
+  await page.evaluate(() => {
+    window.__internetAngelInteractionSfxLog = [];
+  });
+}
+
+async function waitForInteractionSfx(page, predicate, timeout = 10_000) {
+  const handle = await page.waitForFunction((matcher) => {
+    const log = Array.isArray(window.__internetAngelInteractionSfxLog) ? window.__internetAngelInteractionSfxLog : [];
+    return log.find((entry) => {
+      return Object.entries(matcher).every(([key, value]) => entry?.[key] === value);
+    }) || null;
+  }, predicate, { timeout, polling: 50 });
+  return handle.jsonValue();
+}
+
 async function showLastFmPanelArtActions(page) {
   const artShell = page.locator(".lastfm-track-panel-art--flip").first();
   await expect(artShell).toBeVisible();
@@ -218,7 +238,9 @@ test("root skips the intro movie on repeat visits but keeps the fullscreen sound
   expect(repeatVisitState.videoHidden).toBe(true);
   expect(repeatVisitState.videoSrcAttr).toBeNull();
 
+  await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
+  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
   await expect(page).toHaveURL(/\/josie$/);
   await expect(page).toHaveTitle(/Josie/);
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
@@ -226,7 +248,9 @@ test("root skips the intro movie on repeat visits but keeps the fullscreen sound
 
 test("root starts the josie handoff 0.5 seconds early and keeps the intro document alive", async ({ page }) => {
   await page.goto("/");
+  await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
+  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
     paused: node.paused,
     muted: node.muted
@@ -266,6 +290,7 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   expect(duringHandoff.ended).toBe(false);
   expect(duringHandoff.hiddenClass).toBe(false);
   expect(duringHandoff.pointerEvents).toBe("none");
+  await waitForInteractionSfx(page, { soundId: "open_soft", source: "introHandoffVisible", ownerMode: "top" });
 
   await page.locator("#introVideo").evaluate((node) => {
     node.dispatchEvent(new Event("ended"));
@@ -284,6 +309,9 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   expect(completedHandoff).not.toBeNull();
   expect(completedHandoff.hiddenClass).toBe(true);
   expect(completedHandoff.pointerEvents).toBe("auto");
+
+  await handoffFrame.locator("[data-mobile-speaker-toggle]").click();
+  await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top" });
 });
 
 test("root falls back to a hard josie navigation if the handoff iframe never becomes ready", async ({ page }) => {
@@ -324,7 +352,9 @@ test("mobile root skips the intro movie but still uses the fullscreen sound gate
   expect(mobileState.videoHidden).toBe(true);
   expect(mobileState.videoSrcAttr).toBeNull();
 
+  await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
+  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
   await expect(page).toHaveURL(/\/josie$/);
   await expect(page).toHaveTitle(/Josie/);
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
@@ -379,6 +409,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     timeout: 30_000
   });
 
+  await clearInteractionSfxLog(page);
+  await page.locator(".steam-sidebar-link").first().hover();
+  expect(await readInteractionSfxLog(page)).toEqual([]);
+
   await expect(page.locator("[data-mobile-speaker-toggle]")).toBeVisible();
   const desktopSpeakerRect = await page.locator("[data-mobile-speaker-toggle]").evaluate((node) => {
     const rect = node.getBoundingClientRect();
@@ -394,6 +428,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopSpeakerRect.width).toBeGreaterThanOrEqual(40);
   expect(desktopSpeakerRect.height).toBeGreaterThanOrEqual(40);
   await page.locator("[data-mobile-speaker-toggle]").click();
+  await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
   await page.waitForFunction(() => {
     const button = document.querySelector("[data-mobile-speaker-toggle]");
     return button instanceof HTMLElement
@@ -418,6 +453,15 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioPlaying === "true"
       && button.dataset.audioMuted !== expectedState;
   }, secondDesktopMuteState);
+  await clearInteractionSfxLog(page);
+  await page.locator(".steam-sidebar-link").first().hover();
+  await waitForInteractionSfx(page, { soundId: "hover_soft", source: "sidebarLink", ownerMode: "top", page: "josie" });
+  await clearInteractionSfxLog(page);
+  await page.locator(".steam-sidebar-link").first().click({ force: true });
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  await waitForInteractionSfx(page, { soundId: "open_soft", source: "externalConfirmOpen", ownerMode: "top", page: "josie" });
+  await page.locator(".external-link-confirm-button--cancel").click();
+  await waitForInteractionSfx(page, { soundId: "cancel_soft", source: "externalConfirmCancel", ownerMode: "top", page: "josie" });
 
   await expect(page.locator("body")).toHaveAttribute("data-theme-resolved", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
@@ -446,6 +490,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const backdrop = document.querySelector("#os-ambient-backdrop");
     const frame = document.querySelector("#social-hub-scale-frame");
     const surface = document.querySelector("#os-shuffle-visualizer-surface");
+    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
     const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
     const firstShowcaseTitle = document.querySelector(".social-hub-showcases article h3, .social-hub-showcases article h4");
@@ -455,9 +500,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       if (!(canvas instanceof HTMLCanvasElement)) return null;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!(ctx instanceof CanvasRenderingContext2D)) return null;
-      const bandRect = rectOf(surface);
-      if (!bandRect) return null;
-      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round((bandRect.top + bandRect.height / 2) * (canvas.height / window.innerHeight))));
+      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round(canvas.height / 2)));
       const leftPixels = ctx.getImageData(0, sampleY, Math.min(8, canvas.width), 1).data;
       const rightWidth = Math.min(8, canvas.width);
       const rightPixels = ctx.getImageData(Math.max(0, canvas.width - rightWidth), sampleY, rightWidth, 1).data;
@@ -473,27 +516,40 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
         right: maxAlpha(rightPixels)
       };
     };
+    const initialSurfaceRect = rectOf(surface);
+    const initialCanvasRect = rectOf(canvas);
+    const scrollBaseline = window.scrollY;
+    window.scrollTo(0, Math.min(window.scrollY + 640, Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));
+    const scrolledSurfaceRect = rectOf(surface);
+    const scrolledCanvasRect = rectOf(canvas);
+    window.scrollTo(0, scrollBaseline);
     return {
       layerZ: styleOf(layer)?.zIndex || "",
       frameZ: styleOf(frame)?.zIndex || "",
       backdropZ: styleOf(backdrop)?.zIndex || "",
       pointerEvents: styleOf(layer)?.pointerEvents || "",
-      surfaceRect: rectOf(surface),
-      canvasRect: rectOf(canvas),
+      portalOpacity: styleOf(portal)?.opacity || "",
+      surfaceRect: initialSurfaceRect,
+      canvasRect: initialCanvasRect,
       copyRect: rectOf(copy),
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       firstShowcaseTitle: firstShowcaseTitle instanceof HTMLElement ? firstShowcaseTitle.textContent.trim() : "",
-      edgeAlpha: canvasEdgeAlpha()
+      edgeAlpha: canvasEdgeAlpha(),
+      scrolledSurfaceTop: scrolledSurfaceRect?.top ?? null,
+      scrolledCanvasTop: scrolledCanvasRect?.top ?? null
     };
   });
   expect(visualizerLayout.pointerEvents).toBe("none");
+  expect(visualizerLayout.portalOpacity).toBe("0.2");
   expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
-  expect(Math.abs(visualizerLayout.surfaceRect.top + visualizerLayout.surfaceRect.height / 2 - visualizerLayout.viewportHeight / 2)).toBeLessThan(12);
+  expect(Math.abs(visualizerLayout.surfaceRect.top + visualizerLayout.surfaceRect.height / 2 - (visualizerLayout.viewportHeight / 2 - 90))).toBeLessThan(12);
   expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
+  expect(Math.abs(visualizerLayout.scrolledSurfaceTop - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(visualizerLayout.scrolledCanvasTop - visualizerLayout.canvasRect.top)).toBeLessThanOrEqual(1);
   expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
   expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
   expect(visualizerLayout.firstShowcaseTitle).toBe("Recent Activity");
@@ -1485,7 +1541,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
+  await clearInteractionSfxLog(page);
   await sourceRow.click();
+  await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-art--flip")).toHaveCount(1);
@@ -1576,7 +1634,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(trackArtHoverAfter.shellTransform).not.toBe(trackArtHoverBefore.shellTransform);
   expect(trackArtHoverAfter.imageTransform).not.toBe(trackArtHoverBefore.imageTransform);
   await page.locator(".lastfm-track-panel-close").hover();
+  await clearInteractionSfxLog(page);
   const artShell = await showLastFmPanelArtActions(page);
+  await waitForInteractionSfx(page, { soundId: "flip_soft", source: "lastfmPanelArtFlipBack", ownerMode: "top", page: "josie" });
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
   await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } }));
@@ -1593,6 +1653,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   });
   await trackCta.click();
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await waitForInteractionSfx(page, { soundId: "confirm_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
   windowOpenCalls = await drainWindowOpenCalls(page);
   expect(windowOpenCalls.at(-1)).toMatchObject({
     url: "https://www.last.fm/music/beabadoobee/_/One+Time",
@@ -1620,7 +1681,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   const relatedArtShell = await showLastFmPanelArtActions(page);
   await expect(relatedArtShell.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
+  await clearInteractionSfxLog(page);
   await page.keyboard.press("Escape");
+  await waitForInteractionSfx(page, { soundId: "close_soft", source: "lastfmTrackPanelClose", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
   await expect(sourceRow).toBeFocused();
 

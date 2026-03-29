@@ -626,7 +626,7 @@ body.site-load-playing .os-ambient-backdrop {
   position: absolute;
   left: 0;
   right: 0;
-  top: 50%;
+  top: calc(50% - 90px);
   width: 100vw;
   height: clamp(224px, 20vw, 284px);
   min-height: clamp(224px, 20vw, 284px);
@@ -3506,11 +3506,18 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .josie-audio-player-bleed-layer {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 0;
   z-index: 0;
   display: block;
   overflow: hidden;
   pointer-events: none;
+  opacity: 0.2;
+  contain: layout paint size;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .josie-audio-player-wave {
