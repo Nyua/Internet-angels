@@ -626,11 +626,11 @@ body.site-load-playing .os-ambient-backdrop {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(50% - 90px);
+  bottom: 0;
   width: 100vw;
   height: clamp(224px, 20vw, 284px);
   min-height: clamp(224px, 20vw, 284px);
-  transform: translateY(-50%);
+  transform: none;
   overflow: visible;
   pointer-events: none;
   isolation: isolate;

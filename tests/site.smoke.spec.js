@@ -435,6 +435,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("BURNS DOWN");
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -546,7 +547,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
-  expect(Math.abs(visualizerLayout.surfaceRect.top + visualizerLayout.surfaceRect.height / 2 - (visualizerLayout.viewportHeight / 2 - 90))).toBeLessThan(12);
+  expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
   expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(Math.abs(visualizerLayout.scrolledSurfaceTop - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(1);
   expect(Math.abs(visualizerLayout.scrolledCanvasTop - visualizerLayout.canvasRect.top)).toBeLessThanOrEqual(1);

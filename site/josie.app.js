@@ -1619,7 +1619,7 @@
   }
   function findPreferredInitialShuffleTrack(tracks) {
     const safeTracks = Array.isArray(tracks) ? tracks : [];
-    const preferredTitle = "touch the sky";
+    const preferredTitle = "burns down";
     return safeTracks.find((track) => normalizeShuffleTrackLookup(track?.title) === preferredTitle) || null;
   }
   function pickWeightedShuffleTrack(tracks, excludeId = "") {
@@ -1689,13 +1689,13 @@
     let reactiveFlash = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
-    const SHUFFLE_STAGE_VERTICAL_OFFSET_PX = 90;
+    const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_TRACE_OPACITY_SCALE = 1;
     const SHUFFLE_MAX_CANVAS_DPR = 1.25;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
-    audioEl.volume = 0.46;
+    audioEl.volume = 0.23;
     function resolveTrackUrl(track) {
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
@@ -1945,7 +1945,7 @@
         return null;
       }
       const drawTop = clamp2(
-        Math.round((viewportHeight - drawHeight) / 2 - SHUFFLE_STAGE_VERTICAL_OFFSET_PX),
+        Math.round(viewportHeight - drawHeight - SHUFFLE_STAGE_BOTTOM_OFFSET_PX),
         0,
         Math.max(0, viewportHeight - drawHeight)
       );
