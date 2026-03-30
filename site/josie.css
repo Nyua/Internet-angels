@@ -140,11 +140,6 @@ body.has-custom-cursor * {
   cursor: none !important;
 }
 
-body.has-custom-cursor .has-system-pointer-target,
-body.has-custom-cursor .has-system-pointer-target * {
-  cursor: pointer !important;
-}
-
 .site-pointer {
   --site-cursor-scale: 1;
   --cursor-tail-opacity: 0;
@@ -173,10 +168,6 @@ body.has-custom-cursor .has-system-pointer-target * {
 
 .site-pointer.is-visible {
   opacity: 1;
-}
-
-.site-pointer.is-system-pointer {
-  opacity: 0 !important;
 }
 
 .site-pointer.is-interactive {
@@ -220,6 +211,7 @@ body.has-custom-cursor .has-system-pointer-target * {
 .site-pointer-ring,
 .site-pointer-pool,
 .site-pointer-hand,
+.site-pointer-cross,
 .site-pointer-arrow {
   position: absolute;
   inset: 0;
@@ -280,6 +272,39 @@ body.has-custom-cursor .has-system-pointer-target * {
     transform 48ms cubic-bezier(0.18, 0.96, 0.34, 1),
     filter 48ms cubic-bezier(0.18, 0.96, 0.34, 1);
   filter: none;
+}
+
+.site-pointer-cross {
+  inset: -8px;
+  opacity: 0;
+  transform: scale(0.34) rotate(0deg);
+  transition:
+    opacity 72ms ease,
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.12));
+}
+
+.site-pointer-cross-bar {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(16, 16, 18, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(232, 234, 240, 0.76),
+    0 0 6px rgba(255, 255, 255, 0.08);
+  transform-origin: center;
+}
+
+.site-pointer-cross-bar--a {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.site-pointer-cross-bar--b {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .site-pointer-hand svg {
@@ -344,6 +369,13 @@ body[data-theme-resolved="night"] .site-pointer-hand-outline {
   fill: rgba(16, 16, 18, 0.98);
 }
 
+body[data-theme-resolved="night"] .site-pointer-cross-bar {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(10, 10, 12, 0.58),
+    0 0 8px rgba(255, 255, 255, 0.18);
+}
+
 body[data-theme-resolved="night"] .site-pointer-arrow::before {
   background: rgba(255, 255, 255, 0.84);
 }
@@ -376,6 +408,10 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 .site-pointer.is-interactive .site-pointer-hand {
   opacity: 0;
   transform: translate3d(-1px, -2px, 0) scale(0.74);
+}
+
+.site-pointer.is-interactive .site-pointer-cross {
+  opacity: 0;
 }
 
 .site-pointer.is-interactive.is-pressed .site-pointer-core {
@@ -419,6 +455,11 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
   opacity: 0;
 }
 
+.site-pointer.is-scroll .site-pointer-cross {
+  opacity: 0;
+  transform: scale(0.24);
+}
+
 .site-pointer.is-scroll .site-pointer-arrow {
   opacity: 1;
   transform: scale(1.12);
@@ -430,6 +471,13 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 }
 
 .site-pointer[data-cursor-morph="orb"] {
+  --site-cursor-rotate: 0deg;
+  --site-cursor-core-radius: 999px;
+  --site-cursor-ring-radius: 999px;
+  --site-cursor-pool-radius: 999px;
+}
+
+.site-pointer[data-cursor-morph="x"] {
   --site-cursor-rotate: 0deg;
   --site-cursor-core-radius: 999px;
   --site-cursor-ring-radius: 999px;
@@ -539,6 +587,126 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 
 .site-pointer.is-interactive.is-pressed[data-cursor-morph="selection"] .site-pointer-hand {
   transform: translate3d(-1px, -1px, 0) scale(0.46);
+}
+
+.site-pointer.is-interactive[data-cursor-morph="x"] {
+  --site-cursor-scale: 1.16;
+}
+
+.site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-core {
+  opacity: 0.18;
+  transform: scale(0.56);
+  box-shadow: none;
+}
+
+.site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-ring {
+  opacity: 0.48;
+  transform: scale(1.16);
+  filter: none;
+}
+
+.site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-pool {
+  opacity: 0.18;
+  transform: scale(0.92);
+}
+
+.site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-cross {
+  opacity: 1;
+  transform: scale(1);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.16));
+}
+
+.site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-core {
+  transform: scale(0.48);
+}
+
+.site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-ring {
+  transform: scale(1.02);
+}
+
+.site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-pool {
+  transform: scale(0.84);
+}
+
+.site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-cross {
+  transform: scale(0.9);
+}
+
+.site-pointer.is-selecting .site-pointer-cross {
+  animation: site-pointer-cross-select 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.site-pointer.is-selecting .site-pointer-ring {
+  animation: site-pointer-ring-select 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.site-pointer.is-selecting .site-pointer-pool {
+  animation: site-pointer-pool-select 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.site-pointer.is-selecting .site-pointer-trail-canvas {
+  animation: site-pointer-trail-select 180ms ease-out;
+}
+
+@keyframes site-pointer-cross-select {
+  0% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(0.76);
+  }
+  74% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes site-pointer-ring-select {
+  0% {
+    opacity: 0.48;
+    transform: scale(1.16);
+  }
+  42% {
+    opacity: 0.74;
+    transform: scale(0.92);
+  }
+  76% {
+    opacity: 0.56;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 0.48;
+    transform: scale(1.16);
+  }
+}
+
+@keyframes site-pointer-pool-select {
+  0% {
+    opacity: 0.18;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.28;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0.18;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes site-pointer-trail-select {
+  0% {
+    filter: brightness(1.45) saturate(0);
+  }
+  45% {
+    filter: brightness(1.92) saturate(0) drop-shadow(0 0 8px rgba(255, 255, 255, 0.2));
+  }
+  100% {
+    filter: brightness(1.45) saturate(0);
+  }
 }
 
 .corner-shell {
@@ -5711,13 +5879,57 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     transform: none;
   }
 
+  .steam-sidebar-list--mobile-icons.is-mobile-launch-pending {
+    pointer-events: none;
+  }
+
   .steam-sidebar-list--mobile-icons .steam-sidebar-row {
     --sidebar-row-accent-rgb: 248, 249, 252;
   }
 
   .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only,
   .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only:visited {
+    --mobile-link-aura-rgb: 248, 249, 252;
+    --mobile-link-aura-secondary-rgb: 255, 255, 255;
+    --mobile-link-aura-sheen-rgb: 255, 255, 255;
     color: rgba(248, 249, 252, 0.94);
+    overflow: visible;
+  }
+
+  .steam-sidebar-row--soundcloud .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 255, 148, 84;
+    --mobile-link-aura-secondary-rgb: 255, 232, 204;
+    --mobile-link-aura-sheen-rgb: 255, 246, 232;
+  }
+
+  .steam-sidebar-row--spotify .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 116, 232, 154;
+    --mobile-link-aura-secondary-rgb: 222, 255, 234;
+    --mobile-link-aura-sheen-rgb: 240, 255, 244;
+  }
+
+  .steam-sidebar-row--lastfm .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 255, 114, 143;
+    --mobile-link-aura-secondary-rgb: 255, 223, 231;
+    --mobile-link-aura-sheen-rgb: 255, 242, 245;
+  }
+
+  .steam-sidebar-row--discord .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 176, 188, 255;
+    --mobile-link-aura-secondary-rgb: 235, 239, 255;
+    --mobile-link-aura-sheen-rgb: 246, 247, 255;
+  }
+
+  .steam-sidebar-row--steam .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 152, 220, 255;
+    --mobile-link-aura-secondary-rgb: 223, 245, 255;
+    --mobile-link-aura-sheen-rgb: 241, 251, 255;
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-link--icon-only {
+    --mobile-link-aura-rgb: 205, 238, 255;
+    --mobile-link-aura-secondary-rgb: 245, 252, 255;
+    --mobile-link-aura-sheen-rgb: 255, 255, 255;
   }
 
   .steam-sidebar-list--mobile-icons .steam-sidebar-site-icon {
@@ -5751,26 +5963,263 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     background: #42b36b;
   }
 
+  .steam-sidebar-link--icon-only::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(var(--mobile-link-aura-secondary-rgb), 0.28) 0 18%, rgba(var(--mobile-link-aura-rgb), 0.18) 44%, rgba(var(--mobile-link-aura-rgb), 0.02) 74%, transparent 100%);
+    box-shadow:
+      0 0 0 rgba(var(--mobile-link-aura-rgb), 0),
+      inset 0 0 0 1px rgba(var(--mobile-link-aura-secondary-rgb), 0);
+    opacity: 0;
+    transform: scale(0.78);
+    transition:
+      opacity 160ms ease,
+      transform 180ms cubic-bezier(0.2, 0.82, 0.2, 1),
+      box-shadow 180ms ease;
+    z-index: 0;
+  }
+
+  .steam-sidebar-link--icon-only::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    border-radius: 999px;
+    opacity: 0;
+    transform: scale(0.6);
+    filter: blur(10px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .steam-sidebar-row--soundcloud .steam-sidebar-link--icon-only::after {
+    background:
+      radial-gradient(circle at 50% 72%, rgba(255, 238, 214, 0.7) 0 10%, rgba(255, 164, 101, 0.48) 28%, rgba(255, 120, 61, 0.08) 62%, transparent 82%),
+      linear-gradient(180deg, rgba(255, 236, 212, 0) 0%, rgba(255, 184, 127, 0.56) 52%, rgba(255, 126, 63, 0) 100%);
+  }
+
+  .steam-sidebar-row--spotify .steam-sidebar-link--icon-only::after {
+    background:
+      repeating-radial-gradient(circle at center, rgba(222, 255, 234, 0.52) 0 2px, rgba(222, 255, 234, 0) 2px 8px),
+      radial-gradient(circle at center, rgba(126, 236, 162, 0.46) 0 38%, rgba(126, 236, 162, 0) 72%);
+  }
+
+  .steam-sidebar-row--lastfm .steam-sidebar-link--icon-only::after {
+    background:
+      linear-gradient(90deg, rgba(255, 214, 223, 0) 0%, rgba(255, 214, 223, 0.7) 36%, rgba(255, 123, 152, 0.56) 52%, rgba(255, 214, 223, 0.7) 68%, rgba(255, 214, 223, 0) 100%),
+      radial-gradient(circle at center, rgba(255, 116, 145, 0.22) 0 40%, rgba(255, 116, 145, 0) 72%);
+  }
+
+  .steam-sidebar-row--discord .steam-sidebar-link--icon-only::after {
+    background:
+      radial-gradient(circle at center, rgba(240, 243, 255, 0.6) 0 16%, rgba(185, 194, 255, 0.34) 38%, rgba(185, 194, 255, 0.06) 70%, transparent 86%),
+      radial-gradient(circle at 50% 50%, rgba(176, 188, 255, 0.24) 0 46%, rgba(176, 188, 255, 0) 76%);
+  }
+
+  .steam-sidebar-row--steam .steam-sidebar-link--icon-only::after {
+    background:
+      linear-gradient(112deg, rgba(233, 249, 255, 0) 0 24%, rgba(233, 249, 255, 0.66) 46%, rgba(169, 230, 255, 0.42) 58%, rgba(233, 249, 255, 0) 78%),
+      radial-gradient(circle at center, rgba(158, 223, 255, 0.22) 0 44%, rgba(158, 223, 255, 0) 78%);
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-link--icon-only::after {
+    background:
+      linear-gradient(132deg, rgba(249, 253, 255, 0) 0 32%, rgba(249, 253, 255, 0.76) 48%, rgba(197, 239, 255, 0.4) 62%, rgba(249, 253, 255, 0) 78%),
+      radial-gradient(circle at center, rgba(210, 240, 255, 0.18) 0 38%, rgba(210, 240, 255, 0) 74%);
+  }
+
   .steam-sidebar-link--icon-only.is-mobile-selected {
-    transform: scale(0.94);
+    transform: scale(0.98);
+    filter: saturate(1.08);
   }
 
   .steam-sidebar-link--icon-only.is-mobile-selected::before {
-    opacity: 1;
+    opacity: 0.96;
     transform: scale(1);
-    background: rgba(255, 255, 255, 0.22);
     box-shadow:
-      0 0 18px rgba(255, 255, 255, 0.18),
-      0 0 28px rgba(255, 255, 255, 0.1),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.52);
+      0 0 16px rgba(var(--mobile-link-aura-rgb), 0.24),
+      0 0 28px rgba(var(--mobile-link-aura-rgb), 0.14),
+      inset 0 0 0 1px rgba(var(--mobile-link-aura-secondary-rgb), 0.52);
+  }
+
+  .steam-sidebar-link--icon-only.is-mobile-selected::after {
+    opacity: 0.42;
+    transform: scale(1);
   }
 
   .steam-sidebar-link--icon-only.is-mobile-selected .steam-sidebar-site-icon {
-    color: rgba(255, 255, 255, 1);
+    color: rgba(var(--mobile-link-aura-secondary-rgb), 0.98);
     filter:
-      drop-shadow(0 0 8px rgba(255, 255, 255, 0.42))
-      drop-shadow(0 0 18px rgba(255, 255, 255, 0.22));
-    transform: scale(1.04);
+      drop-shadow(0 0 8px rgba(var(--mobile-link-aura-rgb), 0.44))
+      drop-shadow(0 0 18px rgba(var(--mobile-link-aura-rgb), 0.22));
+    transform: scale(1.03);
+  }
+
+  .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"] {
+    animation: mobileSidebarIconTapSettle 380ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  }
+
+  .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::before {
+    animation: mobileSidebarIconAuraBloom 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
+  }
+
+  .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"] .steam-sidebar-site-icon {
+    animation: mobileSidebarIconGlyphBloom 380ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  }
+
+  .steam-sidebar-row--soundcloud .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarSoundcloudPlume 380ms cubic-bezier(0.18, 0.88, 0.16, 1) both;
+  }
+
+  .steam-sidebar-row--spotify .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarSpotifyPulse 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
+  }
+
+  .steam-sidebar-row--lastfm .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarLastfmScan 380ms cubic-bezier(0.2, 0.88, 0.18, 1) both;
+  }
+
+  .steam-sidebar-row--discord .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarDiscordRipple 380ms cubic-bezier(0.18, 0.9, 0.16, 1) both;
+  }
+
+  .steam-sidebar-row--steam .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarSteamShimmer 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-link--icon-only[data-mobile-selection-phase="animating"]::after {
+    animation: mobileSidebarTwitterSlash 380ms cubic-bezier(0.18, 0.9, 0.14, 1) both;
+  }
+
+  @keyframes mobileSidebarIconTapSettle {
+    0% {
+      transform: scale(0.88);
+    }
+    42% {
+      transform: scale(1.08);
+    }
+    100% {
+      transform: scale(0.98);
+    }
+  }
+
+  @keyframes mobileSidebarIconAuraBloom {
+    0% {
+      opacity: 0;
+      transform: scale(0.58);
+    }
+    44% {
+      opacity: 1;
+      transform: scale(1.16);
+    }
+    100% {
+      opacity: 0.96;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes mobileSidebarIconGlyphBloom {
+    0% {
+      transform: scale(0.82);
+    }
+    44% {
+      transform: scale(1.14);
+    }
+    100% {
+      transform: scale(1.03);
+    }
+  }
+
+  @keyframes mobileSidebarSoundcloudPlume {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.74);
+    }
+    56% {
+      opacity: 0.9;
+      transform: translateY(-8px) scale(1.16);
+    }
+    100% {
+      opacity: 0.46;
+      transform: translateY(-3px) scale(1);
+    }
+  }
+
+  @keyframes mobileSidebarSpotifyPulse {
+    0% {
+      opacity: 0;
+      transform: scale(0.42);
+    }
+    50% {
+      opacity: 0.84;
+      transform: scale(1.18);
+    }
+    100% {
+      opacity: 0.46;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes mobileSidebarLastfmScan {
+    0% {
+      opacity: 0;
+      transform: translateX(-14px) scaleX(0.72);
+    }
+    52% {
+      opacity: 0.84;
+      transform: translateX(12px) scaleX(1.08);
+    }
+    100% {
+      opacity: 0.42;
+      transform: translateX(0) scaleX(1);
+    }
+  }
+
+  @keyframes mobileSidebarDiscordRipple {
+    0% {
+      opacity: 0;
+      transform: scale(0.54);
+    }
+    58% {
+      opacity: 0.8;
+      transform: scale(1.22);
+    }
+    100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes mobileSidebarSteamShimmer {
+    0% {
+      opacity: 0;
+      transform: translateX(-14px) skewX(-12deg) scaleX(0.82);
+    }
+    52% {
+      opacity: 0.82;
+      transform: translateX(12px) skewX(-12deg) scaleX(1.08);
+    }
+    100% {
+      opacity: 0.38;
+      transform: translateX(0) skewX(-12deg) scaleX(1);
+    }
+  }
+
+  @keyframes mobileSidebarTwitterSlash {
+    0% {
+      opacity: 0;
+      transform: rotate(-18deg) scale(0.46);
+    }
+    52% {
+      opacity: 0.84;
+      transform: rotate(12deg) scale(1.16);
+    }
+    100% {
+      opacity: 0.36;
+      transform: rotate(0deg) scale(1);
+    }
   }
 
   .discord-presence-panel {
@@ -5834,7 +6283,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .discord-presence-status-badge::before {
-    inset: 3px;
+    inset: 0;
   }
 
   .discord-presence-status-badge[data-status="idle"]::after {
@@ -6087,8 +6536,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   max-width: 28rem;
   box-sizing: border-box;
-  background: rgba(190, 190, 190, 0.2);
-  border: 2px solid rgba(190, 190, 190, 0.1);
+  background: rgba(190, 190, 190, 0.12);
+  border: 2px solid rgba(190, 190, 190, 0.07);
   border-radius: 25px;
   overflow: hidden;
   box-shadow: none;
@@ -6150,9 +6599,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 17px;
   height: 17px;
   border-radius: 999px;
-  background: #0e0f14;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.56);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -6163,7 +6612,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .discord-presence-status-badge::before {
-  inset: 3px;
+  inset: 0;
   border-radius: 999px;
   background: #727784;
 }
@@ -6182,7 +6631,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   top: 3px;
   left: 7px;
   border-radius: 999px;
-  background: #0e0f14;
+  background: rgba(190, 190, 190, 0.6);
 }
 
 .discord-presence-status-badge[data-status="dnd"]::before {
@@ -6195,7 +6644,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   top: 50%;
   height: 2px;
   border-radius: 999px;
-  background: #0e0f14;
+  background: rgba(190, 190, 190, 0.72);
   transform: translateY(-50%);
 }
 

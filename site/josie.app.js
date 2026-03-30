@@ -2666,6 +2666,9 @@
       alt
     };
   }
+  function normalizeDiscordCustomStatusToken(value) {
+    return String(value || "").trim().toLowerCase().replace(/^:+|:+$/g, "").replace(/[\s_-]+/g, "");
+  }
   function buildDiscordPresenceCardModel(payload) {
     const safePayload = payload && typeof payload === "object" ? payload : null;
     const presence = safePayload?.presence && typeof safePayload.presence === "object" ? safePayload.presence : null;
@@ -2682,16 +2685,19 @@
     const isListeningToSpotify = Boolean(spotify?.isListening);
     const albumArtUrl = sanitizeUrl(spotify?.albumArtUrl);
     const customEmoji = extractDiscordCustomStatusEmojiData(activities);
+    const normalizedEmojiName = normalizeDiscordCustomStatusToken(customEmoji.alt);
+    const normalizedCustomStatusText = normalizeDiscordCustomStatusToken(presence?.customStatusText);
+    const customStatusText = normalizedCustomStatusText && normalizedCustomStatusText === normalizedEmojiName ? "" : firstNonEmpty(presence?.customStatusText);
     let headline = isListeningToSpotify
       ? `Listening to ${firstNonEmpty(spotify?.song, "Unknown track")}`
       : firstNonEmpty(
-        presence?.customStatusText,
+        customStatusText,
         presence?.primaryActivity?.name ? `${firstNonEmpty(presence?.primaryActivity?.label, "Active in")} ${presence.primaryActivity.name}` : "",
         presence?.statusLabel,
         profile.statusText,
         "Discord presence unavailable"
       );
-    if (!customEmoji.url && customEmoji.alt) {
+    if (!customEmoji.url && customEmoji.alt && normalizedCustomStatusText !== normalizedEmojiName) {
       headline = `${customEmoji.alt} ${headline}`.trim();
     }
     return {
@@ -3901,7 +3907,8 @@
       const siteLabel = escapeHtml(SITE_THEME_LABEL[site.id] || site.label);
       const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
       if (compact) {
-        const iconLinkMarkup = openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
+        const mobileSiteId = escapeHtml(site.id);
+        const iconLinkMarkup = openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
         return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}">
         ${iconLinkMarkup}
@@ -3978,8 +3985,13 @@
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
     let mobileLinksRevealTimer = 0;
+    const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 380;
+    const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
+    const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     let mobileLinkSelectionTimer = 0;
     let mobileLinkSelectedKey = "";
+    let mobileLinkSelectionPhase = "idle";
+    let mobileLinkAnimationTimer = 0;
     let pendingMobileExternalLaunchTimer = 0;
     let pendingMobileExternalPopup = null;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
@@ -4063,22 +4075,45 @@
       window.clearTimeout(mobileLinkSelectionTimer);
       mobileLinkSelectionTimer = 0;
     }
+    function clearMobileLinkAnimationTimer() {
+      if (!mobileLinkAnimationTimer) return;
+      window.clearTimeout(mobileLinkAnimationTimer);
+      mobileLinkAnimationTimer = 0;
+    }
     function getMobileLinkSelectedKey(link) {
       if (!(link instanceof HTMLElement)) return "";
+      const mobileSiteId = link.getAttribute("data-mobile-site-id");
+      if (mobileSiteId) {
+        return mobileSiteId.trim();
+      }
       const siteLabel = link.getAttribute("aria-label") || link.getAttribute("title") || link.getAttribute("href") || "";
       return siteLabel.trim();
     }
+    function setMobileLinksLaunchPending(active) {
+      const row = getMobileLinksRow();
+      if (!(row instanceof HTMLElement)) return;
+      row.classList.toggle("is-mobile-launch-pending", Boolean(active));
+      row.dataset.mobileLaunchPending = active ? "true" : "false";
+    }
+    function resolveMobileProfileIconLink(trigger) {
+      const candidate = trigger instanceof HTMLElement ? trigger.closest(".steam-sidebar-link--icon-only[data-mobile-site-id]") : null;
+      return candidate instanceof HTMLElement && !candidate.classList.contains("is-disabled") ? candidate : null;
+    }
     function clearMobileLinkSelectedState() {
       clearMobileLinkSelectionTimer();
+      clearMobileLinkAnimationTimer();
       mobileLinkSelectedKey = "";
+      mobileLinkSelectionPhase = "idle";
       if (!(sidebar instanceof HTMLElement)) return;
       sidebar.querySelectorAll(".steam-sidebar-link--icon-only.is-mobile-selected").forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
         node.classList.remove("is-mobile-selected");
         node.dataset.mobileSelected = "false";
+        node.dataset.mobileSelectionPhase = "idle";
         const row = node.closest(".steam-sidebar-row");
         if (row instanceof HTMLElement) {
           row.dataset.mobileSelected = "false";
+          row.dataset.mobileSelectionPhase = "idle";
         }
       });
     }
@@ -4090,11 +4125,18 @@
         const isSelected = Boolean(selectedKey) && getMobileLinkSelectedKey(node) === selectedKey;
         node.classList.toggle("is-mobile-selected", isSelected);
         node.dataset.mobileSelected = isSelected ? "true" : "false";
+        node.dataset.mobileSelectionPhase = isSelected ? mobileLinkSelectionPhase : "idle";
         const row = node.closest(".steam-sidebar-row");
         if (row instanceof HTMLElement) {
           row.dataset.mobileSelected = isSelected ? "true" : "false";
+          row.dataset.mobileSelectionPhase = isSelected ? mobileLinkSelectionPhase : "idle";
         }
       });
+    }
+    function finishMobileLinkSelectionAnimation() {
+      if (!mobileLinkSelectedKey) return;
+      mobileLinkSelectionPhase = "idle";
+      syncMobileLinkSelectedState();
     }
     function markMobileLinkSelected(link) {
       if (!(link instanceof HTMLElement)) {
@@ -4102,11 +4144,17 @@
         return;
       }
       mobileLinkSelectedKey = getMobileLinkSelectedKey(link);
+      mobileLinkSelectionPhase = "animating";
       syncMobileLinkSelectedState();
+      clearMobileLinkAnimationTimer();
+      mobileLinkAnimationTimer = window.setTimeout(() => {
+        mobileLinkAnimationTimer = 0;
+        finishMobileLinkSelectionAnimation();
+      }, MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS);
       clearMobileLinkSelectionTimer();
       mobileLinkSelectionTimer = window.setTimeout(() => {
         clearMobileLinkSelectedState();
-      }, 1200);
+      }, MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS);
     }
     function clearPendingMobileExternalLaunch() {
       if (pendingMobileExternalLaunchTimer) {
@@ -4120,6 +4168,7 @@
         }
       }
       pendingMobileExternalPopup = null;
+      setMobileLinksLaunchPending(false);
     }
     function resolveExternalLaunchTarget(trigger, fallback = "_blank") {
       if (trigger instanceof HTMLAnchorElement) {
@@ -4133,13 +4182,18 @@
       if (!safeUrl) return;
       const triggerElement = trigger instanceof HTMLElement ? trigger : null;
       const resolvedTarget = resolveExternalLaunchTarget(triggerElement instanceof HTMLAnchorElement ? triggerElement : null, target || "_blank");
-      const selectedLink = triggerElement?.closest(".steam-sidebar-link--icon-only");
+      const selectedLink = resolveMobileProfileIconLink(triggerElement);
+      const useProfileIconAura = Boolean(selectedLink);
+      if (useProfileIconAura && pendingMobileExternalLaunchTimer) {
+        return;
+      }
+      clearPendingMobileExternalLaunch();
       if (selectedLink instanceof HTMLElement) {
         markMobileLinkSelected(selectedLink);
+        setMobileLinksLaunchPending(true);
       } else {
         clearMobileLinkSelectedState();
       }
-      clearPendingMobileExternalLaunch();
       let popupWindow = null;
       if (resolvedTarget === "_blank") {
         try {
@@ -4152,8 +4206,10 @@
         }
       }
       pendingMobileExternalPopup = popupWindow;
+      const launchDelayMs = useProfileIconAura ? MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS : MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS;
       pendingMobileExternalLaunchTimer = window.setTimeout(() => {
         pendingMobileExternalLaunchTimer = 0;
+        setMobileLinksLaunchPending(false);
         if (resolvedTarget === "_blank") {
           let launched = false;
           if (popupWindow && !popupWindow.closed) {
@@ -4170,7 +4226,7 @@
           return;
         }
         launchExternal(safeUrl, "_self");
-      }, 120);
+      }, launchDelayMs);
     }
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
@@ -7223,6 +7279,7 @@
     const maxTrailSegmentsPerMove = 4;
     const trailSubdivisionCount = 1;
     const scrollMorphHoldMs = 170;
+    const selectionAnimationDurationMs = 180;
     const cursorEl = document.createElement("div");
     cursorEl.className = "site-pointer";
     cursorEl.setAttribute("aria-hidden", "true");
@@ -7239,12 +7296,17 @@
             <path class="site-pointer-hand-fill" d="M5.2 5.1v10.53l3.16-2.9 2.76 6.61 1.05-.44-2.76-6.61h3.9Z"></path>
           </svg>
         </span>
+        <span class="site-pointer-cross" aria-hidden="true">
+          <span class="site-pointer-cross-bar site-pointer-cross-bar--a"></span>
+          <span class="site-pointer-cross-bar site-pointer-cross-bar--b"></span>
+        </span>
         <span class="site-pointer-core"></span>
         <span class="site-pointer-arrow"></span>
       </span>
     `;
     document.body.appendChild(cursorEl);
     document.body.classList.add("has-custom-cursor");
+    document.body.classList.remove("has-system-pointer");
     cursorEl.dataset.cursorMorph = "orb";
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
     const trailContext = trailCanvas instanceof HTMLCanvasElement ? trailCanvas.getContext("2d") : null;
@@ -7286,6 +7348,8 @@
     let pointerEnergy = 0;
     let currentInteractiveTarget = null;
     let currentMorphToken = "orb";
+    let selectionAnimationTimer = 0;
+    let lastSelectionAnimationAt = 0;
     const trailHistory = [];
     const pointerMoveEventName = "pointermove";
     function applyCursorMorph(token) {
@@ -7392,6 +7456,25 @@
       cursorEl.style.setProperty("--cursor-tail-opacity", "0");
       clearTrailCanvas();
     }
+    function clearSelectionAnimationTimer() {
+      if (!selectionAnimationTimer) return;
+      window.clearTimeout(selectionAnimationTimer);
+      selectionAnimationTimer = 0;
+    }
+    function triggerSelectionAnimation(force = false) {
+      if (!visible || (!force && !(currentInteractiveTarget instanceof HTMLElement))) return;
+      const now = performance.now();
+      if (now - lastSelectionAnimationAt < 90) return;
+      lastSelectionAnimationAt = now;
+      clearSelectionAnimationTimer();
+      cursorEl.classList.remove("is-selecting");
+      void cursorEl.offsetWidth;
+      cursorEl.classList.add("is-selecting");
+      selectionAnimationTimer = window.setTimeout(() => {
+        selectionAnimationTimer = 0;
+        cursorEl.classList.remove("is-selecting");
+      }, selectionAnimationDurationMs);
+    }
     function syncPosition(x, y) {
       if (!visible) {
         primeCursor(x, y);
@@ -7416,24 +7499,13 @@
         cursorEl.classList.add("is-visible");
       }
     }
-    function setSystemPointerTarget(target) {
-      if (currentInteractiveTarget instanceof HTMLElement) {
-        currentInteractiveTarget.classList.remove("has-system-pointer-target");
-      }
-      const nextTarget = target instanceof HTMLElement ? target : null;
-      if (nextTarget) {
-        nextTarget.classList.add("has-system-pointer-target");
-      }
-      document.body.classList.toggle("has-system-pointer", Boolean(nextTarget));
-      cursorEl.classList.toggle("is-system-pointer", Boolean(nextTarget));
-      currentInteractiveTarget = nextTarget;
-    }
     function syncInteractiveTarget(target) {
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
       if (nextTarget === currentInteractiveTarget) return;
-      applyCursorMorph("orb");
-      setSystemPointerTarget(nextTarget instanceof HTMLElement ? nextTarget : null);
-      cursorEl.classList.toggle("is-interactive", false);
+      currentInteractiveTarget = nextTarget instanceof HTMLElement ? nextTarget : null;
+      const interactive = currentInteractiveTarget instanceof HTMLElement;
+      applyCursorMorph(interactive ? "x" : "orb");
+      cursorEl.classList.toggle("is-interactive", interactive);
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
       if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
@@ -7522,9 +7594,10 @@
       pressed = false;
       scrollDirection = 0;
       scrollUntilMs = 0;
-      setSystemPointerTarget(null);
+      currentInteractiveTarget = null;
       pointerEnergy = 0;
-      cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down");
+      clearSelectionAnimationTimer();
+      cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down", "is-selecting");
       applyCursorMorph("orb");
     }
     function isTouchLikeCursorEvent(event) {
@@ -7572,6 +7645,25 @@
         syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
       }
     }
+    function onClick(event) {
+      const actionable = resolveCustomCursorInteractiveTarget(event.target);
+      if (!(actionable instanceof HTMLElement)) return;
+      if (event instanceof MouseEvent && event.detail > 0) {
+        syncPosition(event.clientX, event.clientY);
+        syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+      } else {
+        syncInteractiveTarget(actionable);
+      }
+      triggerSelectionAnimation(true);
+    }
+    function onKeyDown(event) {
+      if (!(event instanceof KeyboardEvent) || event.repeat) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const actionable = resolveCustomCursorInteractiveTarget(event.target);
+      if (!(actionable instanceof HTMLElement)) return;
+      syncInteractiveTarget(actionable);
+      triggerSelectionAnimation(true);
+    }
     function onWheel(event) {
       setScrollDirectionFromWheel(event.deltaY);
     }
@@ -7589,6 +7681,8 @@
     window.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
     window.addEventListener("pointerup", onPointerUp, { passive: true, capture: true });
     window.addEventListener("pointercancel", onPointerUp, { passive: true, capture: true });
+    window.addEventListener("click", onClick, { passive: true, capture: true });
+    window.addEventListener("keydown", onKeyDown, { passive: true, capture: true });
     window.addEventListener("wheel", onWheel, { passive: true, capture: true });
     window.addEventListener("resize", resizeTrailCanvas, { passive: true });
     window.addEventListener("mouseout", onWindowMouseOut);
@@ -7609,12 +7703,16 @@
         window.removeEventListener("pointerdown", onPointerDown, true);
         window.removeEventListener("pointerup", onPointerUp, true);
         window.removeEventListener("pointercancel", onPointerUp, true);
+        window.removeEventListener("click", onClick, true);
+        window.removeEventListener("keydown", onKeyDown, true);
         window.removeEventListener("wheel", onWheel, true);
         window.removeEventListener("resize", resizeTrailCanvas);
         window.removeEventListener("mouseout", onWindowMouseOut);
         window.removeEventListener("blur", hideCursor);
         document.removeEventListener("visibilitychange", onVisibilityChange);
-        setSystemPointerTarget(null);
+        currentInteractiveTarget = null;
+        clearSelectionAnimationTimer();
+        document.body.classList.remove("has-system-pointer");
         document.body.classList.remove("has-custom-cursor");
         cursorEl.remove();
       }

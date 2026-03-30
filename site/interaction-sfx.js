@@ -89,6 +89,31 @@
     if (text) return text.slice(0, 64);
     return target.tagName.toLowerCase();
   }
+  function getActionableCenterY(target) {
+    if (!(target instanceof HTMLElement)) return null;
+    const rect = target.getBoundingClientRect();
+    if (!Number.isFinite(rect.top) || !Number.isFinite(rect.height)) return null;
+    return rect.top + rect.height * 0.5;
+  }
+  function normalizePointerDirection(deltaY) {
+    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 8) return "flat";
+    return deltaY > 0 ? "down" : "up";
+  }
+  function resolveDirectionalPitchShift(deltaY) {
+    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 8) return 0;
+    const normalized = clamp(deltaY / 180, -1, 1);
+    return clamp(-normalized * 0.1, -0.1, 0.1);
+  }
+  function sanitizePlaybackMeta(meta) {
+    const pointerDeltaY = Number(meta?.pointerDeltaY);
+    const pointerDirection = meta?.pointerDirection === "up" || meta?.pointerDirection === "down" ? meta.pointerDirection : "flat";
+    const pitchShift = clamp(Number(meta?.pitchShift) || 0, -0.125, 0.125);
+    return {
+      pointerDeltaY: Number.isFinite(pointerDeltaY) ? Number(pointerDeltaY.toFixed(2)) : 0,
+      pointerDirection,
+      pitchShift: Number(pitchShift.toFixed(4))
+    };
+  }
   function createNoiseBuffer(audioContext) {
     const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.25, audioContext.sampleRate);
     const channel = buffer.getChannelData(0);
@@ -133,6 +158,7 @@
     let pendingActivateTimer = 0;
     let pendingActivateRequest = null;
     let lastHoveredTarget = null;
+    let lastHoveredCenterY = null;
     const activeVoices = [];
     const hoverTimestamps = new WeakMap();
     const focusTimestamps = new WeakMap();
@@ -246,15 +272,21 @@
       oscillator.stop(startTime + durationSeconds + 0.05);
       pushVoice(() => oscillator.stop(), performance.now() + (durationSeconds + 0.06) * 1000);
     }
-    function playPreset(soundId) {
+    function playPreset(soundId, meta = {}) {
       ensureAudioGraph();
       if (!isAudioContextLike(audioContext) || !isGainNodeLike(masterGain)) {
-        return;
+        return sanitizePlaybackMeta(meta);
       }
       const startTime = Math.max(audioContext.currentTime, audioContext.currentTime + clamp((Math.random() * 2 - 1) * 0.006, -0.006, 0.006));
       const gainScale = getEffectiveMasterGain();
+      const resolvedMeta = sanitizePlaybackMeta(meta);
+      const hoverPitchJitter = soundId === "hover_soft" ? clamp((Math.random() * 2 - 1) * 0.025, -0.025, 0.025) : 0;
+      if (soundId === "hover_soft") {
+        resolvedMeta.pitchShift = Number(clamp(resolvedMeta.pitchShift + hoverPitchJitter, -0.125, 0.125).toFixed(4));
+      }
+      const hoverPitchMultiplier = 1 + resolvedMeta.pitchShift;
       const baseFrequencies = {
-        hover_soft: [withRandomSpread(1080, 0.03), withRandomSpread(1480, 0.03)],
+        hover_soft: [1080 * hoverPitchMultiplier, 1480 * hoverPitchMultiplier],
         activate_soft: [withRandomSpread(760, 0.03), withRandomSpread(1240, 0.03)],
         open_soft: [withRandomSpread(640, 0.03), withRandomSpread(1180, 0.03)],
         close_soft: [withRandomSpread(940, 0.03), withRandomSpread(520, 0.03)],
@@ -265,7 +297,7 @@
         preview_soft: [withRandomSpread(920, 0.03), withRandomSpread(1560, 0.03)]
       };
       const [fromFrequency, toFrequency] = baseFrequencies[soundId] || baseFrequencies.activate_soft;
-      const gainVariance = clamp(withRandomSpread(1, 0.08), 0.82, 1.12);
+      const gainVariance = soundId === "hover_soft" ? clamp(withRandomSpread(1, 0.06), 0.9, 1.08) : clamp(withRandomSpread(1, 0.08), 0.82, 1.12);
       switch (soundId) {
         case "hover_soft":
           playOscillatorVoice(startTime, "sine", fromFrequency, toFrequency, 0.075, gainScale * 0.18 * gainVariance);
@@ -305,14 +337,19 @@
           playOscillatorVoice(startTime, "triangle", fromFrequency, toFrequency, 0.12, gainScale * 0.18 * gainVariance);
           break;
       }
+      return resolvedMeta;
     }
     function logPlayback(request) {
+      const resolvedMeta = sanitizePlaybackMeta(request?.meta || {});
       const detail = {
         soundId: request.soundId,
         source: request.source,
         ownerMode: state.ownerMode,
         page: state.page,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        pointerDeltaY: resolvedMeta.pointerDeltaY,
+        pointerDirection: resolvedMeta.pointerDirection,
+        pitchShift: resolvedMeta.pitchShift
       };
       const log = ensureLogStore();
       log.push(detail);
@@ -345,11 +382,18 @@
     }
     function dispatchLocalPlayback(request) {
       cleanupVoices();
+      let resolvedMeta = request?.meta || {};
       try {
-        playPreset(request.soundId);
+        resolvedMeta = playPreset(request.soundId, request.meta) || request.meta || {};
       } catch {
       }
-      logPlayback(request);
+      logPlayback({
+        ...request,
+        meta: {
+          ...(request?.meta && typeof request.meta === "object" ? request.meta : {}),
+          ...(resolvedMeta && typeof resolvedMeta === "object" ? resolvedMeta : {})
+        }
+      });
     }
     function acceptProxyRequest(event) {
       if (event.origin !== window.location.origin) return;
@@ -479,11 +523,21 @@
         if (actionable.contains(event.relatedTarget)) return;
         const now = Date.now();
         if (now - (hoverTimestamps.get(actionable) || 0) < HOVER_COOLDOWN_MS) return;
+        const centerY = getActionableCenterY(actionable);
+        const pointerDeltaY = Number.isFinite(centerY) && Number.isFinite(lastHoveredCenterY) ? centerY - lastHoveredCenterY : 0;
+        const pointerDirection = normalizePointerDirection(pointerDeltaY);
+        const pitchShift = resolveDirectionalPitchShift(pointerDeltaY);
         hoverTimestamps.set(actionable, now);
         lastHoveredTarget = actionable;
+        lastHoveredCenterY = Number.isFinite(centerY) ? centerY : null;
         play({
           soundId: "hover_soft",
-          source: describeTarget(actionable)
+          source: describeTarget(actionable),
+          meta: {
+            pointerDeltaY,
+            pointerDirection,
+            pitchShift
+          }
         });
       };
       const onFocusIn = (event) => {
@@ -496,7 +550,12 @@
         focusTimestamps.set(actionable, now);
         play({
           soundId: "hover_soft",
-          source: describeTarget(actionable)
+          source: describeTarget(actionable),
+          meta: {
+            pointerDeltaY: 0,
+            pointerDirection: "flat",
+            pitchShift: 0
+          }
         });
       };
       target.addEventListener("pointerdown", onPointerDown, true);

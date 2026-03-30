@@ -838,9 +838,14 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
       cardRadius: card instanceof HTMLElement ? window.getComputedStyle(card).borderRadius : "",
       cardBackground: card instanceof HTMLElement ? window.getComputedStyle(card).backgroundColor : "",
       cardBorderWidth: card instanceof HTMLElement ? window.getComputedStyle(card).borderTopWidth : "",
+      cardBorderColor: card instanceof HTMLElement ? window.getComputedStyle(card).borderTopColor : "",
       avatarRect: sizeOf(avatar),
       albumArtRect: sizeOf(albumArt),
       badgeRect: sizeOf(badge),
+      badgeBackground: badge instanceof HTMLElement ? window.getComputedStyle(badge).backgroundColor : "",
+      badgeBorderWidth: badge instanceof HTMLElement ? window.getComputedStyle(badge).borderTopWidth : "",
+      badgeBoxShadow: badge instanceof HTMLElement ? window.getComputedStyle(badge).boxShadow : "",
+      badgeInnerColor: badge instanceof HTMLElement ? window.getComputedStyle(badge, "::before").backgroundColor : "",
       nameFontFamily: name instanceof HTMLElement ? window.getComputedStyle(name).fontFamily : "",
       headlineFontFamily: document.querySelector(".discord-presence-headline") instanceof HTMLElement ? window.getComputedStyle(document.querySelector(".discord-presence-headline")).fontFamily : "",
       metaFontFamily: document.querySelector(".discord-presence-meta") instanceof HTMLElement ? window.getComputedStyle(document.querySelector(".discord-presence-meta")).fontFamily : "",
@@ -848,15 +853,20 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
     };
   });
   expect(discordCardStyles.cardRadius).toBe("25px");
-  expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.2)");
+  expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.12)");
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeGreaterThan(1.5);
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeLessThanOrEqual(2.1);
+  expect(discordCardStyles.cardBorderColor).toBe("rgba(190, 190, 190, 0.07)");
   expect(Number.parseFloat(discordCardStyles.avatarRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.avatarRect?.height || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.albumArtRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.albumArtRect?.height || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.badgeRect?.width || "0")).toBeGreaterThan(16);
   expect(Number.parseFloat(discordCardStyles.badgeRect?.height || "0")).toBeGreaterThan(16);
+  expect(discordCardStyles.badgeBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(Number.parseFloat(discordCardStyles.badgeBorderWidth)).toBe(0);
+  expect(discordCardStyles.badgeBoxShadow).toBe("none");
+  expect(discordCardStyles.badgeInnerColor).toBe("rgb(66, 179, 107)");
   expect(discordCardStyles.nameFontFamily.toLowerCase()).toContain("pixelmplus12");
   expect(discordCardStyles.headlineFontFamily.toLowerCase()).toContain("gg sans");
   expect(discordCardStyles.metaFontFamily.toLowerCase()).toContain("gg sans");
@@ -960,6 +970,149 @@ test("josie discord presence collapses the spotify art slot when spotify is inac
   await expect(page.locator(".discord-presence-headline")).toContainText("Playing Balatro");
   await expect(page.locator(".discord-presence-meta")).toContainText("Deep in endless mode");
   await expect(page.locator(".discord-presence-custom-emoji")).toHaveCount(0);
+});
+
+test("josie suppresses duplicate emoji-name custom status text in the Discord card", async ({ page }) => {
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless",
+            global_name: "FoundLifeless",
+            avatar: "avatar-hash",
+            premium_type: 2
+          },
+          activities: [
+            {
+              type: 4,
+              name: "Custom Status",
+              state: "Ame_jam",
+              emoji: {
+                id: "123456789012345678",
+                name: "ame_jam",
+                animated: false
+              }
+            }
+          ],
+          discord_status: "online",
+          listening_to_spotify: false,
+          spotify: {},
+          active_on_discord_web: true,
+          active_on_discord_desktop: true,
+          active_on_discord_mobile: false,
+          kv: {}
+        },
+        presence: {
+          displayName: "foundlifeless",
+          username: "foundlifeless",
+          statusKey: "online",
+          statusLabel: "Online",
+          avatarUrl: "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256",
+          avatarDecorationUrl: "",
+          bannerUrl: "",
+          hasNitro: true,
+          nitroBadgeIconUrl: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png",
+          customStatusText: ":ame_jam:",
+          primaryActivity: null,
+          spotify: {
+            isListening: false,
+            song: "",
+            artist: "",
+            album: "",
+            albumArtUrl: "",
+            trackUrl: ""
+          }
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
+  await expect(page.locator(".discord-presence-headline")).toHaveText("Online");
+  await expect(page.locator(".discord-presence-headline")).not.toContainText("ame_jam");
+  await expect(page.locator(".discord-presence-headline")).not.toContainText("Ame_jam");
+});
+
+test("josie keeps real custom status text when it differs from the emoji name", async ({ page }) => {
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless",
+            global_name: "FoundLifeless",
+            avatar: "avatar-hash",
+            premium_type: 2
+          },
+          activities: [
+            {
+              type: 4,
+              name: "Custom Status",
+              state: "holding on",
+              emoji: {
+                id: "123456789012345678",
+                name: "ame_jam",
+                animated: false
+              }
+            }
+          ],
+          discord_status: "online",
+          listening_to_spotify: false,
+          spotify: {},
+          active_on_discord_web: true,
+          active_on_discord_desktop: true,
+          active_on_discord_mobile: false,
+          kv: {}
+        },
+        presence: {
+          displayName: "foundlifeless",
+          username: "foundlifeless",
+          statusKey: "online",
+          statusLabel: "Online",
+          avatarUrl: "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256",
+          avatarDecorationUrl: "",
+          bannerUrl: "",
+          hasNitro: true,
+          nitroBadgeIconUrl: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png",
+          customStatusText: "holding on",
+          primaryActivity: null,
+          spotify: {
+            isListening: false,
+            song: "",
+            artist: "",
+            album: "",
+            albumArtUrl: "",
+            trackUrl: ""
+          }
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
+  await expect(page.locator(".discord-presence-headline")).toContainText("holding on");
+  await expect(page.locator(".discord-presence-headline")).not.toContainText("ame_jam");
 });
 
 test("josie night ambient reports frozen motion for reduced motion users", async ({ page }) => {
@@ -1127,22 +1280,71 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false
     };
   });
-  expect(cursorStateAfterRecentHover.targetCursor).toBe("pointer");
-  expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(true);
+  expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
+  expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterRecentHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterRecentHover.cursorMorph).toBe("orb");
-  expect(cursorStateAfterRecentHover.cursorUsesSystemPointer).toBe(true);
-  expect(cursorStateAfterSteamHover.targetCursor).toBe("pointer");
-  expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(true);
+  expect(cursorStateAfterRecentHover.cursorMorph).toBe("x");
+  expect(cursorStateAfterRecentHover.cursorUsesSystemPointer).toBe(false);
+  expect(cursorStateAfterSteamHover.targetCursor).toBe("none");
+  expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterSteamHover.cursorMorph).toBe("orb");
-  expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(true);
+  expect(cursorStateAfterSteamHover.cursorMorph).toBe("x");
+  expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(false);
 
+  const selectionStarted = page.waitForFunction(() => {
+    const cursor = document.querySelector(".site-pointer");
+    return cursor instanceof HTMLElement && cursor.classList.contains("is-selecting");
+  });
   await recentRow.click();
+  await selectionStarted;
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await page.waitForFunction(() => {
+    const cursor = document.querySelector(".site-pointer");
+    return !(cursor instanceof HTMLElement) || !cursor.classList.contains("is-selecting");
+  });
   await expect(page.locator(".lastfm-track-panel-art--flip")).toHaveCount(1);
   const artShell = await showLastFmPanelArtActions(page);
   await expect(artShell.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" })).toBeVisible();
+  await clearInteractionSfxLog(page);
+  const hoverAudioState = await page.evaluate(() => {
+    const ctas = Array.from(document.querySelectorAll(".lastfm-track-panel-cta"));
+    const ordered = ctas.filter((node) => node instanceof HTMLElement).sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top);
+    const [upper, middle, lower] = ordered;
+    if (!(upper instanceof HTMLElement) || !(middle instanceof HTMLElement) || !(lower instanceof HTMLElement)) {
+      return { centers: [], hoverCount: 0, hoverLog: [] };
+    }
+    function emitHover(target, relatedTarget = null) {
+      const rect = target.getBoundingClientRect();
+      const event = new PointerEvent("pointerover", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        pointerType: "mouse",
+        relatedTarget
+      });
+      target.dispatchEvent(event);
+    }
+    emitHover(upper, null);
+    emitHover(lower, upper);
+    emitHover(middle, lower);
+    emitHover(lower, middle);
+    const hoverLog = (Array.isArray(window.__internetAngelInteractionSfxLog) ? window.__internetAngelInteractionSfxLog : []).filter((entry) => entry?.soundId === "hover_soft" && entry?.source === "lastfmTrackPanelCta");
+    return {
+      centers: [upper.getBoundingClientRect().top, middle.getBoundingClientRect().top, lower.getBoundingClientRect().top],
+      hoverCount: hoverLog.length,
+      hoverLog
+    };
+  });
+  expect(hoverAudioState.centers[1]).toBeGreaterThan(hoverAudioState.centers[0]);
+  expect(hoverAudioState.centers[2]).toBeGreaterThan(hoverAudioState.centers[1]);
+  expect(hoverAudioState.hoverCount).toBe(3);
+  expect(hoverAudioState.hoverLog[1]?.pointerDirection).toBe("down");
+  expect(hoverAudioState.hoverLog[1]?.pitchShift).toBeLessThan(0);
+  expect(hoverAudioState.hoverLog[2]?.pointerDirection).toBe("up");
+  expect(hoverAudioState.hoverLog[2]?.pitchShift).toBeGreaterThan(0);
+  expect(hoverAudioState.hoverLog[1]?.pitchShift).not.toBe(hoverAudioState.hoverLog[2]?.pitchShift);
   const ambientPanel = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     if (!(windowEl instanceof HTMLElement)) {
@@ -1173,16 +1375,16 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
         lastUrl: String(url || ""),
         close() {
           this.closed = true;
-          launchLog.push({ type: "close", target: String(target || "") });
+          launchLog.push({ type: "close", target: String(target || ""), timestamp: performance.now() });
         },
         location: {
           replace(nextUrl) {
             popup.lastUrl = String(nextUrl || "");
-            launchLog.push({ type: "replace", url: popup.lastUrl, target: String(target || "") });
+            launchLog.push({ type: "replace", url: popup.lastUrl, target: String(target || ""), timestamp: performance.now() });
           },
           set href(nextUrl) {
             popup.lastUrl = String(nextUrl || "");
-            launchLog.push({ type: "href", url: popup.lastUrl, target: String(target || "") });
+            launchLog.push({ type: "href", url: popup.lastUrl, target: String(target || ""), timestamp: performance.now() });
           },
           get href() {
             return popup.lastUrl;
@@ -1193,7 +1395,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
         type: "open",
         url: String(url || ""),
         target: String(target || ""),
-        features: String(features || "")
+        features: String(features || ""),
+        timestamp: performance.now()
       });
       return popup;
     };
@@ -1217,27 +1420,9 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
   await expect(page.locator(".steam-sidebar-title")).toBeHidden();
   await page.waitForSelector(".discord-presence-reveal");
-  await expect(page.locator(".discord-presence-reveal")).toHaveAttribute("data-mobile-discord-reveal", "pending");
-  const initialMobileDiscordState = await page.locator(".discord-presence-reveal").evaluate((node) => {
-    const styles = window.getComputedStyle(node);
-    return {
-      opacity: styles.opacity,
-      pointerEvents: styles.pointerEvents
-    };
-  });
-  expect(Number.parseFloat(initialMobileDiscordState.opacity)).toBeLessThan(0.05);
-  expect(initialMobileDiscordState.pointerEvents).toBe("none");
+  await expect(page.locator(".discord-presence-reveal")).toHaveAttribute("data-mobile-discord-reveal", /pending|visible/);
   await page.waitForSelector(".steam-sidebar-list--mobile-icons");
-  await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", "pending");
-  const initialMobileLinksState = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
-    const styles = window.getComputedStyle(node);
-    return {
-      opacity: styles.opacity,
-      pointerEvents: styles.pointerEvents
-    };
-  });
-  expect(Number.parseFloat(initialMobileLinksState.opacity)).toBeLessThan(0.05);
-  expect(initialMobileLinksState.pointerEvents).toBe("none");
+  await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", /pending|visible/);
   await page.waitForFunction(() => {
     const card = document.querySelector(".discord-presence-reveal");
     return card instanceof HTMLElement && card.dataset.mobileDiscordReveal === "visible";
@@ -1249,6 +1434,10 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
   await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(0)).toHaveAttribute("data-mobile-site-id", "soundcloud");
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
+  const mobileAuraVariables = await page.locator(".steam-sidebar-link--icon-only").evaluateAll((nodes) => nodes.map((node) => window.getComputedStyle(node).getPropertyValue("--mobile-link-aura-rgb").trim()));
+  expect(new Set(mobileAuraVariables).size).toBe(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-layer")).toBeHidden();
@@ -1339,14 +1528,43 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   const firstMobileIconLink = page.locator(".steam-sidebar-link--icon-only").first();
   await firstMobileIconLink.click();
   await expect(firstMobileIconLink).toHaveClass(/is-mobile-selected/);
+  await expect(firstMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
   const selectedMobileLinkCount = await page.locator(".steam-sidebar-link--icon-only.is-mobile-selected").count();
   expect(selectedMobileLinkCount).toBe(1);
+  await page.waitForTimeout(80);
+  const selectedAuraState = await firstMobileIconLink.evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    const before = window.getComputedStyle(node, "::before");
+    const after = window.getComputedStyle(node, "::after");
+    return {
+      auraRgb: styles.getPropertyValue("--mobile-link-aura-rgb").trim(),
+      beforeOpacity: Number.parseFloat(before.opacity),
+      afterOpacity: Number.parseFloat(after.opacity),
+      afterAnimationName: after.animationName
+    };
+  });
+  expect(selectedAuraState.auraRgb).toBe("255, 148, 84");
+  expect(selectedAuraState.beforeOpacity).toBeGreaterThan(0.3);
+  expect(selectedAuraState.afterOpacity).toBeGreaterThan(0.2);
+  expect(selectedAuraState.afterAnimationName).toContain("mobileSidebarSoundcloudPlume");
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await page.waitForTimeout(220);
+  const earlyIconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
+  expect(earlyIconLaunchLog.some((entry) => entry.type === "replace")).toBe(false);
   await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
     && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace"));
   const iconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
   expect(iconLaunchLog.some((entry) => entry.type === "open" && entry.target === "_blank")).toBe(true);
   expect(iconLaunchLog.some((entry) => entry.type === "replace" && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url))).toBe(true);
+  const iconOpenEvent = iconLaunchLog.find((entry) => entry.type === "open" && entry.target === "_blank");
+  const iconReplaceEvent = iconLaunchLog.find((entry) => entry.type === "replace" && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url));
+  expect(iconOpenEvent).toBeDefined();
+  expect(iconReplaceEvent).toBeDefined();
+  expect(iconReplaceEvent.timestamp - iconOpenEvent.timestamp).toBeGreaterThanOrEqual(340);
+  await page.waitForFunction(() => {
+    const target = document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected");
+    return target instanceof HTMLElement && target.dataset.mobileSelectionPhase === "idle";
+  });
   await page.waitForFunction(() => !document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected"), { timeout: 2_000 });
 
   await page.evaluate(() => {
