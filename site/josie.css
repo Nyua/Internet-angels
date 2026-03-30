@@ -285,26 +285,15 @@ body.has-custom-cursor * {
   filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.1));
 }
 
-.site-pointer-cross-bar {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 2px;
+.site-pointer-cross svg {
+  display: block;
+  width: 10px;
   height: 10px;
-  border-radius: 999px;
-  background: rgba(16, 16, 18, 0.94);
-  box-shadow:
-    0 0 0 1px rgba(232, 234, 240, 0.76),
-    0 0 4px rgba(255, 255, 255, 0.08);
-  transform-origin: center;
+  overflow: visible;
 }
 
-.site-pointer-cross-bar--a {
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.site-pointer-cross-bar--b {
-  transform: translate(-50%, -50%) rotate(-45deg);
+.site-pointer-cross-shape {
+  fill: rgba(16, 16, 18, 0.94);
 }
 
 .site-pointer-hand svg {
@@ -369,11 +358,8 @@ body[data-theme-resolved="night"] .site-pointer-hand-outline {
   fill: rgba(16, 16, 18, 0.98);
 }
 
-body[data-theme-resolved="night"] .site-pointer-cross-bar {
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow:
-    0 0 0 1px rgba(10, 10, 12, 0.48),
-    0 0 5px rgba(255, 255, 255, 0.14);
+body[data-theme-resolved="night"] .site-pointer-cross-shape {
+  fill: rgba(255, 255, 255, 0.96);
 }
 
 body[data-theme-resolved="night"] .site-pointer-arrow::before {
@@ -594,20 +580,20 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 }
 
 .site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-core {
-  opacity: 0.18;
-  transform: scale(0.54);
+  opacity: 0;
+  transform: scale(0.42);
   box-shadow: none;
 }
 
 .site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-ring {
-  opacity: 0.48;
-  transform: scale(1.06);
+  opacity: 0;
+  transform: scale(0.9);
   filter: none;
 }
 
 .site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-pool {
-  opacity: 0.18;
-  transform: scale(0.86);
+  opacity: 0;
+  transform: scale(0.72);
 }
 
 .site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-cross {

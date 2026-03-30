@@ -1700,7 +1700,7 @@
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
-    audioEl.volume = 0.23;
+    audioEl.volume = 0.077;
     function resolveTrackUrl(track) {
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
@@ -7310,8 +7310,9 @@
           </svg>
         </span>
         <span class="site-pointer-cross" aria-hidden="true">
-          <span class="site-pointer-cross-bar site-pointer-cross-bar--a"></span>
-          <span class="site-pointer-cross-bar site-pointer-cross-bar--b"></span>
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path class="site-pointer-cross-shape" d="M6.1 4.7 12 10.6l5.9-5.9 1.4 1.4-5.9 5.9 5.9 5.9-1.4 1.4-5.9-5.9-5.9 5.9-1.4-1.4 5.9-5.9-5.9-5.9z"></path>
+          </svg>
         </span>
         <span class="site-pointer-core"></span>
         <span class="site-pointer-arrow"></span>

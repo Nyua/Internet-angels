@@ -1272,15 +1272,21 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   const cursorStateAfterSteamHover = await page.evaluate(() => {
     const steamButton = document.querySelector(".steam-activity-row-button");
     const cursor = document.querySelector(".site-pointer");
-    const crossBar = document.querySelector(".site-pointer-cross-bar");
+    const crossSvg = document.querySelector(".site-pointer-cross svg");
+    const core = document.querySelector(".site-pointer-core");
+    const ring = document.querySelector(".site-pointer-ring");
+    const pool = document.querySelector(".site-pointer-pool");
     return {
       targetCursor: steamButton instanceof HTMLElement ? window.getComputedStyle(steamButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
       hasCustomCursor: cursor instanceof HTMLElement,
       cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
       cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false,
-      crossBarHeight: crossBar instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(crossBar).height) : 0,
-      crossBarWidth: crossBar instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(crossBar).width) : 0
+      crossSvgHeight: crossSvg instanceof SVGElement ? Number.parseFloat(window.getComputedStyle(crossSvg).height) : 0,
+      crossSvgWidth: crossSvg instanceof SVGElement ? Number.parseFloat(window.getComputedStyle(crossSvg).width) : 0,
+      coreOpacity: core instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(core).opacity) : 0,
+      ringOpacity: ring instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(ring).opacity) : 0,
+      poolOpacity: pool instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(pool).opacity) : 0
     };
   });
   expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
@@ -1293,8 +1299,11 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
   expect(cursorStateAfterSteamHover.cursorMorph).toBe("x");
   expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(false);
-  expect(cursorStateAfterSteamHover.crossBarHeight).toBeLessThanOrEqual(10.5);
-  expect(cursorStateAfterSteamHover.crossBarWidth).toBeLessThanOrEqual(2.5);
+  expect(cursorStateAfterSteamHover.crossSvgHeight).toBeLessThanOrEqual(10.5);
+  expect(cursorStateAfterSteamHover.crossSvgWidth).toBeLessThanOrEqual(10.5);
+  expect(cursorStateAfterSteamHover.coreOpacity).toBeLessThanOrEqual(0.02);
+  expect(cursorStateAfterSteamHover.ringOpacity).toBeLessThanOrEqual(0.02);
+  expect(cursorStateAfterSteamHover.poolOpacity).toBeLessThanOrEqual(0.02);
 
   const selectionStarted = page.waitForFunction(() => {
     const cursor = document.querySelector(".site-pointer");

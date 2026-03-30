@@ -290,9 +290,13 @@
         [3, 11, 1, 9],
         [15, 7, 13, 5]
       ];
-      const introAsciiBaseCellSize = 6;
+      const introAsciiBaseCellSize = 8;
+      const introAsciiWideCellSize = 10;
+      const introAsciiUltraWideCellSize = 12;
       const introAsciiGlyphScale = 1.08;
       const introAsciiMaxDpr = 1;
+      const introAsciiMaxCols = 180;
+      const introAsciiMaxRows = 92;
       const repeatVisitHandoffDelayMs = 160;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Egrets Orchard.mov";
@@ -334,7 +338,7 @@
       let introAsciiFont = "";
       let introAsciiLumBuffer = new Float32Array(0);
       let introAsciiAlphaBuffer = new Uint8Array(0);
-      const introAsciiCtx = asciiCanvas instanceof HTMLCanvasElement ? asciiCanvas.getContext("2d") : null;
+      const introAsciiCtx = asciiCanvas instanceof HTMLCanvasElement ? asciiCanvas.getContext("2d", { alpha: true, desynchronized: true }) : null;
       const introAsciiSampleCanvas = document.createElement("canvas");
       const introAsciiSampleCtx = introAsciiSampleCanvas.getContext("2d", { willReadFrequently: true });
       const introAsciiFillCache = new Map();
@@ -434,10 +438,16 @@
         return style;
       }
 
-      function resolveIntroAsciiCellSize(viewportWidth) {
-        if (viewportWidth >= 1800) return 8;
-        if (viewportWidth >= 1400) return 7;
-        return introAsciiBaseCellSize;
+      function resolveIntroAsciiCellSize(viewportWidth, viewportHeight) {
+        let baseCellSize = introAsciiBaseCellSize;
+        if (viewportWidth >= 1800) {
+          baseCellSize = introAsciiUltraWideCellSize;
+        } else if (viewportWidth >= 1400) {
+          baseCellSize = introAsciiWideCellSize;
+        }
+        const widthBound = Math.ceil(viewportWidth / introAsciiMaxCols);
+        const heightBound = Math.ceil(viewportHeight / (introAsciiMaxRows * 1.32));
+        return Math.max(baseCellSize, widthBound, heightBound);
       }
 
       function configureIntroAsciiCanvas(force = false) {
@@ -446,7 +456,7 @@
         const nextW = viewport.width;
         const nextH = viewport.height;
         const nextDpr = Math.min(introAsciiMaxDpr, Math.max(1, window.devicePixelRatio || 1));
-        const nextCellW = resolveIntroAsciiCellSize(nextW);
+        const nextCellW = resolveIntroAsciiCellSize(nextW, nextH);
         const nextCellH = Math.round(nextCellW * 1.32);
         const nextCols = Math.max(2, Math.floor(nextW / nextCellW));
         const nextRows = Math.max(2, Math.floor(nextH / nextCellH));
@@ -476,6 +486,7 @@
         introAsciiCols = nextCols;
         introAsciiRows = nextRows;
         introAsciiFont = `700 ${Math.round(introAsciiCellW * introAsciiGlyphScale)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+        introAsciiCtx.font = introAsciiFont;
         const bufferSize = introAsciiCols * introAsciiRows;
         if (introAsciiLumBuffer.length !== bufferSize) {
           introAsciiLumBuffer = new Float32Array(bufferSize);
@@ -490,7 +501,6 @@
       function renderIntroAsciiFrame() {
         if (!(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
         if (!introAsciiCols || !introAsciiRows) return;
-        introAsciiSampleCtx.clearRect(0, 0, introAsciiCols, introAsciiRows);
         introAsciiSampleCtx.drawImage(introVideo, 0, 0, introAsciiCols, introAsciiRows);
         const frame = introAsciiSampleCtx.getImageData(0, 0, introAsciiCols, introAsciiRows);
         const data = frame.data;
@@ -510,7 +520,6 @@
         }
         introAsciiCtx.clearRect(0, 0, introAsciiViewportW, introAsciiViewportH);
         introAsciiCtx.globalAlpha = 1;
-        introAsciiCtx.font = introAsciiFont;
         const densityMax = introAsciiChars.length - 1;
         const edgeStrength = 0.46;
         const ditherStrength = 0.08;
