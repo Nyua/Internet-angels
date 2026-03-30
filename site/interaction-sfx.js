@@ -96,18 +96,18 @@
     return rect.top + rect.height * 0.5;
   }
   function normalizePointerDirection(deltaY) {
-    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 8) return "flat";
+    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 6) return "flat";
     return deltaY > 0 ? "down" : "up";
   }
   function resolveDirectionalPitchShift(deltaY) {
-    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 8) return 0;
-    const normalized = clamp(deltaY / 180, -1, 1);
-    return clamp(-normalized * 0.1, -0.1, 0.1);
+    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 6) return 0;
+    const normalized = clamp(deltaY / 150, -1, 1);
+    return clamp(-normalized * 0.18, -0.18, 0.18);
   }
   function sanitizePlaybackMeta(meta) {
     const pointerDeltaY = Number(meta?.pointerDeltaY);
     const pointerDirection = meta?.pointerDirection === "up" || meta?.pointerDirection === "down" ? meta.pointerDirection : "flat";
-    const pitchShift = clamp(Number(meta?.pitchShift) || 0, -0.125, 0.125);
+    const pitchShift = clamp(Number(meta?.pitchShift) || 0, -0.24, 0.24);
     return {
       pointerDeltaY: Number.isFinite(pointerDeltaY) ? Number(pointerDeltaY.toFixed(2)) : 0,
       pointerDirection,
@@ -280,13 +280,13 @@
       const startTime = Math.max(audioContext.currentTime, audioContext.currentTime + clamp((Math.random() * 2 - 1) * 0.006, -0.006, 0.006));
       const gainScale = getEffectiveMasterGain();
       const resolvedMeta = sanitizePlaybackMeta(meta);
-      const hoverPitchJitter = soundId === "hover_soft" ? clamp((Math.random() * 2 - 1) * 0.025, -0.025, 0.025) : 0;
+      const hoverPitchJitter = soundId === "hover_soft" ? clamp((Math.random() * 2 - 1) * 0.055, -0.055, 0.055) : 0;
       if (soundId === "hover_soft") {
-        resolvedMeta.pitchShift = Number(clamp(resolvedMeta.pitchShift + hoverPitchJitter, -0.125, 0.125).toFixed(4));
+        resolvedMeta.pitchShift = Number(clamp(resolvedMeta.pitchShift + hoverPitchJitter, -0.24, 0.24).toFixed(4));
       }
       const hoverPitchMultiplier = 1 + resolvedMeta.pitchShift;
       const baseFrequencies = {
-        hover_soft: [1080 * hoverPitchMultiplier, 1480 * hoverPitchMultiplier],
+        hover_soft: [980 * hoverPitchMultiplier, 1560 * hoverPitchMultiplier],
         activate_soft: [withRandomSpread(760, 0.03), withRandomSpread(1240, 0.03)],
         open_soft: [withRandomSpread(640, 0.03), withRandomSpread(1180, 0.03)],
         close_soft: [withRandomSpread(940, 0.03), withRandomSpread(520, 0.03)],
@@ -297,10 +297,11 @@
         preview_soft: [withRandomSpread(920, 0.03), withRandomSpread(1560, 0.03)]
       };
       const [fromFrequency, toFrequency] = baseFrequencies[soundId] || baseFrequencies.activate_soft;
-      const gainVariance = soundId === "hover_soft" ? clamp(withRandomSpread(1, 0.06), 0.9, 1.08) : clamp(withRandomSpread(1, 0.08), 0.82, 1.12);
+      const gainVariance = soundId === "hover_soft" ? clamp(withRandomSpread(1, 0.08), 0.88, 1.12) : clamp(withRandomSpread(1, 0.08), 0.82, 1.12);
       switch (soundId) {
         case "hover_soft":
           playOscillatorVoice(startTime, "sine", fromFrequency, toFrequency, 0.075, gainScale * 0.18 * gainVariance);
+          playOscillatorVoice(startTime + 0.01, "triangle", fromFrequency * 1.16, toFrequency * 1.06, 0.06, gainScale * 0.08 * gainVariance);
           break;
         case "activate_soft":
           playOscillatorVoice(startTime, "triangle", fromFrequency, toFrequency, 0.115, gainScale * 0.24 * gainVariance);

@@ -4195,7 +4195,7 @@
         clearMobileLinkSelectedState();
       }
       let popupWindow = null;
-      if (resolvedTarget === "_blank") {
+      if (resolvedTarget === "_blank" && !useProfileIconAura) {
         try {
           popupWindow = window.open("", "_blank");
           if (popupWindow && "opener" in popupWindow) {
@@ -4211,6 +4211,19 @@
         pendingMobileExternalLaunchTimer = 0;
         setMobileLinksLaunchPending(false);
         if (resolvedTarget === "_blank") {
+          if (useProfileIconAura) {
+            let launched = false;
+            try {
+              const openedWindow = window.open(safeUrl, "_blank", "noopener,noreferrer");
+              launched = Boolean(openedWindow);
+            } catch {
+            }
+            if (!launched) {
+              launchExternal(safeUrl, "_self");
+            }
+            pendingMobileExternalPopup = null;
+            return;
+          }
           let launched = false;
           if (popupWindow && !popupWindow.closed) {
             try {

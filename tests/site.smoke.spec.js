@@ -1272,12 +1272,15 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   const cursorStateAfterSteamHover = await page.evaluate(() => {
     const steamButton = document.querySelector(".steam-activity-row-button");
     const cursor = document.querySelector(".site-pointer");
+    const crossBar = document.querySelector(".site-pointer-cross-bar");
     return {
       targetCursor: steamButton instanceof HTMLElement ? window.getComputedStyle(steamButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
       hasCustomCursor: cursor instanceof HTMLElement,
       cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
-      cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false
+      cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false,
+      crossBarHeight: crossBar instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(crossBar).height) : 0,
+      crossBarWidth: crossBar instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(crossBar).width) : 0
     };
   });
   expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
@@ -1290,6 +1293,8 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
   expect(cursorStateAfterSteamHover.cursorMorph).toBe("x");
   expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(false);
+  expect(cursorStateAfterSteamHover.crossBarHeight).toBeLessThanOrEqual(10.5);
+  expect(cursorStateAfterSteamHover.crossBarWidth).toBeLessThanOrEqual(2.5);
 
   const selectionStarted = page.waitForFunction(() => {
     const cursor = document.querySelector(".site-pointer");
@@ -1342,8 +1347,10 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(hoverAudioState.hoverCount).toBe(3);
   expect(hoverAudioState.hoverLog[1]?.pointerDirection).toBe("down");
   expect(hoverAudioState.hoverLog[1]?.pitchShift).toBeLessThan(0);
+  expect(Math.abs(hoverAudioState.hoverLog[1]?.pitchShift || 0)).toBeGreaterThan(0.06);
   expect(hoverAudioState.hoverLog[2]?.pointerDirection).toBe("up");
   expect(hoverAudioState.hoverLog[2]?.pitchShift).toBeGreaterThan(0);
+  expect(Math.abs(hoverAudioState.hoverLog[2]?.pitchShift || 0)).toBeGreaterThan(0.06);
   expect(hoverAudioState.hoverLog[1]?.pitchShift).not.toBe(hoverAudioState.hoverLog[2]?.pitchShift);
   const ambientPanel = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
@@ -1524,6 +1531,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
 
   await page.evaluate(() => {
     window.__codexExternalLaunchLog.length = 0;
+    window.__codexExternalLaunchBaseline = performance.now();
   });
   const firstMobileIconLink = page.locator(".steam-sidebar-link--icon-only").first();
   await firstMobileIconLink.click();
@@ -1550,17 +1558,18 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
   await page.waitForTimeout(220);
   const earlyIconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
+  expect(earlyIconLaunchLog.some((entry) => entry.type === "open")).toBe(false);
   expect(earlyIconLaunchLog.some((entry) => entry.type === "replace")).toBe(false);
+  expect(earlyIconLaunchLog.some((entry) => entry.type === "href")).toBe(false);
   await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
-    && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace"));
-  const iconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
-  expect(iconLaunchLog.some((entry) => entry.type === "open" && entry.target === "_blank")).toBe(true);
-  expect(iconLaunchLog.some((entry) => entry.type === "replace" && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url))).toBe(true);
-  const iconOpenEvent = iconLaunchLog.find((entry) => entry.type === "open" && entry.target === "_blank");
-  const iconReplaceEvent = iconLaunchLog.find((entry) => entry.type === "replace" && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url));
-  expect(iconOpenEvent).toBeDefined();
-  expect(iconReplaceEvent).toBeDefined();
-  expect(iconReplaceEvent.timestamp - iconOpenEvent.timestamp).toBeGreaterThanOrEqual(340);
+    && window.__codexExternalLaunchLog.some((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url || "")));
+  const iconLaunchState = await page.evaluate(() => ({
+    baseline: window.__codexExternalLaunchBaseline || 0,
+    log: window.__codexExternalLaunchLog.slice()
+  }));
+  const iconLaunchEvent = iconLaunchState.log.find((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url || ""));
+  expect(iconLaunchEvent).toBeDefined();
+  expect(iconLaunchEvent.timestamp - iconLaunchState.baseline).toBeGreaterThanOrEqual(340);
   await page.waitForFunction(() => {
     const target = document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected");
     return target instanceof HTMLElement && target.dataset.mobileSelectionPhase === "idle";
