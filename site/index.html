@@ -283,7 +283,6 @@
       const mobileIntroBypassMaxWidthPx = 820;
       const handoffLeadSeconds = 0.5;
       const introAsciiLeadSeconds = 4;
-      const introAsciiTargetFrameMs = 1000 / 18;
       const introAsciiChars = ".:-=+*#%@";
       const introAsciiBayer4 = [
         [0, 8, 2, 10],
@@ -323,7 +322,7 @@
       let monitorRafId = 0;
       let introAsciiActive = false;
       let introAsciiRafId = 0;
-      let introAsciiLastFrameMs = 0;
+      let introAsciiVideoFrameId = 0;
       let introAsciiViewportW = 0;
       let introAsciiViewportH = 0;
       let introAsciiDpr = Math.max(1, window.devicePixelRatio || 1);
@@ -529,6 +528,13 @@
           window.cancelAnimationFrame(introAsciiRafId);
           introAsciiRafId = 0;
         }
+        if (introAsciiVideoFrameId && introVideo instanceof HTMLVideoElement && typeof introVideo.cancelVideoFrameCallback === "function") {
+          try {
+            introVideo.cancelVideoFrameCallback(introAsciiVideoFrameId);
+          } catch {
+          }
+          introAsciiVideoFrameId = 0;
+        }
         if (introAsciiCtx) {
           introAsciiCtx.clearRect(0, 0, introAsciiViewportW, introAsciiViewportH);
         }
@@ -537,15 +543,35 @@
         }
       }
 
-      function renderIntroAsciiLoop(ts) {
+      function queueIntroAsciiFrame() {
+        if (!introAsciiActive || !(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) {
+          return;
+        }
+        if (typeof introVideo.requestVideoFrameCallback === "function") {
+          introAsciiVideoFrameId = introVideo.requestVideoFrameCallback(() => {
+            introAsciiVideoFrameId = 0;
+            if (!introAsciiActive || document.hidden) {
+              queueIntroAsciiFrame();
+              return;
+            }
+            if (introVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              configureIntroAsciiCanvas();
+              renderIntroAsciiFrame();
+            }
+            queueIntroAsciiFrame();
+          });
+          return;
+        }
+        introAsciiRafId = window.requestAnimationFrame(renderIntroAsciiLoop);
+      }
+
+      function renderIntroAsciiLoop() {
         introAsciiRafId = 0;
         if (!introAsciiActive || !(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) {
           return;
         }
-        introAsciiRafId = window.requestAnimationFrame(renderIntroAsciiLoop);
+        queueIntroAsciiFrame();
         if (document.hidden) return;
-        if (ts - introAsciiLastFrameMs < introAsciiTargetFrameMs) return;
-        introAsciiLastFrameMs = ts;
         if (introVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
         configureIntroAsciiCanvas();
         renderIntroAsciiFrame();
@@ -554,12 +580,11 @@
       function startIntroAscii() {
         if (introAsciiActive || !(asciiCanvas instanceof HTMLCanvasElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
         introAsciiActive = true;
-        introAsciiLastFrameMs = 0;
         asciiCanvas.hidden = false;
         document.body.classList.add("is-intro-ascii-active");
         configureIntroAsciiCanvas(true);
         renderIntroAsciiFrame();
-        introAsciiRafId = window.requestAnimationFrame(renderIntroAsciiLoop);
+        queueIntroAsciiFrame();
       }
 
       function isIntroAsciiWindowOpen() {

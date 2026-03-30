@@ -431,7 +431,6 @@
         let asciiCanvas = null;
         let asciiCtx = null;
         let loopHandle = 0;
-        let lastFrameTime = 0;
         let viewportW = 0;
         let viewportH = 0;
         let cols = 0;
@@ -865,8 +864,6 @@
 
           loopHandle = window.requestAnimationFrame(renderLoop);
           if (document.hidden) return;
-          if (ts - lastFrameTime < targetFrameMs) return;
-          lastFrameTime = ts;
 
           configureAsciiCanvas();
           if (!viewportW || !viewportH || !cols || !rows) return;
