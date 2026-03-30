@@ -1452,6 +1452,17 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(0)).toHaveAttribute("data-mobile-site-id", "soundcloud");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
+  const mobileIconRowShell = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      clipPath: styles.clipPath,
+      paddingTop: Number.parseFloat(styles.paddingTop),
+      paddingBottom: Number.parseFloat(styles.paddingBottom)
+    };
+  });
+  expect(mobileIconRowShell.clipPath === "none" || mobileIconRowShell.clipPath === "").toBe(true);
+  expect(mobileIconRowShell.paddingTop).toBeGreaterThanOrEqual(10);
+  expect(mobileIconRowShell.paddingBottom).toBeGreaterThanOrEqual(10);
   const mobileAuraVariables = await page.locator(".steam-sidebar-link--icon-only").evaluateAll((nodes) => nodes.map((node) => window.getComputedStyle(node).getPropertyValue("--mobile-link-aura-rgb").trim()));
   expect(new Set(mobileAuraVariables).size).toBe(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
