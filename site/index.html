@@ -290,8 +290,9 @@
         [3, 11, 1, 9],
         [15, 7, 13, 5]
       ];
-      const introAsciiCellSize = 4;
+      const introAsciiBaseCellSize = 6;
       const introAsciiGlyphScale = 1.08;
+      const introAsciiMaxDpr = 1;
       const repeatVisitHandoffDelayMs = 160;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Egrets Orchard.mov";
@@ -328,8 +329,11 @@
       let introAsciiDpr = Math.max(1, window.devicePixelRatio || 1);
       let introAsciiCols = 0;
       let introAsciiRows = 0;
-      let introAsciiCellW = introAsciiCellSize;
-      let introAsciiCellH = Math.round(introAsciiCellSize * 1.32);
+      let introAsciiCellW = introAsciiBaseCellSize;
+      let introAsciiCellH = Math.round(introAsciiBaseCellSize * 1.32);
+      let introAsciiFont = "";
+      let introAsciiLumBuffer = new Float32Array(0);
+      let introAsciiAlphaBuffer = new Uint8Array(0);
       const introAsciiCtx = asciiCanvas instanceof HTMLCanvasElement ? asciiCanvas.getContext("2d") : null;
       const introAsciiSampleCanvas = document.createElement("canvas");
       const introAsciiSampleCtx = introAsciiSampleCanvas.getContext("2d", { willReadFrequently: true });
@@ -430,13 +434,30 @@
         return style;
       }
 
+      function resolveIntroAsciiCellSize(viewportWidth) {
+        if (viewportWidth >= 1800) return 8;
+        if (viewportWidth >= 1400) return 7;
+        return introAsciiBaseCellSize;
+      }
+
       function configureIntroAsciiCanvas(force = false) {
         if (!(asciiCanvas instanceof HTMLCanvasElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
         const viewport = getIntroViewportSize();
         const nextW = viewport.width;
         const nextH = viewport.height;
-        const nextDpr = Math.max(1, window.devicePixelRatio || 1);
-        if (!force && nextW === introAsciiViewportW && nextH === introAsciiViewportH && nextDpr === introAsciiDpr) {
+        const nextDpr = Math.min(introAsciiMaxDpr, Math.max(1, window.devicePixelRatio || 1));
+        const nextCellW = resolveIntroAsciiCellSize(nextW);
+        const nextCellH = Math.round(nextCellW * 1.32);
+        const nextCols = Math.max(2, Math.floor(nextW / nextCellW));
+        const nextRows = Math.max(2, Math.floor(nextH / nextCellH));
+        if (
+          !force
+          && nextW === introAsciiViewportW
+          && nextH === introAsciiViewportH
+          && nextDpr === introAsciiDpr
+          && nextCellW === introAsciiCellW
+          && nextCellH === introAsciiCellH
+        ) {
           return;
         }
         introAsciiViewportW = nextW;
@@ -450,10 +471,16 @@
         introAsciiCtx.textBaseline = "top";
         introAsciiCtx.textAlign = "left";
         introAsciiCtx.imageSmoothingEnabled = false;
-        introAsciiCellW = introAsciiCellSize;
-        introAsciiCellH = Math.round(introAsciiCellSize * 1.32);
-        introAsciiCols = Math.max(2, Math.floor(introAsciiViewportW / introAsciiCellW));
-        introAsciiRows = Math.max(2, Math.floor(introAsciiViewportH / introAsciiCellH));
+        introAsciiCellW = nextCellW;
+        introAsciiCellH = nextCellH;
+        introAsciiCols = nextCols;
+        introAsciiRows = nextRows;
+        introAsciiFont = `700 ${Math.round(introAsciiCellW * introAsciiGlyphScale)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+        const bufferSize = introAsciiCols * introAsciiRows;
+        if (introAsciiLumBuffer.length !== bufferSize) {
+          introAsciiLumBuffer = new Float32Array(bufferSize);
+          introAsciiAlphaBuffer = new Uint8Array(bufferSize);
+        }
         introAsciiSampleCanvas.width = introAsciiCols;
         introAsciiSampleCanvas.height = introAsciiRows;
         introAsciiSampleCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -468,8 +495,8 @@
         const frame = introAsciiSampleCtx.getImageData(0, 0, introAsciiCols, introAsciiRows);
         const data = frame.data;
         const size = introAsciiCols * introAsciiRows;
-        const lum = new Float32Array(size);
-        const alpha = new Uint8Array(size);
+        const lum = introAsciiLumBuffer;
+        const alpha = introAsciiAlphaBuffer;
         for (let index = 0, pixelIndex = 0; index < size; index += 1, pixelIndex += 4) {
           const r = data[pixelIndex];
           const g = data[pixelIndex + 1];
@@ -483,9 +510,9 @@
         }
         introAsciiCtx.clearRect(0, 0, introAsciiViewportW, introAsciiViewportH);
         introAsciiCtx.globalAlpha = 1;
-        introAsciiCtx.font = `700 ${Math.round(introAsciiCellSize * introAsciiGlyphScale)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+        introAsciiCtx.font = introAsciiFont;
         const densityMax = introAsciiChars.length - 1;
-        const edgeStrength = 0.68;
+        const edgeStrength = 0.46;
         const ditherStrength = 0.08;
         let lastFillStyle = "";
         for (let y = 0; y < introAsciiRows; y += 1) {
@@ -499,7 +526,7 @@
             const right = x < introAsciiCols - 1 ? lum[index + 1] : l;
             const up = y > 0 ? lum[index - introAsciiCols] : l;
             const down = y < introAsciiRows - 1 ? lum[index + introAsciiCols] : l;
-            const edge = Math.hypot(right - left, down - up);
+            const edge = Math.abs(right - left) + Math.abs(down - up);
             const dither = (introAsciiBayer4[y & 3][x & 3] / 15 - 0.5) * ditherStrength;
             const signal = clamp01(l * 0.9 + edge * edgeStrength + 0.08 + dither);
             const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
