@@ -1212,6 +1212,17 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".josie-mobile-audio-player")).toHaveCount(0);
   await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
   await expect(page.locator(".steam-sidebar-title")).toBeHidden();
+  await page.waitForSelector(".discord-presence-reveal");
+  await expect(page.locator(".discord-presence-reveal")).toHaveAttribute("data-mobile-discord-reveal", "pending");
+  const initialMobileDiscordState = await page.locator(".discord-presence-reveal").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      opacity: styles.opacity,
+      pointerEvents: styles.pointerEvents
+    };
+  });
+  expect(Number.parseFloat(initialMobileDiscordState.opacity)).toBeLessThan(0.05);
+  expect(initialMobileDiscordState.pointerEvents).toBe("none");
   await page.waitForSelector(".steam-sidebar-list--mobile-icons");
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", "pending");
   const initialMobileLinksState = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
@@ -1223,6 +1234,11 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   });
   expect(Number.parseFloat(initialMobileLinksState.opacity)).toBeLessThan(0.05);
   expect(initialMobileLinksState.pointerEvents).toBe("none");
+  await page.waitForFunction(() => {
+    const card = document.querySelector(".discord-presence-reveal");
+    return card instanceof HTMLElement && card.dataset.mobileDiscordReveal === "visible";
+  });
+  await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await page.waitForFunction(() => {
     const row = document.querySelector(".steam-sidebar-list--mobile-icons");
     return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";

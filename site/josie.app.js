@@ -2716,12 +2716,14 @@
       customStatusEmojiAlt: customEmoji.url ? customEmoji.alt : ""
     };
   }
-  function renderDiscordPresencePanel(payload) {
+  function renderDiscordPresencePanel(payload, options = {}) {
     const model = buildDiscordPresenceCardModel(payload);
+    const compact = Boolean(options?.compact);
+    const mobileRevealState = compact ? String(options?.mobileRevealState || "pending") : "";
     return `
       <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
         <div class="discord-presence-shell">
-          <div class="discord-presence-reveal">
+          <div class="discord-presence-reveal"${compact ? ` data-mobile-discord-reveal="${escapeHtml(mobileRevealState)}"` : ""}>
             <article class="discord-presence-card discord-presence-card--foundlifeless" data-spotify-active="${model.showAlbumArt ? "true" : "false"}">
               <div class="discord-presence-body">
                 <div class="discord-presence-avatar-stack">
@@ -3972,6 +3974,8 @@
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
     let mobileSpeakerToggleUnsubscribe = null;
+    let mobileDiscordRevealPlayed = false;
+    let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
     let mobileLinksRevealTimer = 0;
     let mobileLinkSelectionTimer = 0;
@@ -3993,6 +3997,21 @@
     }
     function setInteractionSfxExternalAudioActive(active) {
       interactionSfxController?.setExternalAudioActive?.(Boolean(active));
+    }
+    function clearMobileDiscordRevealTimer() {
+      if (!mobileDiscordRevealTimer) return;
+      window.clearTimeout(mobileDiscordRevealTimer);
+      mobileDiscordRevealTimer = 0;
+    }
+    function getMobileDiscordReveal() {
+      if (!(profileTagline instanceof HTMLElement)) return null;
+      return profileTagline.querySelector(".discord-presence-reveal");
+    }
+    function setMobileDiscordRevealState(nextState) {
+      const reveal = getMobileDiscordReveal();
+      if (!(reveal instanceof HTMLElement)) return;
+      reveal.dataset.mobileDiscordReveal = nextState;
+      reveal.classList.toggle("is-mobile-discord-visible", nextState === "visible");
     }
     function clearMobileLinksRevealTimer() {
       if (!mobileLinksRevealTimer) return;
@@ -4021,7 +4040,23 @@
         mobileLinksRevealTimer = 0;
         mobileLinksRevealPlayed = true;
         setMobileLinksRevealState("visible");
-      }, 220);
+      }, 320);
+    }
+    function scheduleMobileDiscordReveal() {
+      if (!isCompactMobileLayout()) return;
+      if (mobileDiscordRevealPlayed) {
+        setMobileDiscordRevealState("visible");
+        scheduleMobileLinksReveal();
+        return;
+      }
+      setMobileDiscordRevealState("pending");
+      clearMobileDiscordRevealTimer();
+      mobileDiscordRevealTimer = window.setTimeout(() => {
+        mobileDiscordRevealTimer = 0;
+        mobileDiscordRevealPlayed = true;
+        setMobileDiscordRevealState("visible");
+        scheduleMobileLinksReveal();
+      }, 120);
     }
     function clearMobileLinkSelectionTimer() {
       if (!mobileLinkSelectionTimer) return;
@@ -5232,6 +5267,7 @@
       if (compactMobile) {
         hideLastFmTrackDetails("silent");
       } else {
+        clearMobileDiscordRevealTimer();
         clearMobileLinksRevealTimer();
         clearMobileLinkSelectedState();
         clearPendingMobileExternalLaunch();
@@ -5242,7 +5278,10 @@
           sites.find((site) => site.id === "discord") || { id: "discord", label: "Discord", url: "https://discord.com/users/331350000154050560" },
           payloadById.get("discord")
         );
-        profileTagline.innerHTML = renderDiscordPresencePanel(discordPayload);
+        profileTagline.innerHTML = renderDiscordPresencePanel(discordPayload, {
+          compact: compactMobile,
+          mobileRevealState: compactMobile ? mobileDiscordRevealPlayed ? "visible" : "pending" : ""
+        });
       }
       if (compactMobile) {
         showcases.innerHTML = "";
@@ -5262,7 +5301,7 @@
       });
       if (compactMobile) {
         syncMobileLinkSelectedState();
-        scheduleMobileLinksReveal();
+        scheduleMobileDiscordReveal();
       }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);
@@ -5313,6 +5352,7 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
+      clearMobileDiscordRevealTimer();
       clearMobileLinksRevealTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
