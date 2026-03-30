@@ -475,7 +475,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("BURNS DOWN");
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("BEGGING THE WITNESS");
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
