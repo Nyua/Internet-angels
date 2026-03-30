@@ -197,13 +197,13 @@ async function mockClientTime(page, parts) {
   }, parts);
 }
 
-test("root loads the Egrets Orchard intro page without the ASCII pipeline", async ({ page }) => {
+test("root loads the Egrets Orchard intro page with the ASCII layer idle until the end window", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introVideo")).toHaveCount(1);
   await expect(page.locator("#introStartButton")).toBeVisible();
   await expect(page.locator("#handoffFrame")).toHaveCount(1);
-  await expect(page.locator("#asciiCanvas")).toHaveCount(0);
+  await expect(page.locator("#asciiCanvas")).toHaveCount(1);
   const introState = await page.locator("#introVideo").evaluate((node) => ({
     src: node.currentSrc || node.src,
     muted: node.muted,
@@ -214,6 +214,12 @@ test("root loads the Egrets Orchard intro page without the ASCII pipeline", asyn
   expect(introState.muted).toBe(false);
   expect(introState.hasControls).toBe(false);
   expect(introState.paused).toBe(true);
+  const asciiState = await page.locator("#asciiCanvas").evaluate((node) => ({
+    hidden: node.hidden,
+    bodyActive: document.body.classList.contains("is-intro-ascii-active")
+  }));
+  expect(asciiState.hidden).toBe(true);
+  expect(asciiState.bodyActive).toBe(false);
 });
 
 test("root skips the intro movie on repeat visits but keeps the fullscreen sound gate", async ({ page }) => {
@@ -262,11 +268,36 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
 
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
+  await page.locator("#introVideo").evaluate((node) => {
+    node.currentTime = Math.max(0, node.duration - 3.8);
+    node.dispatchEvent(new Event("seeking"));
+    node.dispatchEvent(new Event("seeked"));
+    node.dispatchEvent(new Event("timeupdate"));
+  });
+  await page.waitForFunction(() => {
+    const video = document.querySelector("#introVideo");
+    return video instanceof HTMLVideoElement
+      && Number.isFinite(video.duration)
+      && video.duration > 0
+      && video.currentTime >= Math.max(0, video.duration - 3.9);
+  });
+  await expect.poll(async () => page.locator("#asciiCanvas").evaluate((node) => ({
+    hidden: node.hidden,
+    active: document.body.classList.contains("is-intro-ascii-active")
+  }))).toEqual({ hidden: false, active: true });
+  await page.locator("#introVideo").evaluate((node) => {
+    node.currentTime = Math.max(0, node.duration - 0.4);
+    node.dispatchEvent(new Event("seeking"));
+    node.dispatchEvent(new Event("seeked"));
+    node.dispatchEvent(new Event("timeupdate"));
+  });
   const duringHandoffHandle = await page.waitForFunction(() => {
     const video = document.querySelector("#introVideo");
+    const ascii = document.querySelector("#asciiCanvas");
     const frameWrap = document.querySelector("#handoffFrameWrap");
     if (
       !(video instanceof HTMLVideoElement)
+      || !(ascii instanceof HTMLCanvasElement)
       || !(frameWrap instanceof HTMLElement)
       || document.body?.dataset?.bloomToDeathState !== "handoff_visible"
       || !document.body.classList.contains("is-handoff-visible")
@@ -279,6 +310,8 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
       state: document.body?.dataset?.bloomToDeathState || "",
       ended: video.ended,
       hiddenClass: video.classList.contains("is-hidden"),
+      asciiHidden: ascii.hidden,
+      asciiActive: document.body.classList.contains("is-intro-ascii-active"),
       pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
     };
   }, null, { timeout: 25_000, polling: 50 });
@@ -289,6 +322,8 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   expect(duringHandoff.state).toBe("handoff_visible");
   expect(duringHandoff.ended).toBe(false);
   expect(duringHandoff.hiddenClass).toBe(false);
+  expect(duringHandoff.asciiHidden).toBe(false);
+  expect(duringHandoff.asciiActive).toBe(true);
   expect(duringHandoff.pointerEvents).toBe("none");
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "introHandoffVisible", ownerMode: "top" });
 
@@ -299,15 +334,20 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
   const completedHandoff = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
+    const ascii = document.querySelector("#asciiCanvas");
     const frameWrap = document.querySelector("#handoffFrameWrap");
-    if (!(video instanceof HTMLVideoElement) || !(frameWrap instanceof HTMLElement)) return null;
+    if (!(video instanceof HTMLVideoElement) || !(ascii instanceof HTMLCanvasElement) || !(frameWrap instanceof HTMLElement)) return null;
     return {
       hiddenClass: video.classList.contains("is-hidden"),
+      asciiHidden: ascii.hidden,
+      asciiActive: document.body.classList.contains("is-intro-ascii-active"),
       pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
     };
   });
   expect(completedHandoff).not.toBeNull();
   expect(completedHandoff.hiddenClass).toBe(true);
+  expect(completedHandoff.asciiHidden).toBe(true);
+  expect(completedHandoff.asciiActive).toBe(false);
   expect(completedHandoff.pointerEvents).toBe("auto");
 
   await handoffFrame.locator("[data-mobile-speaker-toggle]").click();
@@ -1066,7 +1106,8 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
     return {
       targetCursor: recentButton instanceof HTMLElement ? window.getComputedStyle(recentButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
-      hasCustomCursor: cursor instanceof HTMLElement
+      hasCustomCursor: cursor instanceof HTMLElement,
+      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : ""
     };
   });
 
@@ -1080,15 +1121,18 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
     return {
       targetCursor: steamButton instanceof HTMLElement ? window.getComputedStyle(steamButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
-      hasCustomCursor: cursor instanceof HTMLElement
+      hasCustomCursor: cursor instanceof HTMLElement,
+      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : ""
     };
   });
   expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
   expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterRecentHover.hasCustomCursor).toBe(true);
+  expect(cursorStateAfterRecentHover.cursorMorph).toBe("selection");
   expect(cursorStateAfterSteamHover.targetCursor).toBe("none");
   expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
+  expect(cursorStateAfterSteamHover.cursorMorph).toBe("selection");
 
   await recentRow.click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
@@ -1115,6 +1159,41 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
 
 test("josie mobile uses the speaker toggle, icon row links, and bottom cinna layout", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
+  await page.addInitScript(() => {
+    const launchLog = [];
+    window.__codexExternalLaunchLog = launchLog;
+    window.open = (url = "", target = "", features = "") => {
+      const popup = {
+        closed: false,
+        opener: null,
+        lastUrl: String(url || ""),
+        close() {
+          this.closed = true;
+          launchLog.push({ type: "close", target: String(target || "") });
+        },
+        location: {
+          replace(nextUrl) {
+            popup.lastUrl = String(nextUrl || "");
+            launchLog.push({ type: "replace", url: popup.lastUrl, target: String(target || "") });
+          },
+          set href(nextUrl) {
+            popup.lastUrl = String(nextUrl || "");
+            launchLog.push({ type: "href", url: popup.lastUrl, target: String(target || "") });
+          },
+          get href() {
+            return popup.lastUrl;
+          }
+        }
+      };
+      launchLog.push({
+        type: "open",
+        url: String(url || ""),
+        target: String(target || ""),
+        features: String(features || "")
+      });
+      return popup;
+    };
+  });
 
   const apiRequests = [];
   page.on("request", (outboundRequest) => {
@@ -1133,6 +1212,21 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".josie-mobile-audio-player")).toHaveCount(0);
   await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
   await expect(page.locator(".steam-sidebar-title")).toBeHidden();
+  await page.waitForSelector(".steam-sidebar-list--mobile-icons");
+  await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", "pending");
+  const initialMobileLinksState = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      opacity: styles.opacity,
+      pointerEvents: styles.pointerEvents
+    };
+  });
+  expect(Number.parseFloat(initialMobileLinksState.opacity)).toBeLessThan(0.05);
+  expect(initialMobileLinksState.pointerEvents).toBe("none");
+  await page.waitForFunction(() => {
+    const row = document.querySelector(".steam-sidebar-list--mobile-icons");
+    return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";
+  });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
   await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
@@ -1218,6 +1312,55 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(852 - mobileCentering.cinnaRect.bottom).toBeLessThan(18);
   expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(140);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.__codexExternalLaunchLog.length = 0;
+  });
+  const firstMobileIconLink = page.locator(".steam-sidebar-link--icon-only").first();
+  await firstMobileIconLink.click();
+  await expect(firstMobileIconLink).toHaveClass(/is-mobile-selected/);
+  const selectedMobileLinkCount = await page.locator(".steam-sidebar-link--icon-only.is-mobile-selected").count();
+  expect(selectedMobileLinkCount).toBe(1);
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
+    && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace"));
+  const iconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
+  expect(iconLaunchLog.some((entry) => entry.type === "open" && entry.target === "_blank")).toBe(true);
+  expect(iconLaunchLog.some((entry) => entry.type === "replace" && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url))).toBe(true);
+  await page.waitForFunction(() => !document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected"), { timeout: 2_000 });
+
+  await page.evaluate(() => {
+    window.__codexExternalLaunchLog.length = 0;
+    const fixture = document.createElement("div");
+    fixture.id = "codex-mobile-external-fixture";
+    fixture.innerHTML = `
+      <a class="codex-mobile-anchor" href="https://example.com/mobile-anchor" target="_blank">Anchor</a>
+      <button type="button" class="codex-mobile-open-button" data-open-url="https://example.com/mobile-open">Open Button</button>
+      <button type="button" class="codex-mobile-item-button" data-item-url="https://example.com/mobile-item">Item Button</button>
+    `;
+    document.querySelector("#social-hub-root")?.appendChild(fixture);
+  });
+
+  await page.locator(".codex-mobile-anchor").click();
+  await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
+    && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace" && entry.url === "https://example.com/mobile-anchor"));
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.__codexExternalLaunchLog.length = 0;
+  });
+  await page.locator(".codex-mobile-open-button").click();
+  await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
+    && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace" && entry.url === "https://example.com/mobile-open"));
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.__codexExternalLaunchLog.length = 0;
+  });
+  await page.locator(".codex-mobile-item-button").click();
+  await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
+    && window.__codexExternalLaunchLog.some((entry) => entry.type === "replace" && entry.url === "https://example.com/mobile-item"));
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
 
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",

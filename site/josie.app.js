@@ -1575,7 +1575,7 @@
   var JOSIE_TOP_SHOWCASE_TEXT = "I'm just here, lol.";
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
   var SHUFFLE_RECENCY_WEIGHT_STEP = 0.08;
-  var SHUFFLE_ANALYSER_FFT_SIZE = 2048;
+  var SHUFFLE_ANALYSER_FFT_SIZE = 512;
   var SHUFFLE_SCRUB_PREVIEW_INTERVAL_MS = 34;
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
   var SHUFFLE_SCRUB_PREVIEW_GAIN = 0.84;
@@ -1687,11 +1687,16 @@
     let initialTrackQueued = false;
     let reactiveBeat = 0;
     let reactiveFlash = 0;
+    let reactiveVisualSignature = "";
+    let lastVisualizerFrameMs = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_TRACE_OPACITY_SCALE = 1;
-    const SHUFFLE_MAX_CANVAS_DPR = 1.25;
+    const SHUFFLE_MAX_CANVAS_DPR = 1;
+    const SHUFFLE_TRACE_POINT_LIMIT = 320;
+    const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
+    const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -1773,18 +1778,36 @@
       const frostOpacity = Math.min(0.96, 0.76 + reactiveBeat * 0.18 + reactiveFlash * 0.04);
       const auraBlur = 30 + reactiveBeat * 22 + reactiveFlash * 18;
       const drift = reactiveBeat * 14 + reactiveFlash * 8;
+      const beatValue = reactiveBeat.toFixed(2);
+      const flashValue = reactiveFlash.toFixed(2);
+      const glowOpacityValue = glowOpacity.toFixed(2);
+      const frostOpacityValue = frostOpacity.toFixed(2);
+      const auraBlurValue = `${auraBlur.toFixed(0)}px`;
+      const driftValue = `${drift.toFixed(1)}px`;
+      const nextSignature = [
+        beatValue,
+        flashValue,
+        glowOpacityValue,
+        frostOpacityValue,
+        auraBlurValue,
+        driftValue
+      ].join("|");
+      if (nextSignature === reactiveVisualSignature) {
+        return;
+      }
+      reactiveVisualSignature = nextSignature;
       getReactiveTargets().forEach((target) => {
-        target.style.setProperty("--shuffle-beat", reactiveBeat.toFixed(3));
-        target.style.setProperty("--shuffle-flash", reactiveFlash.toFixed(3));
-        target.style.setProperty("--shuffle-glow-opacity", glowOpacity.toFixed(3));
-        target.style.setProperty("--shuffle-frost-opacity", frostOpacity.toFixed(3));
-        target.style.setProperty("--shuffle-aura-blur", `${auraBlur.toFixed(1)}px`);
-        target.style.setProperty("--shuffle-drift", `${drift.toFixed(2)}px`);
+        target.style.setProperty("--shuffle-beat", beatValue);
+        target.style.setProperty("--shuffle-flash", flashValue);
+        target.style.setProperty("--shuffle-glow-opacity", glowOpacityValue);
+        target.style.setProperty("--shuffle-frost-opacity", frostOpacityValue);
+        target.style.setProperty("--shuffle-aura-blur", auraBlurValue);
+        target.style.setProperty("--shuffle-drift", driftValue);
       });
     }
     function measureReactivePulse() {
       if (audioEl.paused || !(analyserNode instanceof AnalyserNode) || !analyserSamples.length) {
-        return { beat: 0, flash: 0 };
+        return { beat: 0, flash: 0, sampled: false };
       }
       analyserNode.getFloatTimeDomainData(analyserSamples);
       let peak = 0;
@@ -1815,7 +1838,8 @@
           Math.max(0, transientPeak - 0.075) * 9.6,
           0,
           1
-        )
+        ),
+        sampled: true
       };
     }
     function syncUi() {
@@ -2036,7 +2060,7 @@
         analyserNode = ctx.createAnalyser();
         outputGainNode = ctx.createGain();
         analyserNode.fftSize = SHUFFLE_ANALYSER_FFT_SIZE;
-        analyserNode.smoothingTimeConstant = 0.48;
+        analyserNode.smoothingTimeConstant = 0.62;
         mediaSourceNode.connect(analyserNode);
         analyserNode.connect(outputGainNode);
         outputGainNode.connect(ctx.destination);
@@ -2047,7 +2071,7 @@
       }
       return analyserNode;
     }
-    function drawTrace() {
+    function drawTrace(reuseCurrentFrameSamples = false) {
       const metrics = ensureWaveCanvasSize();
       if (!(waveCtx instanceof CanvasRenderingContext2D) || !metrics.drawWidth || !metrics.drawHeight) return;
       const canvasWidth = metrics.canvasWidth;
@@ -2056,20 +2080,24 @@
       const originY = metrics.drawTop;
       const width = metrics.drawWidth;
       const height = metrics.drawHeight;
-      if (!(traceValues instanceof Float32Array) || traceValues.length !== width) {
-        traceValues = new Float32Array(width);
+      const pointCount = Math.max(2, Math.min(width, SHUFFLE_TRACE_POINT_LIMIT));
+      const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
+      if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
+        traceValues = new Float32Array(pointCount);
       }
-      if (!(traceSmoothingValues instanceof Float32Array) || traceSmoothingValues.length !== width) {
-        traceSmoothingValues = new Float32Array(width);
+      if (!(traceSmoothingValues instanceof Float32Array) || traceSmoothingValues.length !== pointCount) {
+        traceSmoothingValues = new Float32Array(pointCount);
       }
       const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode);
       let peak = 0;
       let transientPeak = 0;
       if (shouldSampleLive && analyserSamples.length) {
-        analyserNode.getFloatTimeDomainData(analyserSamples);
+        if (!reuseCurrentFrameSamples) {
+          analyserNode.getFloatTimeDomainData(analyserSamples);
+        }
         let filteredValue = 0;
-        for (let x = 0; x < width; x += 1) {
-          const sampleIndex = Math.min(analyserSamples.length - 1, Math.floor(x / Math.max(width - 1, 1) * (analyserSamples.length - 1)));
+        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+          const sampleIndex = Math.min(analyserSamples.length - 1, Math.floor(pointIndex / Math.max(pointCount - 1, 1) * (analyserSamples.length - 1)));
           const currentSample = analyserSamples[sampleIndex] || 0;
           const previousSample = analyserSamples[Math.max(0, sampleIndex - 6)] || currentSample;
           const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 6)] || currentSample;
@@ -2092,7 +2120,7 @@
             const absoluteExcess = magnitude - 0.68;
             shapedMagnitude += absoluteExcess / (1 + absoluteExcess * 0.18) * 1.05;
           }
-          traceValues[x] = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * 2.35), -1, 1);
+          traceValues[pointIndex] = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * 2.35), -1, 1);
         }
       }
       const structureHold = clamp2(
@@ -2101,26 +2129,26 @@
         0,
         1
       );
-      if (structureHold > 0.01 && width > 4) {
+      if (structureHold > 0.01 && pointCount > 4) {
         const blend = structureHold * 0.76;
-        for (let x = 0; x < width; x += 1) {
-          const center = traceValues[x] || 0;
-          const left = traceValues[Math.max(0, x - 1)] || center;
-          const right = traceValues[Math.min(width - 1, x + 1)] || center;
-          const farLeft = traceValues[Math.max(0, x - 3)] || left;
-          const farRight = traceValues[Math.min(width - 1, x + 3)] || right;
+        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+          const center = traceValues[pointIndex] || 0;
+          const left = traceValues[Math.max(0, pointIndex - 1)] || center;
+          const right = traceValues[Math.min(pointCount - 1, pointIndex + 1)] || center;
+          const farLeft = traceValues[Math.max(0, pointIndex - 3)] || left;
+          const farRight = traceValues[Math.min(pointCount - 1, pointIndex + 3)] || right;
           const spine = (left + center + right) / 3;
           const structure = (farLeft * 0.8 + left * 1.15 + center * 1.5 + right * 1.15 + farRight * 0.8) / 5.4;
-          traceSmoothingValues[x] = center * (1 - blend) + (spine * 0.42 + structure * 0.58) * blend;
+          traceSmoothingValues[pointIndex] = center * (1 - blend) + (spine * 0.42 + structure * 0.58) * blend;
         }
         traceValues.set(traceSmoothingValues);
       }
       let rms = 0;
-      for (let x = 0; x < width; x += 1) {
-        const value = traceValues[x] || 0;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const value = traceValues[pointIndex] || 0;
         rms += value * value;
       }
-      rms = Math.sqrt(rms / Math.max(width, 1));
+      rms = Math.sqrt(rms / Math.max(pointCount, 1));
       const loudnessBoost = clamp2(
         Math.max(0, peak - 0.42) * 0.88 +
         Math.max(0, rms - 0.18) * 1.55 +
@@ -2174,43 +2202,63 @@
       waveCtx.moveTo(originX, baselineY + originY);
       waveCtx.lineTo(originX + width, baselineY + originY);
       waveCtx.stroke();
-      waveCtx.save();
-      waveCtx.shadowColor = `rgba(228, 248, 255, ${(0.95 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      waveCtx.shadowBlur = (16 + impact * 18 + peakSurge * (8 * structureDamping) + absolutePeakSurge * (6 * structureDamping)) * 0.58;
-      waveCtx.lineWidth = 2.1 + impact * 1.9 + peakSurge * (0.7 * structureDamping) + absolutePeakSurge * (0.58 * structureDamping);
-      waveCtx.lineCap = "round";
-      waveCtx.lineJoin = "round";
-      waveCtx.strokeStyle = `rgba(229, 248, 255, ${(Math.min(0.44 + impact * 0.56 + peakSurge * 0.04 + absolutePeakSurge * 0.03, 0.98) * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      waveCtx.beginPath();
-      waveCtx.moveTo(originX, baselineY + originY);
-      for (let x = 0; x < width; x += 1) {
-        const value = traceValues[x] || 0;
-        const y = originY + baselineY - value * amplitude;
-        waveCtx.lineTo(originX + x, y);
+      const tracePath = typeof Path2D === "function" ? new Path2D() : null;
+      if (tracePath) {
+        tracePath.moveTo(originX, baselineY + originY);
+      } else {
+        waveCtx.beginPath();
+        waveCtx.moveTo(originX, baselineY + originY);
       }
-      waveCtx.lineTo(originX + width - 1, baselineY + originY);
-      waveCtx.stroke();
-      waveCtx.restore();
-      waveCtx.lineWidth = 1.2;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const value = traceValues[pointIndex] || 0;
+        const x = originX + pointIndex * pointSpacing;
+        const y = originY + baselineY - value * amplitude;
+        if (tracePath) {
+          tracePath.lineTo(x, y);
+        } else {
+          waveCtx.lineTo(x, y);
+        }
+      }
+      if (tracePath) {
+        tracePath.lineTo(originX + width - 1, baselineY + originY);
+      } else {
+        waveCtx.lineTo(originX + width - 1, baselineY + originY);
+      }
+      waveCtx.lineWidth = 2.2 + impact * 1.5 + peakSurge * (0.42 * structureDamping) + absolutePeakSurge * (0.34 * structureDamping);
       waveCtx.lineCap = "round";
       waveCtx.lineJoin = "round";
+      waveCtx.strokeStyle = `rgba(229, 248, 255, ${(Math.min(0.18 + impact * 0.18 + peakSurge * 0.02 + absolutePeakSurge * 0.02, 0.36) * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+      if (tracePath) {
+        waveCtx.stroke(tracePath);
+      } else {
+        waveCtx.stroke();
+      }
+      waveCtx.lineWidth = 1.12;
       waveCtx.strokeStyle = `rgba(248, 253, 255, ${SHUFFLE_TRACE_OPACITY_SCALE.toFixed(3)})`;
-      waveCtx.beginPath();
-      waveCtx.moveTo(originX, baselineY + originY);
-      for (let x = 0; x < width; x += 1) {
-        const value = traceValues[x] || 0;
-        const y = originY + baselineY - value * amplitude;
-        waveCtx.lineTo(originX + x, y);
+      if (tracePath) {
+        waveCtx.stroke(tracePath);
+      } else {
+        waveCtx.stroke();
       }
-      waveCtx.lineTo(originX + width - 1, baselineY + originY);
-      waveCtx.stroke();
+      const edgeMarkerHeight = Math.max(2, Math.round(Math.min(height * 0.22, amplitude * 0.32)));
+      const edgeMarkerTop = Math.round(originY + baselineY - edgeMarkerHeight / 2);
+      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.16 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+      waveCtx.fillRect(originX, edgeMarkerTop, 1, edgeMarkerHeight);
+      waveCtx.fillRect(originX + width - 1, edgeMarkerTop, 1, edgeMarkerHeight);
     }
     function renderLoop(nowMs) {
       if (disposed) return;
+      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden);
+      const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? SHUFFLE_ACTIVE_FRAME_INTERVAL_MS : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
+      if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
+        rafId = window.requestAnimationFrame(renderLoop);
+        return;
+      }
+      lastVisualizerFrameMs = nowMs;
       const pulseMetrics = measureReactivePulse();
       syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash);
-      if (playerRoot && playbackUnlocked && !compactPlayerMode) {
-        drawTrace();
+      if (shouldRenderDesktopWave) {
+        drawTrace(pulseMetrics.sampled);
       } else {
         hideWavePortal();
       }
@@ -3841,6 +3889,7 @@
   }
   function renderSidebar(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
+    const mobileLinksRevealState = compact ? String(options?.mobileLinksRevealState || "pending") : "";
     const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
     const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
@@ -3878,7 +3927,7 @@
     return `
     <section class="steam-sidebar-panel${compact ? " steam-sidebar-panel--mobile-home" : ""}">
       ${compact ? "" : '<h3 class="steam-sidebar-title">Profile Links:</h3>'}
-      <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}">
+      <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}"${compact ? ` data-mobile-links-reveal="${escapeHtml(mobileLinksRevealState)}"` : ""}>
         ${rows}
       </ul>
       <div class="cinna-mobile-gif-wrap" aria-hidden="true">
@@ -3923,6 +3972,12 @@
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
     let mobileSpeakerToggleUnsubscribe = null;
+    let mobileLinksRevealPlayed = false;
+    let mobileLinksRevealTimer = 0;
+    let mobileLinkSelectionTimer = 0;
+    let mobileLinkSelectedKey = "";
+    let pendingMobileExternalLaunchTimer = 0;
+    let pendingMobileExternalPopup = null;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
     const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
@@ -3938,6 +3993,149 @@
     }
     function setInteractionSfxExternalAudioActive(active) {
       interactionSfxController?.setExternalAudioActive?.(Boolean(active));
+    }
+    function clearMobileLinksRevealTimer() {
+      if (!mobileLinksRevealTimer) return;
+      window.clearTimeout(mobileLinksRevealTimer);
+      mobileLinksRevealTimer = 0;
+    }
+    function getMobileLinksRow() {
+      if (!(sidebar instanceof HTMLElement)) return null;
+      return sidebar.querySelector(".steam-sidebar-list--mobile-icons");
+    }
+    function setMobileLinksRevealState(nextState) {
+      const row = getMobileLinksRow();
+      if (!(row instanceof HTMLElement)) return;
+      row.dataset.mobileLinksReveal = nextState;
+      row.classList.toggle("is-mobile-links-visible", nextState === "visible");
+    }
+    function scheduleMobileLinksReveal() {
+      if (!isCompactMobileLayout()) return;
+      if (mobileLinksRevealPlayed) {
+        setMobileLinksRevealState("visible");
+        return;
+      }
+      setMobileLinksRevealState("pending");
+      clearMobileLinksRevealTimer();
+      mobileLinksRevealTimer = window.setTimeout(() => {
+        mobileLinksRevealTimer = 0;
+        mobileLinksRevealPlayed = true;
+        setMobileLinksRevealState("visible");
+      }, 220);
+    }
+    function clearMobileLinkSelectionTimer() {
+      if (!mobileLinkSelectionTimer) return;
+      window.clearTimeout(mobileLinkSelectionTimer);
+      mobileLinkSelectionTimer = 0;
+    }
+    function getMobileLinkSelectedKey(link) {
+      if (!(link instanceof HTMLElement)) return "";
+      const siteLabel = link.getAttribute("aria-label") || link.getAttribute("title") || link.getAttribute("href") || "";
+      return siteLabel.trim();
+    }
+    function clearMobileLinkSelectedState() {
+      clearMobileLinkSelectionTimer();
+      mobileLinkSelectedKey = "";
+      if (!(sidebar instanceof HTMLElement)) return;
+      sidebar.querySelectorAll(".steam-sidebar-link--icon-only.is-mobile-selected").forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        node.classList.remove("is-mobile-selected");
+        node.dataset.mobileSelected = "false";
+        const row = node.closest(".steam-sidebar-row");
+        if (row instanceof HTMLElement) {
+          row.dataset.mobileSelected = "false";
+        }
+      });
+    }
+    function syncMobileLinkSelectedState() {
+      if (!(sidebar instanceof HTMLElement)) return;
+      const selectedKey = mobileLinkSelectedKey;
+      sidebar.querySelectorAll(".steam-sidebar-link--icon-only").forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        const isSelected = Boolean(selectedKey) && getMobileLinkSelectedKey(node) === selectedKey;
+        node.classList.toggle("is-mobile-selected", isSelected);
+        node.dataset.mobileSelected = isSelected ? "true" : "false";
+        const row = node.closest(".steam-sidebar-row");
+        if (row instanceof HTMLElement) {
+          row.dataset.mobileSelected = isSelected ? "true" : "false";
+        }
+      });
+    }
+    function markMobileLinkSelected(link) {
+      if (!(link instanceof HTMLElement)) {
+        clearMobileLinkSelectedState();
+        return;
+      }
+      mobileLinkSelectedKey = getMobileLinkSelectedKey(link);
+      syncMobileLinkSelectedState();
+      clearMobileLinkSelectionTimer();
+      mobileLinkSelectionTimer = window.setTimeout(() => {
+        clearMobileLinkSelectedState();
+      }, 1200);
+    }
+    function clearPendingMobileExternalLaunch() {
+      if (pendingMobileExternalLaunchTimer) {
+        window.clearTimeout(pendingMobileExternalLaunchTimer);
+        pendingMobileExternalLaunchTimer = 0;
+      }
+      if (pendingMobileExternalPopup && !pendingMobileExternalPopup.closed) {
+        try {
+          pendingMobileExternalPopup.close();
+        } catch {
+        }
+      }
+      pendingMobileExternalPopup = null;
+    }
+    function resolveExternalLaunchTarget(trigger, fallback = "_blank") {
+      if (trigger instanceof HTMLAnchorElement) {
+        const targetAttr = (trigger.getAttribute("target") || "").trim();
+        return targetAttr || "_self";
+      }
+      return fallback;
+    }
+    function launchMobileExternalWithSelection(url, { trigger = null, target = "_blank" } = {}) {
+      const safeUrl = sanitizeUrl(url);
+      if (!safeUrl) return;
+      const triggerElement = trigger instanceof HTMLElement ? trigger : null;
+      const resolvedTarget = resolveExternalLaunchTarget(triggerElement instanceof HTMLAnchorElement ? triggerElement : null, target || "_blank");
+      const selectedLink = triggerElement?.closest(".steam-sidebar-link--icon-only");
+      if (selectedLink instanceof HTMLElement) {
+        markMobileLinkSelected(selectedLink);
+      } else {
+        clearMobileLinkSelectedState();
+      }
+      clearPendingMobileExternalLaunch();
+      let popupWindow = null;
+      if (resolvedTarget === "_blank") {
+        try {
+          popupWindow = window.open("", "_blank");
+          if (popupWindow && "opener" in popupWindow) {
+            popupWindow.opener = null;
+          }
+        } catch {
+          popupWindow = null;
+        }
+      }
+      pendingMobileExternalPopup = popupWindow;
+      pendingMobileExternalLaunchTimer = window.setTimeout(() => {
+        pendingMobileExternalLaunchTimer = 0;
+        if (resolvedTarget === "_blank") {
+          let launched = false;
+          if (popupWindow && !popupWindow.closed) {
+            try {
+              popupWindow.location.replace(safeUrl);
+              launched = true;
+            } catch {
+            }
+          }
+          if (!launched) {
+            launchExternal(safeUrl, "_blank");
+          }
+          pendingMobileExternalPopup = null;
+          return;
+        }
+        launchExternal(safeUrl, "_self");
+      }, 120);
     }
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
@@ -4109,6 +4307,13 @@
     function showExternalPrompt(url, trigger = null) {
       const safeUrl = sanitizeUrl(url);
       if (!safeUrl) return;
+      if (isCompactMobileLayout()) {
+        launchMobileExternalWithSelection(safeUrl, {
+          trigger: trigger instanceof HTMLElement ? trigger : null,
+          target: resolveExternalLaunchTarget(trigger instanceof HTMLAnchorElement ? trigger : null, "_blank")
+        });
+        return;
+      }
       const dialog = ensureExternalPrompt();
       playInteractionSfx("open_soft", "externalConfirmOpen");
       pendingExternalUrl = safeUrl;
@@ -5026,6 +5231,10 @@
       root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
       if (compactMobile) {
         hideLastFmTrackDetails("silent");
+      } else {
+        clearMobileLinksRevealTimer();
+        clearMobileLinkSelectedState();
+        clearPendingMobileExternalLaunch();
       }
       profile.innerHTML = renderHero(payloadById, sites, { compact: compactMobile });
       if (profileTagline instanceof HTMLElement) {
@@ -5047,7 +5256,14 @@
       }
       const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
       shufflePlayerController?.attach(shuffleRoot);
-      sidebar.innerHTML = renderSidebar(payloadById, sites, { compact: compactMobile });
+      sidebar.innerHTML = renderSidebar(payloadById, sites, {
+        compact: compactMobile,
+        mobileLinksRevealState: compactMobile ? mobileLinksRevealPlayed ? "visible" : "pending" : ""
+      });
+      if (compactMobile) {
+        syncMobileLinkSelectedState();
+        scheduleMobileLinksReveal();
+      }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);
       if (lastRefreshLabel instanceof HTMLElement) {
@@ -5068,6 +5284,16 @@
         syncMobileSpeakerToggle(true);
       });
     }
+    const handleMobileSelectionVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        clearMobileLinkSelectedState();
+      }
+    };
+    const handleMobileSelectionPageHide = () => {
+      clearMobileLinkSelectedState();
+    };
+    document.addEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
+    window.addEventListener("pagehide", handleMobileSelectionPageHide);
     root2?.addEventListener("click", onRootClick);
     refreshButton?.addEventListener("click", onRefreshClick);
     function dispose() {
@@ -5087,6 +5313,11 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
+      clearMobileLinksRevealTimer();
+      clearMobileLinkSelectedState();
+      clearPendingMobileExternalLaunch();
+      document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
+      window.removeEventListener("pagehide", handleMobileSelectionPageHide);
       hideLastFmTrackDetails("silent");
       lastFmTrackPanelRoot?.remove();
       lastFmTrackPanelRoot = null;
@@ -6945,7 +7176,7 @@
   function createSiteCursorController() {
     if (!shouldEnableCustomCursor()) return null;
     if (!(document.body instanceof HTMLElement)) return null;
-    const interactiveMorphTokens = ["bean", "soft-square", "petal", "comet", "knot"];
+    const interactiveMorphToken = "selection";
     const tailPointCount = 10;
     const tailLifetimeMs = 148;
     const trailCanvasSize = 110;
@@ -7021,11 +7252,6 @@
       const safeToken = typeof token === "string" && token ? token : "orb";
       currentMorphToken = safeToken;
       cursorEl.dataset.cursorMorph = safeToken;
-    }
-    function pickNextInteractiveMorph() {
-      const candidates = interactiveMorphTokens.filter((token) => token !== currentMorphToken);
-      const pool = candidates.length ? candidates : interactiveMorphTokens;
-      return pool[Math.floor(Math.random() * pool.length)] || "orb";
     }
     function trimTrailHistory(nowMs = performance.now()) {
       while (trailHistory.length > tailPointCount) {
@@ -7154,7 +7380,7 @@
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
       if (nextTarget === currentInteractiveTarget) return;
       if (nextTarget) {
-        applyCursorMorph(pickNextInteractiveMorph());
+        applyCursorMorph(interactiveMorphToken);
       } else {
         applyCursorMorph("orb");
       }
