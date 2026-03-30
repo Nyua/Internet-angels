@@ -7216,7 +7216,6 @@
   function createSiteCursorController() {
     if (!shouldEnableCustomCursor()) return null;
     if (!(document.body instanceof HTMLElement)) return null;
-    const interactiveMorphToken = "selection";
     const tailPointCount = 10;
     const tailLifetimeMs = 148;
     const trailCanvasSize = 110;
@@ -7250,6 +7249,7 @@
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
     const trailContext = trailCanvas instanceof HTMLCanvasElement ? trailCanvas.getContext("2d") : null;
     if (!(trailCanvas instanceof HTMLCanvasElement) || !trailContext) {
+      document.body.classList.remove("has-custom-cursor");
       cursorEl.remove();
       return null;
     }
@@ -7416,16 +7416,24 @@
         cursorEl.classList.add("is-visible");
       }
     }
+    function setSystemPointerTarget(target) {
+      if (currentInteractiveTarget instanceof HTMLElement) {
+        currentInteractiveTarget.classList.remove("has-system-pointer-target");
+      }
+      const nextTarget = target instanceof HTMLElement ? target : null;
+      if (nextTarget) {
+        nextTarget.classList.add("has-system-pointer-target");
+      }
+      document.body.classList.toggle("has-system-pointer", Boolean(nextTarget));
+      cursorEl.classList.toggle("is-system-pointer", Boolean(nextTarget));
+      currentInteractiveTarget = nextTarget;
+    }
     function syncInteractiveTarget(target) {
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
       if (nextTarget === currentInteractiveTarget) return;
-      if (nextTarget) {
-        applyCursorMorph(interactiveMorphToken);
-      } else {
-        applyCursorMorph("orb");
-      }
-      currentInteractiveTarget = nextTarget;
-      cursorEl.classList.toggle("is-interactive", Boolean(currentInteractiveTarget));
+      applyCursorMorph("orb");
+      setSystemPointerTarget(nextTarget instanceof HTMLElement ? nextTarget : null);
+      cursorEl.classList.toggle("is-interactive", false);
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
       if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
@@ -7514,7 +7522,7 @@
       pressed = false;
       scrollDirection = 0;
       scrollUntilMs = 0;
-      currentInteractiveTarget = null;
+      setSystemPointerTarget(null);
       pointerEnergy = 0;
       cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down");
       applyCursorMorph("orb");
@@ -7606,6 +7614,7 @@
         window.removeEventListener("mouseout", onWindowMouseOut);
         window.removeEventListener("blur", hideCursor);
         document.removeEventListener("visibilitychange", onVisibilityChange);
+        setSystemPointerTarget(null);
         document.body.classList.remove("has-custom-cursor");
         cursorEl.remove();
       }

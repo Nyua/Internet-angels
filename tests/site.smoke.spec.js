@@ -1107,7 +1107,8 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       targetCursor: recentButton instanceof HTMLElement ? window.getComputedStyle(recentButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
       hasCustomCursor: cursor instanceof HTMLElement,
-      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : ""
+      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
+      cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false
     };
   });
 
@@ -1122,17 +1123,20 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       targetCursor: steamButton instanceof HTMLElement ? window.getComputedStyle(steamButton).cursor : "",
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
       hasCustomCursor: cursor instanceof HTMLElement,
-      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : ""
+      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
+      cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false
     };
   });
-  expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
-  expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(false);
+  expect(cursorStateAfterRecentHover.targetCursor).toBe("pointer");
+  expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(true);
   expect(cursorStateAfterRecentHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterRecentHover.cursorMorph).toBe("selection");
-  expect(cursorStateAfterSteamHover.targetCursor).toBe("none");
-  expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
+  expect(cursorStateAfterRecentHover.cursorMorph).toBe("orb");
+  expect(cursorStateAfterRecentHover.cursorUsesSystemPointer).toBe(true);
+  expect(cursorStateAfterSteamHover.targetCursor).toBe("pointer");
+  expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(true);
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterSteamHover.cursorMorph).toBe("selection");
+  expect(cursorStateAfterSteamHover.cursorMorph).toBe("orb");
+  expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(true);
 
   await recentRow.click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);

@@ -140,6 +140,11 @@ body.has-custom-cursor * {
   cursor: none !important;
 }
 
+body.has-custom-cursor .has-system-pointer-target,
+body.has-custom-cursor .has-system-pointer-target * {
+  cursor: pointer !important;
+}
+
 .site-pointer {
   --site-cursor-scale: 1;
   --cursor-tail-opacity: 0;
@@ -168,6 +173,10 @@ body.has-custom-cursor * {
 
 .site-pointer.is-visible {
   opacity: 1;
+}
+
+.site-pointer.is-system-pointer {
+  opacity: 0 !important;
 }
 
 .site-pointer.is-interactive {
