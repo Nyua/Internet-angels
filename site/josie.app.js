@@ -1664,6 +1664,7 @@
     let waveCtx = null;
     let titleEl = null;
     let artistEl = null;
+    let copyRootEl = null;
     let progressFillEl = null;
     let timeRemainingEl = null;
     let compactPlayerMode = false;
@@ -1686,6 +1687,10 @@
     let siteLoadWaitPromise = null;
     let siteLoadClassObserver = null;
     let initialTrackQueued = false;
+    let visualizerCopyHideTimer = 0;
+    let visualizerCopyEnterRafId = 0;
+    let visualizerCopyTrackKey = "";
+    let visualizerCopyState = "visible";
     let reactiveBeat = 0;
     let reactiveFlash = 0;
     let reactiveVisualSignature = "";
@@ -1698,6 +1703,7 @@
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
+    const SHUFFLE_COPY_HOLD_MS = 5e3;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -1747,6 +1753,60 @@
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack)
       };
+    }
+    function clearVisualizerCopyTimers() {
+      if (visualizerCopyHideTimer) {
+        window.clearTimeout(visualizerCopyHideTimer);
+        visualizerCopyHideTimer = 0;
+      }
+      if (visualizerCopyEnterRafId) {
+        window.cancelAnimationFrame(visualizerCopyEnterRafId);
+        visualizerCopyEnterRafId = 0;
+      }
+    }
+    function applyVisualizerCopyState() {
+      if (!(copyRootEl instanceof HTMLElement)) return;
+      copyRootEl.setAttribute("data-shuffle-copy-state", visualizerCopyState);
+    }
+    function setVisualizerCopyState(nextState) {
+      visualizerCopyState = nextState === "hidden" ? "hidden" : "visible";
+      applyVisualizerCopyState();
+    }
+    function getVisualizerCopyTrackKey(track) {
+      if (!track || typeof track !== "object") return "";
+      return firstNonEmpty(track.id, `${track.title || ""}|${track.artist || ""}`);
+    }
+    function restartVisualizerCopyCycle() {
+      clearVisualizerCopyTimers();
+      if (!(copyRootEl instanceof HTMLElement)) {
+        visualizerCopyState = "visible";
+        return;
+      }
+      setVisualizerCopyState("hidden");
+      void copyRootEl.getBoundingClientRect();
+      visualizerCopyEnterRafId = window.requestAnimationFrame(() => {
+        visualizerCopyEnterRafId = 0;
+        setVisualizerCopyState("visible");
+        visualizerCopyHideTimer = window.setTimeout(() => {
+          setVisualizerCopyState("hidden");
+          visualizerCopyHideTimer = 0;
+        }, SHUFFLE_COPY_HOLD_MS);
+      });
+    }
+    function syncVisualizerCopyCycle() {
+      const nextTrackKey = getVisualizerCopyTrackKey(currentTrack);
+      if (!nextTrackKey) {
+        visualizerCopyTrackKey = "";
+        clearVisualizerCopyTimers();
+        setVisualizerCopyState("visible");
+        return;
+      }
+      if (nextTrackKey === visualizerCopyTrackKey) {
+        applyVisualizerCopyState();
+        return;
+      }
+      visualizerCopyTrackKey = nextTrackKey;
+      restartVisualizerCopyCycle();
     }
     function syncAudioOutputGain() {
       const gainNode = outputGainNode;
@@ -1850,6 +1910,7 @@
       if (artistEl instanceof HTMLElement) {
         artistEl.textContent = currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist");
       }
+      syncVisualizerCopyCycle();
       applyShuffleTheme(currentTrack);
       const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
       const currentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
@@ -2324,8 +2385,10 @@
       waveSurface = root2.matches("[data-shuffle-surface]") ? root2 : root2.querySelector("[data-shuffle-surface]");
       titleEl = root2.querySelector("[data-shuffle-title]");
       artistEl = root2.querySelector("[data-shuffle-artist]");
+      copyRootEl = root2.querySelector("[data-shuffle-copy]");
       progressFillEl = root2.querySelector("[data-shuffle-progress-fill]");
       timeRemainingEl = root2.querySelector("[data-shuffle-time]");
+      applyVisualizerCopyState();
       if (waveSurface instanceof HTMLElement) {
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
@@ -2386,6 +2449,7 @@
       traceSmoothingValues = new Float32Array(0);
       titleEl = null;
       artistEl = null;
+      copyRootEl = null;
       progressFillEl = null;
       timeRemainingEl = null;
       compactPlayerMode = false;
@@ -2461,6 +2525,7 @@
     function dispose() {
       if (disposed) return;
       disposed = true;
+      clearVisualizerCopyTimers();
       if (rafId) {
         window.cancelAnimationFrame(rafId);
         rafId = 0;
@@ -2512,6 +2577,7 @@
     return {
       attach,
       dispose,
+      debugAdvanceTrack: () => chooseNextTrack({ autoplay: true }),
       isPlaying,
       ensureStarted,
       toggleMuted,
@@ -3010,9 +3076,9 @@
     const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
     return `
     <div class="${escapeHtml(playerClassName)}" data-shuffle-player>
-      <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface aria-label="Audio visualizer">
-        <div class="josie-audio-player-overlay">
-          <div class="josie-audio-player-copy">
+        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface aria-label="Audio visualizer">
+          <div class="josie-audio-player-overlay">
+          <div class="josie-audio-player-copy" data-shuffle-copy data-shuffle-copy-state="visible">
             <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
             <p class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
           </div>
@@ -4262,6 +4328,10 @@
   }) {
     let disposed = false;
     const shufflePlayerController = createShufflePlayerController();
+    const shuffleDebugController = {
+      advanceTrack: () => shufflePlayerController.debugAdvanceTrack?.()
+    };
+    window.__internetAngelShuffleDebug = shuffleDebugController;
     let externalPromptRoot = null;
     let externalPromptUrlEl = null;
     let externalPromptCancelButton = null;
@@ -6597,6 +6667,9 @@
       mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
       mobileSpeakerToggleUnsubscribe?.();
       mobileSpeakerToggleUnsubscribe = null;
+      if (window.__internetAngelShuffleDebug === shuffleDebugController) {
+        delete window.__internetAngelShuffleDebug;
+      }
       if (mobileSpeakerButton instanceof HTMLButtonElement) {
         mobileSpeakerButton.hidden = true;
       }

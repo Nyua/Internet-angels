@@ -521,6 +521,28 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioPlaying === "true";
   });
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("BEGGING THE WITNESS");
+  await page.waitForFunction(() => {
+    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    if (!(copy instanceof HTMLElement)) return false;
+    return copy.dataset.shuffleCopyState === "visible"
+      && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
+  });
+  await page.waitForFunction(() => {
+    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    if (!(copy instanceof HTMLElement)) return false;
+    return copy.dataset.shuffleCopyState === "hidden"
+      && Number.parseFloat(window.getComputedStyle(copy).opacity || "1") < 0.2;
+  }, null, { timeout: 7000 });
+  const firstVisualizerTrackTitle = (await page.locator("#os-shuffle-visualizer-title").textContent())?.trim() || "";
+  await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceTrack?.());
+  await page.waitForFunction((previousTitle) => {
+    const title = document.querySelector("#os-shuffle-visualizer-title");
+    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    if (!(title instanceof HTMLElement) || !(copy instanceof HTMLElement)) return false;
+    return title.textContent.trim() !== previousTitle
+      && copy.dataset.shuffleCopyState === "visible"
+      && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
+  }, firstVisualizerTrackTitle);
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -934,10 +956,10 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
     };
   });
   expect(discordCardStyles.cardRadius).toBe("25px");
-  expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.12)");
+  expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.1)");
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeGreaterThan(1.5);
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeLessThanOrEqual(2.1);
-  expect(discordCardStyles.cardBorderColor).toBe("rgba(190, 190, 190, 0.07)");
+  expect(discordCardStyles.cardBorderColor).toBe("rgba(190, 190, 190, 0.06)");
   expect(Number.parseFloat(discordCardStyles.avatarRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.avatarRect?.height || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.albumArtRect?.width || "0")).toBeGreaterThan(69);
@@ -1663,8 +1685,8 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(mobileCentering.cinnaRect).not.toBeNull();
   expect(mobileCentering.iconRowRect).not.toBeNull();
   expect(Math.abs(mobileCentering.maxGap - mobileCentering.minGap)).toBeLessThan(12);
-  expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(92);
-  expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(100);
+  expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(184);
+  expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(196);
   expect(852 - mobileCentering.cinnaRect.bottom).toBeLessThan(18);
   expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(140);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);

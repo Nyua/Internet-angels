@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260331-josie-130" />
+    <link rel="stylesheet" href="/josie.css?v=20260331-josie-133" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -208,7 +208,7 @@
               data-shuffle-surface
               aria-label="Audio visualizer"
             >
-              <div id="os-shuffle-visualizer-copy" class="os-shuffle-visualizer-copy">
+              <div id="os-shuffle-visualizer-copy" class="os-shuffle-visualizer-copy" data-shuffle-copy data-shuffle-copy-state="visible">
                 <p id="os-shuffle-visualizer-title" class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
                 <p id="os-shuffle-visualizer-artist" class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
               </div>
@@ -238,7 +238,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260331-josie-130"></script>
+    <script src="/josie.client.js?v=20260331-josie-133"></script>
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
