@@ -729,6 +729,14 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   background: var(--page-bg);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.os-stage::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .os-ambient-backdrop {

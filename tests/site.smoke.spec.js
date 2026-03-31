@@ -26,50 +26,61 @@ const SPOTIFY_PREVIEW_AUDIO_BUFFER = createSilentWavBuffer();
 async function stubSpotifyIframeApi(page) {
   await page.addInitScript(() => {
     window.__spotifyEmbedControllers = [];
-    window.__spotifyEmbedControllerMode = { hangNext: false };
+    window.__spotifyEmbedControllerMode = { hangNext: false, delayNextMs: 0 };
     const createController = (target, options, callback) => {
       if (window.__spotifyEmbedControllerMode?.hangNext) {
         window.__spotifyEmbedControllerMode.hangNext = false;
         window.__spotifyEmbedControllers.push({ controller: null, options, hung: true });
         return;
       }
-      const listeners = new Map();
-      if (target instanceof HTMLElement) {
-        target.innerHTML = "";
-        const iframe = document.createElement("iframe");
-        iframe.className = "lastfm-track-panel-spotify-embed";
-        iframe.src = "about:blank";
-        iframe.title = "Stub Spotify embed";
-        iframe.setAttribute("aria-hidden", "true");
-        target.appendChild(iframe);
+      const delayMs = Math.max(0, Number(window.__spotifyEmbedControllerMode?.delayNextMs) || 0);
+      if (delayMs > 0) {
+        window.__spotifyEmbedControllerMode.delayNextMs = 0;
       }
-      const emit = (eventName, payload) => {
-        const handlers = listeners.get(eventName) || [];
-        handlers.forEach((handler) => {
-          try {
-            handler(payload);
-          } catch {
-          }
-        });
-      };
-      const controller = {
-        addListener(eventName, handler) {
+      const realizeController = () => {
+        const listeners = new Map();
+        if (target instanceof HTMLElement) {
+          target.innerHTML = "";
+          const iframe = document.createElement("iframe");
+          iframe.className = "lastfm-track-panel-spotify-embed";
+          iframe.src = "about:blank";
+          iframe.title = "Stub Spotify embed";
+          iframe.setAttribute("aria-hidden", "true");
+          target.appendChild(iframe);
+        }
+        const emit = (eventName, payload) => {
           const handlers = listeners.get(eventName) || [];
-          handlers.push(handler);
-          listeners.set(eventName, handlers);
-        },
-        pause() {
-          emit("playback_update", { data: { isPaused: true } });
-        },
-        destroy() {
-          if (target instanceof HTMLElement) {
-            target.innerHTML = "";
-          }
-        },
-        __emit: emit
+          handlers.forEach((handler) => {
+            try {
+              handler(payload);
+            } catch {
+            }
+          });
+        };
+        const controller = {
+          addListener(eventName, handler) {
+            const handlers = listeners.get(eventName) || [];
+            handlers.push(handler);
+            listeners.set(eventName, handlers);
+          },
+          pause() {
+            emit("playback_update", { data: { isPaused: true } });
+          },
+          destroy() {
+            if (target instanceof HTMLElement) {
+              target.innerHTML = "";
+            }
+          },
+          __emit: emit
+        };
+        window.__spotifyEmbedControllers.push({ controller, options, delayed: delayMs > 0 });
+        callback?.(controller);
       };
-      window.__spotifyEmbedControllers.push({ controller, options });
-      callback?.(controller);
+      if (delayMs > 0) {
+        window.setTimeout(realizeController, delayMs);
+        return;
+      }
+      realizeController();
     };
     window.__internetAngelSpotifyIframeApi = { createController };
     window.__setSpotifyEmbedControllerMode = (nextMode = {}) => {
@@ -473,6 +484,15 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
     timeout: 30_000
   });
+  const stageScrollbarState = await page.locator(".os-stage").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      scrollbarWidth: styles.getPropertyValue("scrollbar-width").trim(),
+      overflowY: styles.overflowY
+    };
+  });
+  expect(stageScrollbarState.scrollbarWidth).toBe("none");
+  expect(stageScrollbarState.overflowY).toBe("auto");
 
   await clearInteractionSfxLog(page);
   await page.locator(".steam-sidebar-link").first().hover();
@@ -2199,7 +2219,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   });
   await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(2);
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
-  await page.evaluate(() => window.__setSpotifyEmbedControllerMode?.({ hangNext: true }));
+  await page.evaluate(() => window.__setSpotifyEmbedControllerMode?.({ delayNextMs: 2400 }));
   await page.locator(".lastfm-track-panel-related-button").first().click();
   await page.waitForFunction(() => {
     const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
@@ -2211,6 +2231,20 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       && nextWindow instanceof HTMLElement
       && title instanceof HTMLElement
       && title.textContent.includes("One Time");
+  });
+  await page.waitForTimeout(1_600);
+  const midMorphState = await page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"]').evaluate((scene) => {
+    const currentTitle = scene.querySelector('[data-lastfm-track-panel-scene-layer="current"] .lastfm-track-panel-title');
+    return {
+      phase: scene.getAttribute("data-panel-scene-phase"),
+      spin: scene.getAttribute("data-panel-scene-spin"),
+      title: currentTitle instanceof HTMLElement ? currentTitle.textContent.trim() : ""
+    };
+  });
+  expect(midMorphState).toEqual({
+    phase: "loading",
+    spin: "idle",
+    title: "One Time"
   });
   await expect(page.locator('[data-lastfm-track-panel-scene-layer="next"] .lastfm-track-panel-window')).toHaveCount(1);
   await expect(page.locator('[data-lastfm-track-panel-scene-layer="next"] .lastfm-track-panel-title')).toContainText("Talk");

@@ -5941,18 +5941,47 @@
         scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_SETTLE_MS + 48);
     }
-    async function waitForLastFmPanelAfterRender(work) {
+    async function waitForLastFmPanelAfterRender(work, options = {}) {
       let timeoutId = 0;
+      let activeCheckTimer = 0;
+      const hasTimeoutOverride = Object.prototype.hasOwnProperty.call(options, "timeoutMs");
+      const timeoutMs = hasTimeoutOverride
+        ? Math.max(0, Number(options?.timeoutMs) || 0)
+        : LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS;
+      const isStillActive = typeof options?.isStillActive === "function" ? options.isStillActive : null;
       try {
-        await Promise.race([
-          Promise.resolve(work).catch(() => {}),
-          new Promise((resolve) => {
-            timeoutId = window.setTimeout(resolve, LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS);
-          })
-        ]);
+        const pending = [
+          Promise.resolve(work).catch(() => {}).then(() => true)
+        ];
+        if (timeoutMs > 0) {
+          pending.push(new Promise((resolve) => {
+            timeoutId = window.setTimeout(() => resolve(false), timeoutMs);
+          }));
+        }
+        if (isStillActive) {
+          pending.push(new Promise((resolve) => {
+            if (!isStillActive()) {
+              resolve(false);
+              return;
+            }
+            activeCheckTimer = window.setInterval(() => {
+              if (!isStillActive()) {
+                if (activeCheckTimer) {
+                  window.clearInterval(activeCheckTimer);
+                  activeCheckTimer = 0;
+                }
+                resolve(false);
+              }
+            }, 50);
+          }));
+        }
+        return Boolean(await Promise.race(pending));
       } finally {
         if (timeoutId) {
           window.clearTimeout(timeoutId);
+        }
+        if (activeCheckTimer) {
+          window.clearInterval(activeCheckTimer);
         }
       }
     }
@@ -6357,25 +6386,21 @@
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
         const contentMarkup = definition.renderContent(loadState.payload);
         if (morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)) {
-          const runtime = getLastFmTrackPanelSceneRuntime(morphScene);
-          if (runtime?.morphFallbackTimer) {
-            window.clearTimeout(runtime.morphFallbackTimer);
-            runtime.morphFallbackTimer = 0;
-          }
           setLastFmTrackPanelSceneMorphNextMarkup(morphScene, contentMarkup);
-          await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
+          const afterRenderFinished = await waitForLastFmPanelAfterRender(
+            definition.afterRender?.(loadState.payload, loadState.cacheKey),
+            {
+              timeoutMs: 0,
+              isStillActive: () => isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)
+            }
+          );
+          if (!afterRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           const morphFinished = await finishLastFmTrackPanelSceneMorph(morphScene, {
             nonce: morphNonce,
             panelType: definition.panelType
           });
-          if (!morphFinished) {
-            updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
-              panelType: definition.panelType,
-              loading: true
-            });
-            settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
-          }
+          if (!morphFinished) return;
         } else {
           updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
             panelType: definition.panelType,
