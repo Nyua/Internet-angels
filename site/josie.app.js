@@ -5701,10 +5701,6 @@
               <div class="lastfm-track-panel-scene-layer lastfm-track-panel-scene-layer--next" data-lastfm-track-panel-scene-layer="next" aria-hidden="true"></div>
               <div class="lastfm-track-panel-scene-veil" data-lastfm-track-panel-scene-veil aria-hidden="true">
                 <div class="lastfm-track-panel-scene-veil-wash"></div>
-                <div class="lastfm-track-panel-scene-veil-copy">
-                  <span class="lastfm-track-panel-scene-veil-kicker">Loading next panel</span>
-                  <span class="lastfm-track-panel-scene-veil-status">Settling the next view...</span>
-                </div>
               </div>
             </div>
           </div>
