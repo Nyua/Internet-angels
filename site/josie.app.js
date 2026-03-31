@@ -4296,8 +4296,13 @@
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
+    const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
     const LASTFM_PANEL_SCENE_LOADING_SPIN_MS = 1840;
     const LASTFM_PANEL_SCENE_HUNG_SPIN_MS = 4200;
+    const LASTFM_PANEL_MORPH_VEIL_FADE_MS = 120;
+    const LASTFM_PANEL_MORPH_MIN_HOLD_MS = 180;
+    const LASTFM_PANEL_MORPH_CONTENT_MS = 280;
+    const LASTFM_PANEL_MORPH_SIZE_MS = 320;
     const LASTFM_PANEL_SCENE_HUNG_AFTER_SPINS = 5;
     const LASTFM_PANEL_SCENE_EXPLOSION_AFTER_HUNG_SPINS = 1;
     const LASTFM_PANEL_SCENE_EXPLOSION_OVERLAY_MS = 1400;
@@ -4989,13 +4994,26 @@
     function getTrackPreviewPlayer() {
       const currentScene = getLastFmTrackPanelCurrentScene();
       if (!(currentScene instanceof HTMLElement)) return null;
-      const player = currentScene.querySelector("[data-track-preview-player]");
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
+      const player = currentLayer instanceof HTMLElement
+        ? currentLayer.querySelector("[data-track-preview-player]")
+        : currentScene.querySelector("[data-track-preview-player]");
       return player instanceof HTMLElement ? player : null;
     }
     function getSpotifyEmbedTarget() {
       const currentScene = getLastFmTrackPanelCurrentScene();
       if (!(currentScene instanceof HTMLElement)) return null;
-      const target = currentScene.querySelector("[data-spotify-track-embed-target]");
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(currentScene);
+      if (nextLayer instanceof HTMLElement && ["loading", "morphing"].includes(currentScene.dataset.panelScenePhase || "")) {
+        const nextTarget = nextLayer.querySelector("[data-spotify-track-embed-target]");
+        if (nextTarget instanceof HTMLElement) {
+          return nextTarget;
+        }
+      }
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
+      const target = currentLayer instanceof HTMLElement
+        ? currentLayer.querySelector("[data-spotify-track-embed-target]")
+        : currentScene.querySelector("[data-spotify-track-embed-target]");
       return target instanceof HTMLElement ? target : null;
     }
     function queueTrackPreviewUiSync() {
@@ -5309,12 +5327,14 @@
     function getTrackPanelFocusableElements() {
       const currentScene = getLastFmTrackPanelCurrentScene();
       if (!(currentScene instanceof HTMLElement)) return [];
-      return Array.from(currentScene.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], iframe, [tabindex]:not([tabindex="-1"])')).filter((element) => element instanceof HTMLElement);
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
+      const scope = currentLayer instanceof HTMLElement ? currentLayer : currentScene;
+      return Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], iframe, [tabindex]:not([tabindex="-1"])')).filter((element) => element instanceof HTMLElement);
     }
     function applyLastFmTrackPanelFit() {
       const currentScene = getLastFmTrackPanelCurrentScene();
       if (!(currentScene instanceof HTMLElement)) return;
-      const panelWindow = currentScene.querySelector(".lastfm-track-panel-window");
+      const panelWindow = getLastFmTrackPanelSceneLayerWindow(currentScene, "current");
       if (!(panelWindow instanceof HTMLElement)) return;
       delete panelWindow.dataset.panelDensity;
       panelWindow.getBoundingClientRect();
@@ -5352,14 +5372,51 @@
       const rotator = scene.querySelector("[data-lastfm-track-panel-scene-rotator]");
       return rotator instanceof HTMLElement ? rotator : null;
     }
+    function getLastFmTrackPanelSceneStack(scene) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const stack = scene.querySelector("[data-lastfm-track-panel-scene-stack]");
+      return stack instanceof HTMLElement ? stack : null;
+    }
     function getLastFmTrackPanelSceneFront(scene) {
       if (!(scene instanceof HTMLElement)) return null;
       const face = scene.querySelector('[data-lastfm-track-panel-scene-face="front"]');
       return face instanceof HTMLElement ? face : null;
     }
+    function getLastFmTrackPanelSceneLayer(scene, name) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const layer = scene.querySelector(`[data-lastfm-track-panel-scene-layer="${name}"]`);
+      return layer instanceof HTMLElement ? layer : null;
+    }
+    function getLastFmTrackPanelSceneCurrentLayer(scene) {
+      return getLastFmTrackPanelSceneLayer(scene, "current");
+    }
+    function getLastFmTrackPanelSceneNextLayer(scene) {
+      return getLastFmTrackPanelSceneLayer(scene, "next");
+    }
+    function getLastFmTrackPanelSceneLayerWindow(scene, layerName = "current") {
+      const layer = getLastFmTrackPanelSceneLayer(scene, layerName);
+      if (!(layer instanceof HTMLElement)) return null;
+      const panelWindow = layer.querySelector(".lastfm-track-panel-window");
+      return panelWindow instanceof HTMLElement ? panelWindow : null;
+    }
+    function setLastFmTrackPanelScenePhase(scene, phase = "stable") {
+      if (!(scene instanceof HTMLElement)) return;
+      scene.dataset.panelScenePhase = firstNonEmpty(phase, "stable");
+    }
     function getLastFmTrackPanelSceneExplosionImage(scene) {
       if (!(scene instanceof HTMLElement)) return null;
       const image = scene.querySelector("[data-lastfm-track-panel-scene-explosion-image]");
+      return image instanceof HTMLImageElement ? image : null;
+    }
+    function getLastFmTrackPanelExplosionOverlay() {
+      if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return null;
+      const overlay = lastFmTrackPanelRoot.querySelector("[data-lastfm-track-panel-explosion-overlay]");
+      return overlay instanceof HTMLElement ? overlay : null;
+    }
+    function getLastFmTrackPanelExplosionOverlayImage() {
+      const overlay = getLastFmTrackPanelExplosionOverlay();
+      if (!(overlay instanceof HTMLElement)) return null;
+      const image = overlay.querySelector("[data-lastfm-track-panel-explosion-overlay-image]");
       return image instanceof HTMLImageElement ? image : null;
     }
     function getLastFmTrackPanelSceneRuntime(scene) {
@@ -5368,9 +5425,15 @@
       if (runtime) return runtime;
       runtime = {
         phase: "idle",
+        introTimer: 0,
         hungTimer: 0,
         explosionTimer: 0,
         explosionHideTimer: 0,
+        morphFallbackTimer: 0,
+        morphHoldTimer: 0,
+        morphCompleteTimer: 0,
+        morphNonce: 0,
+        morphStartedAt: 0,
         explosionAudio: null,
         explosionNonce: 0
       };
@@ -5388,6 +5451,7 @@
         return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
       };
       return {
+        loadingIntroMs: readPositiveNumber(debug.loadingIntroMs, LASTFM_PANEL_SCENE_LOADING_INTRO_MS),
         loadingSpinMs: readPositiveNumber(debug.loadingSpinMs, LASTFM_PANEL_SCENE_LOADING_SPIN_MS),
         hungSpinMs: readPositiveNumber(debug.hungSpinMs, LASTFM_PANEL_SCENE_HUNG_SPIN_MS),
         hungAfterSpins: readPositiveInteger(debug.hungAfterSpins, LASTFM_PANEL_SCENE_HUNG_AFTER_SPINS),
@@ -5399,12 +5463,17 @@
     function applyLastFmTrackPanelSceneTiming(scene) {
       if (!(scene instanceof HTMLElement)) return;
       const timing = getLastFmTrackPanelSceneDebugConfig();
+      scene.style.setProperty("--lastfm-track-panel-scene-loading-intro-ms", `${timing.loadingIntroMs}ms`);
       scene.style.setProperty("--lastfm-track-panel-scene-loading-spin-ms", `${timing.loadingSpinMs}ms`);
       scene.style.setProperty("--lastfm-track-panel-scene-hung-spin-ms", `${timing.hungSpinMs}ms`);
     }
     function clearLastFmTrackPanelSceneEscalationTimers(scene) {
       const runtime = getLastFmTrackPanelSceneRuntime(scene);
       if (!runtime) return;
+      if (runtime.introTimer) {
+        window.clearTimeout(runtime.introTimer);
+        runtime.introTimer = 0;
+      }
       if (runtime.hungTimer) {
         window.clearTimeout(runtime.hungTimer);
         runtime.hungTimer = 0;
@@ -5417,6 +5486,18 @@
         window.clearTimeout(runtime.explosionHideTimer);
         runtime.explosionHideTimer = 0;
       }
+      if (runtime.morphFallbackTimer) {
+        window.clearTimeout(runtime.morphFallbackTimer);
+        runtime.morphFallbackTimer = 0;
+      }
+      if (runtime.morphHoldTimer) {
+        window.clearTimeout(runtime.morphHoldTimer);
+        runtime.morphHoldTimer = 0;
+      }
+      if (runtime.morphCompleteTimer) {
+        window.clearTimeout(runtime.morphCompleteTimer);
+        runtime.morphCompleteTimer = 0;
+      }
     }
     function stopLastFmTrackPanelSceneExplosion(scene, { resetImage = false } = {}) {
       if (!(scene instanceof HTMLElement)) return;
@@ -5427,9 +5508,18 @@
         runtime.explosionHideTimer = 0;
       }
       scene.dataset.panelSceneExplosionState = "idle";
-      const explosionImage = getLastFmTrackPanelSceneExplosionImage(scene);
-      if (resetImage && explosionImage instanceof HTMLImageElement) {
-        explosionImage.removeAttribute("src");
+      if (lastFmTrackPanelRoot instanceof HTMLElement) {
+        lastFmTrackPanelRoot.dataset.panelExplosionState = "idle";
+      }
+      const explosionImage = getLastFmTrackPanelExplosionOverlayImage();
+      if (resetImage) {
+        if (explosionImage instanceof HTMLImageElement) {
+          explosionImage.removeAttribute("src");
+        }
+        const sceneExplosionImage = getLastFmTrackPanelSceneExplosionImage(scene);
+        if (sceneExplosionImage instanceof HTMLImageElement) {
+          sceneExplosionImage.removeAttribute("src");
+        }
       }
       const explosionAudio = runtime.explosionAudio;
       if (explosionAudio instanceof HTMLAudioElement) {
@@ -5443,6 +5533,31 @@
       if (runtime.phase === "exploding") {
         runtime.phase = "hung";
       }
+    }
+    function finalizeLastFmTrackPanelSceneExplosion(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (runtime?.explosionHideTimer) {
+        window.clearTimeout(runtime.explosionHideTimer);
+        runtime.explosionHideTimer = 0;
+      }
+      if (runtime) {
+        runtime.phase = "idle";
+      }
+      if (scene.isConnected) {
+        scene.dataset.panelSceneExplosionState = "complete";
+      }
+      if (Array.isArray(window.__internetAngelLastFmPanelExplosionLog)) {
+        window.__internetAngelLastFmPanelExplosionLog.push({
+          timestamp: Date.now(),
+          panelType: scene.dataset.panelType || "",
+          source: "lastfmPanelLoadingExplosionClose"
+        });
+        if (window.__internetAngelLastFmPanelExplosionLog.length > 20) {
+          window.__internetAngelLastFmPanelExplosionLog.splice(0, window.__internetAngelLastFmPanelExplosionLog.length - 20);
+        }
+      }
+      hideLastFmTrackDetails("silent");
     }
     function teardownLastFmTrackPanelScene(scene) {
       if (!(scene instanceof HTMLElement)) return;
@@ -5460,7 +5575,10 @@
       runtime.phase = "exploding";
       scene.dataset.panelSceneHangState = "hung";
       scene.dataset.panelSceneExplosionState = "active";
-      const explosionImage = getLastFmTrackPanelSceneExplosionImage(scene);
+      if (lastFmTrackPanelRoot instanceof HTMLElement) {
+        lastFmTrackPanelRoot.dataset.panelExplosionState = "active";
+      }
+      const explosionImage = getLastFmTrackPanelExplosionOverlayImage();
       if (explosionImage instanceof HTMLImageElement) {
         runtime.explosionNonce += 1;
         explosionImage.src = `${LASTFM_PANEL_SCENE_EXPLOSION_GIF_URL}?scene-explosion=${runtime.explosionNonce}`;
@@ -5484,7 +5602,7 @@
         try {
           const explosionAudio = new Audio(LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL);
           explosionAudio.preload = "auto";
-          explosionAudio.volume = 0.72;
+          explosionAudio.volume = 0.36;
           runtime.explosionAudio = explosionAudio;
           const playPromise = explosionAudio.play();
           if (playPromise && typeof playPromise.catch === "function") {
@@ -5494,15 +5612,7 @@
         }
       }
       runtime.explosionHideTimer = window.setTimeout(() => {
-        runtime.explosionHideTimer = 0;
-        if (!(scene.isConnected && scene.dataset.panelSceneLoading === "true")) return;
-        scene.dataset.panelSceneExplosionState = "complete";
-        if (explosionImage instanceof HTMLImageElement) {
-          explosionImage.removeAttribute("src");
-        }
-        if (runtime.phase === "exploding") {
-          runtime.phase = "hung";
-        }
+        finalizeLastFmTrackPanelSceneExplosion(scene);
       }, timing.explosionOverlayMs);
     }
     function syncLastFmTrackPanelSceneEscalation(scene) {
@@ -5510,6 +5620,14 @@
       applyLastFmTrackPanelSceneTiming(scene);
       const runtime = getLastFmTrackPanelSceneRuntime(scene);
       if (!runtime) return;
+      if (runtime.phase === "exploding") {
+        scene.dataset.panelSceneHangState = "hung";
+        scene.dataset.panelSceneExplosionState = "active";
+        if (lastFmTrackPanelRoot instanceof HTMLElement) {
+          lastFmTrackPanelRoot.dataset.panelExplosionState = "active";
+        }
+        return;
+      }
       if (scene.dataset.panelSceneLoading !== "true") {
         clearLastFmTrackPanelSceneEscalationTimers(scene);
         stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
@@ -5519,6 +5637,22 @@
         return;
       }
       const sceneSpin = scene.dataset.panelSceneSpin || "idle";
+      if (sceneSpin === "loading-intro") {
+        if (runtime.phase === "loading-intro") return;
+        clearLastFmTrackPanelSceneEscalationTimers(scene);
+        stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
+        runtime.phase = "loading-intro";
+        scene.dataset.panelSceneHangState = "loading";
+        scene.dataset.panelSceneExplosionState = "idle";
+        const timing = getLastFmTrackPanelSceneDebugConfig();
+        runtime.introTimer = window.setTimeout(() => {
+          runtime.introTimer = 0;
+          if (!(scene.isConnected && scene.dataset.panelSceneLoading === "true" && scene.dataset.panelSceneSpin === "loading-intro")) return;
+          scene.dataset.panelSceneSpin = "loading";
+          syncLastFmTrackPanelSceneEscalation(scene);
+        }, timing.loadingIntroMs);
+        return;
+      }
       if (sceneSpin === "loading") {
         if (runtime.phase === "loading") return;
         clearLastFmTrackPanelSceneEscalationTimers(scene);
@@ -5560,7 +5694,19 @@
         </div>
         <div class="lastfm-track-panel-scene-rotator" data-lastfm-track-panel-scene-rotator>
           <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--front" data-lastfm-track-panel-scene-face="front">
-            ${markup}
+            <div class="lastfm-track-panel-scene-stack" data-lastfm-track-panel-scene-stack>
+              <div class="lastfm-track-panel-scene-layer lastfm-track-panel-scene-layer--current" data-lastfm-track-panel-scene-layer="current">
+                ${markup}
+              </div>
+              <div class="lastfm-track-panel-scene-layer lastfm-track-panel-scene-layer--next" data-lastfm-track-panel-scene-layer="next" aria-hidden="true"></div>
+              <div class="lastfm-track-panel-scene-veil" data-lastfm-track-panel-scene-veil aria-hidden="true">
+                <div class="lastfm-track-panel-scene-veil-wash"></div>
+                <div class="lastfm-track-panel-scene-veil-copy">
+                  <span class="lastfm-track-panel-scene-veil-kicker">Loading next panel</span>
+                  <span class="lastfm-track-panel-scene-veil-status">Settling the next view...</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--back" data-lastfm-track-panel-scene-face="back" aria-hidden="true">
             <div class="lastfm-track-panel-scene-back-card" aria-hidden="true">
@@ -5589,6 +5735,7 @@
       scene.dataset.panelSceneLoading = options?.loading ? "true" : "false";
       scene.dataset.panelSceneHangState = options?.loading ? "loading" : "idle";
       scene.dataset.panelSceneExplosionState = "idle";
+      scene.dataset.panelScenePhase = "stable";
       const panelType = firstNonEmpty(options?.panelType, "");
       if (panelType) {
         scene.dataset.panelType = panelType;
@@ -5609,6 +5756,154 @@
       }
       syncLastFmTrackPanelSceneEscalation(scene);
     }
+    function lockLastFmTrackPanelSceneHeight(scene, height) {
+      const stack = getLastFmTrackPanelSceneStack(scene);
+      if (!(stack instanceof HTMLElement)) return;
+      if (!(Number.isFinite(height) && height > 0)) {
+        stack.dataset.panelSceneHeightLocked = "false";
+        stack.style.removeProperty("height");
+        return;
+      }
+      stack.dataset.panelSceneHeightLocked = "true";
+      stack.style.height = `${height}px`;
+    }
+    function clearLastFmTrackPanelSceneMorph(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return;
+      if (runtime.morphFallbackTimer) {
+        window.clearTimeout(runtime.morphFallbackTimer);
+        runtime.morphFallbackTimer = 0;
+      }
+      if (runtime.morphHoldTimer) {
+        window.clearTimeout(runtime.morphHoldTimer);
+        runtime.morphHoldTimer = 0;
+      }
+      if (runtime.morphCompleteTimer) {
+        window.clearTimeout(runtime.morphCompleteTimer);
+        runtime.morphCompleteTimer = 0;
+      }
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(scene);
+      if (nextLayer instanceof HTMLElement) {
+        nextLayer.innerHTML = "";
+      }
+      lockLastFmTrackPanelSceneHeight(scene, NaN);
+      setLastFmTrackPanelScenePhase(scene, "stable");
+    }
+    function isLastFmTrackPanelSceneMorphActive(scene, nonce) {
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return false;
+      return scene.isConnected
+        && scene.dataset.panelScenePhase === "loading"
+        && runtime.morphNonce === nonce;
+    }
+    function prepareLastFmTrackPanelSceneMorph(scene, skeletonMarkup, options = {}) {
+      if (!(scene instanceof HTMLElement)) return 0;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(scene);
+      const currentWindow = getLastFmTrackPanelSceneLayerWindow(scene, "current");
+      if (!(runtime && nextLayer instanceof HTMLElement && currentWindow instanceof HTMLElement)) {
+        return 0;
+      }
+      runtime.morphNonce += 1;
+      runtime.morphStartedAt = Date.now();
+      clearLastFmTrackPanelSceneMorph(scene);
+      scene.dataset.panelSceneSpin = "idle";
+      syncLastFmTrackPanelSceneChrome(scene, { loading: false });
+      nextLayer.innerHTML = skeletonMarkup;
+      setLastFmTrackPanelScenePhase(scene, "loading");
+      lockLastFmTrackPanelSceneHeight(scene, currentWindow.getBoundingClientRect().height);
+      hydrateLastFmTrackPanelScene(scene);
+      const timing = getLastFmTrackPanelSceneDebugConfig();
+      const fallbackMs = timing.loadingSpinMs * timing.hungAfterSpins;
+      const fallbackMarkup = skeletonMarkup;
+      const morphNonce = runtime.morphNonce;
+      runtime.morphFallbackTimer = window.setTimeout(() => {
+        runtime.morphFallbackTimer = 0;
+        if (!isLastFmTrackPanelSceneMorphActive(scene, morphNonce)) return;
+        clearLastFmTrackPanelSceneMorph(scene);
+        setLastFmTrackPanelSceneMarkup(fallbackMarkup, {
+          animate: false,
+          panelType: firstNonEmpty(options?.panelType, scene.dataset.panelType || ""),
+          loading: true
+        });
+        const fallbackScene = getLastFmTrackPanelCurrentScene();
+        if (fallbackScene instanceof HTMLElement) {
+          fallbackScene.dataset.panelSceneSpin = "loading-intro";
+          syncLastFmTrackPanelSceneEscalation(fallbackScene);
+        }
+      }, fallbackMs);
+      return morphNonce;
+    }
+    function setLastFmTrackPanelSceneMorphNextMarkup(scene, markup) {
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(scene);
+      if (!(nextLayer instanceof HTMLElement)) return null;
+      nextLayer.innerHTML = markup;
+      hydrateLastFmTrackPanelScene(scene);
+      return getLastFmTrackPanelSceneLayerWindow(scene, "next");
+    }
+    async function waitForLastFmTrackPanelSceneMorphHold(scene, nonce) {
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return false;
+      const elapsed = Date.now() - runtime.morphStartedAt;
+      const remaining = Math.max(0, LASTFM_PANEL_MORPH_MIN_HOLD_MS - elapsed);
+      if (!remaining) {
+        return isLastFmTrackPanelSceneMorphActive(scene, nonce);
+      }
+      await new Promise((resolve) => {
+        runtime.morphHoldTimer = window.setTimeout(() => {
+          runtime.morphHoldTimer = 0;
+          resolve();
+        }, remaining);
+      });
+      return isLastFmTrackPanelSceneMorphActive(scene, nonce);
+    }
+    async function finishLastFmTrackPanelSceneMorph(scene, options = {}) {
+      if (!(scene instanceof HTMLElement)) return false;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      const stack = getLastFmTrackPanelSceneStack(scene);
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(scene);
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(scene);
+      const currentWindow = getLastFmTrackPanelSceneLayerWindow(scene, "current");
+      const nextWindow = getLastFmTrackPanelSceneLayerWindow(scene, "next");
+      const morphNonce = Number(options?.nonce || 0);
+      if (!(runtime && stack instanceof HTMLElement && currentLayer instanceof HTMLElement && nextLayer instanceof HTMLElement && currentWindow instanceof HTMLElement && nextWindow instanceof HTMLElement)) {
+        return false;
+      }
+      if (runtime.morphFallbackTimer) {
+        window.clearTimeout(runtime.morphFallbackTimer);
+        runtime.morphFallbackTimer = 0;
+      }
+      const holdFinished = await waitForLastFmTrackPanelSceneMorphHold(scene, morphNonce);
+      if (!holdFinished) return false;
+      const currentHeight = currentWindow.getBoundingClientRect().height || stack.getBoundingClientRect().height;
+      const nextHeight = nextWindow.getBoundingClientRect().height || currentHeight;
+      lockLastFmTrackPanelSceneHeight(scene, currentHeight);
+      setLastFmTrackPanelScenePhase(scene, "morphing");
+      if (firstNonEmpty(options?.panelType, "")) {
+        scene.dataset.panelType = firstNonEmpty(options?.panelType, scene.dataset.panelType || "");
+      }
+      requestAnimationFrame(() => {
+        if (!(scene.isConnected && stack.isConnected)) return;
+        lockLastFmTrackPanelSceneHeight(scene, nextHeight);
+      });
+      await new Promise((resolve) => {
+        runtime.morphCompleteTimer = window.setTimeout(() => {
+          runtime.morphCompleteTimer = 0;
+          resolve();
+        }, Math.max(LASTFM_PANEL_MORPH_CONTENT_MS, LASTFM_PANEL_MORPH_SIZE_MS) + 48);
+      });
+      if (!(scene.isConnected && currentLayer.isConnected && nextLayer.isConnected)) return false;
+      currentLayer.replaceChildren(...Array.from(nextLayer.childNodes));
+      nextLayer.innerHTML = "";
+      clearLastFmTrackPanelSceneMorph(scene);
+      scene.dataset.panelSceneLoading = "false";
+      scene.dataset.panelSceneSpin = "idle";
+      syncLastFmTrackPanelSceneEscalation(scene);
+      setLastFmTrackPanelScrollTop();
+      scheduleLastFmTrackPanelFit();
+      return true;
+    }
     function resetLastFmTrackPanelSceneTransform(scene) {
       const rotator = getLastFmTrackPanelSceneRotator(scene);
       if (!(rotator instanceof HTMLElement)) return;
@@ -5624,7 +5919,7 @@
         syncLastFmTrackPanelSceneEscalation(scene);
         return;
       }
-      if (!["loading", "hung"].includes(scene.dataset.panelSceneSpin || "")) {
+      if (!["loading-intro", "loading", "hung"].includes(scene.dataset.panelSceneSpin || "")) {
         scene.dataset.panelSceneSpin = scene.dataset.panelSceneSpin === "handoff-in" ? "handoff-in" : "idle";
         if (scene.dataset.panelSceneSpin === "idle") {
           resetLastFmTrackPanelSceneTransform(scene);
@@ -5676,7 +5971,7 @@
     }
     function setLastFmTrackPanelScrollTop() {
       const currentScene = getLastFmTrackPanelCurrentScene();
-      const panelWindow = currentScene?.querySelector(".lastfm-track-panel-window");
+      const panelWindow = currentScene instanceof HTMLElement ? getLastFmTrackPanelSceneLayerWindow(currentScene, "current") : null;
       if (panelWindow instanceof HTMLElement) {
         panelWindow.scrollTop = 0;
       }
@@ -5744,14 +6039,14 @@
               teardownLastFmTrackPanelScene(scene);
               scene.remove();
             }
-          });
-          if (incomingScene.isConnected && incomingScene.dataset.panelSceneSpin === "handoff-in") {
-            incomingScene.dataset.panelSceneSpin = incomingScene.dataset.panelSceneLoading === "true" ? "loading" : "idle";
-            syncLastFmTrackPanelSceneEscalation(incomingScene);
-            if (incomingScene.dataset.panelSceneSpin === "idle") {
-              resetLastFmTrackPanelSceneTransform(incomingScene);
-            }
+        });
+        if (incomingScene.isConnected && incomingScene.dataset.panelSceneSpin === "handoff-in") {
+          incomingScene.dataset.panelSceneSpin = incomingScene.dataset.panelSceneLoading === "true" ? "loading-intro" : "idle";
+          syncLastFmTrackPanelSceneEscalation(incomingScene);
+          if (incomingScene.dataset.panelSceneSpin === "idle") {
+            resetLastFmTrackPanelSceneTransform(incomingScene);
           }
+        }
           scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_TRANSITION_MS + 48);
     }
@@ -5765,9 +6060,9 @@
         panelType: firstNonEmpty(options?.panelType, ""),
         loading: Object.prototype.hasOwnProperty.call(options, "loading") ? options.loading : undefined
       });
-      const frontFace = getLastFmTrackPanelSceneFront(currentScene);
-      if (frontFace instanceof HTMLElement) {
-        frontFace.innerHTML = markup;
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
+      if (currentLayer instanceof HTMLElement) {
+        currentLayer.innerHTML = markup;
       } else {
         currentScene.innerHTML = renderLastFmTrackPanelSceneShell(markup, {
           panelType: currentScene.dataset.panelType || "",
@@ -5822,11 +6117,15 @@
       overlay.innerHTML = `
         <div class="lastfm-track-panel-backdrop" data-track-panel-close></div>
         <div class="lastfm-track-panel-shell">
+          <div class="lastfm-track-panel-explosion-overlay" data-lastfm-track-panel-explosion-overlay aria-hidden="true">
+            <img class="lastfm-track-panel-explosion-overlay-image" data-lastfm-track-panel-explosion-overlay-image alt="" />
+          </div>
           <div class="lastfm-track-panel-scene-host" data-lastfm-track-panel-content></div>
         </div>
       `;
       document.body.appendChild(overlay);
       lastFmTrackPanelRoot = overlay;
+      overlay.dataset.panelExplosionState = "idle";
       lastFmTrackPanelContent = overlay.querySelector("[data-lastfm-track-panel-content]");
       overlay.addEventListener("click", (event) => {
         const target = event.target;
@@ -5967,6 +6266,7 @@
       }
       lastFmTrackPanelActiveKey = "";
       lastFmTrackPanelRoot.classList.remove("is-open");
+      lastFmTrackPanelRoot.dataset.panelExplosionState = "idle";
       lastFmTrackPanelRoot.hidden = true;
       lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
       if (lastFmTrackPanelContent instanceof HTMLElement) {
@@ -6020,18 +6320,31 @@
       const panel = ensureLastFmTrackDetailsOverlay();
       if (!(panel instanceof HTMLElement)) return;
       const cacheKey = definition.buildCacheKey(normalizedQuery);
-      const shouldAnimateSceneSwap = panel.classList.contains("is-open") && trigger instanceof HTMLElement && panel.contains(trigger);
+      const shouldUseMorphSwap = panel.classList.contains("is-open") && trigger instanceof HTMLElement && panel.contains(trigger);
       if (trigger instanceof HTMLElement && !panel.contains(trigger)) {
         lastFmTrackPanelOriginTrigger = trigger;
       }
       lastFmTrackPanelActiveKey = cacheKey;
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
-      setLastFmTrackPanelSceneMarkup(definition.renderSkeleton(normalizedQuery), {
-        animate: shouldAnimateSceneSwap,
-        panelType: definition.panelType,
-        loading: true
-      });
+      const skeletonMarkup = definition.renderSkeleton(normalizedQuery);
+      let morphScene = null;
+      let morphNonce = 0;
+      if (shouldUseMorphSwap) {
+        morphScene = getLastFmTrackPanelCurrentScene();
+        if (morphScene instanceof HTMLElement) {
+          morphNonce = prepareLastFmTrackPanelSceneMorph(morphScene, skeletonMarkup, {
+            panelType: definition.panelType
+          });
+        }
+      }
+      if (!morphNonce) {
+        setLastFmTrackPanelSceneMarkup(skeletonMarkup, {
+          animate: false,
+          panelType: definition.panelType,
+          loading: true
+        });
+      }
       if (!panel.classList.contains("is-open")) {
         panel.hidden = false;
         panel.setAttribute("aria-hidden", "false");
@@ -6046,13 +6359,36 @@
       try {
         const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
-        updateLastFmTrackPanelCurrentSceneMarkup(definition.renderContent(loadState.payload), {
-          panelType: definition.panelType,
-          loading: true
-        });
-        await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
-        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
-        settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+        const contentMarkup = definition.renderContent(loadState.payload);
+        if (morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)) {
+          const runtime = getLastFmTrackPanelSceneRuntime(morphScene);
+          if (runtime?.morphFallbackTimer) {
+            window.clearTimeout(runtime.morphFallbackTimer);
+            runtime.morphFallbackTimer = 0;
+          }
+          setLastFmTrackPanelSceneMorphNextMarkup(morphScene, contentMarkup);
+          await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
+          if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
+          const morphFinished = await finishLastFmTrackPanelSceneMorph(morphScene, {
+            nonce: morphNonce,
+            panelType: definition.panelType
+          });
+          if (!morphFinished) {
+            updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
+              panelType: definition.panelType,
+              loading: true
+            });
+            settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+          }
+        } else {
+          updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
+            panelType: definition.panelType,
+            loading: true
+          });
+          await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
+          if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
+          settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+        }
         const nextFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
@@ -6061,11 +6397,25 @@
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
         void destroySpotifyEmbedController({ resumeShuffle: true });
         void stopTrackPreview({ resumeShuffle: true, resetSource: true });
-        updateLastFmTrackPanelCurrentSceneMarkup(definition.renderError(normalizedQuery), {
-          panelType: definition.panelType,
-          loading: false
-        });
-        settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+        const errorMarkup = definition.renderError(normalizedQuery);
+        if (morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)) {
+          const runtime = getLastFmTrackPanelSceneRuntime(morphScene);
+          if (runtime?.morphFallbackTimer) {
+            window.clearTimeout(runtime.morphFallbackTimer);
+            runtime.morphFallbackTimer = 0;
+          }
+          setLastFmTrackPanelSceneMorphNextMarkup(morphScene, errorMarkup);
+          await finishLastFmTrackPanelSceneMorph(morphScene, {
+            nonce: morphNonce,
+            panelType: definition.panelType
+          });
+        } else {
+          updateLastFmTrackPanelCurrentSceneMarkup(errorMarkup, {
+            panelType: definition.panelType,
+            loading: false
+          });
+          settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+        }
       }
     }
     async function showLastFmTrackDetails(query, trigger = null) {
