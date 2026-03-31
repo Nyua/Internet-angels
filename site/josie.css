@@ -936,7 +936,6 @@ body.site-load-playing .os-ambient-backdrop {
 }
 
 .social-link-effect-bloom,
-.social-link-effect-ripple,
 .social-link-effect-sheen {
   position: absolute;
   inset: 0;
@@ -950,15 +949,6 @@ body.site-load-playing .os-ambient-backdrop {
   mix-blend-mode: screen;
   filter: blur(12px);
   transform: scale(0.64);
-}
-
-.social-link-effect-ripple {
-  inset: -18vmax;
-  background:
-    radial-gradient(circle at center, transparent 0 14%, rgba(var(--social-link-effect-secondary-rgb), 0.46) 18%, rgba(var(--social-link-effect-rgb), 0.34) 22%, rgba(var(--social-link-effect-rgb), 0.12) 30%, rgba(var(--social-link-effect-rgb), 0.02) 42%, transparent 54%);
-  mix-blend-mode: screen;
-  filter: blur(4px);
-  transform: scale(0.42);
 }
 
 .social-link-effect-sheen {
@@ -979,10 +969,6 @@ body.site-load-playing .os-ambient-backdrop {
 
 .social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-bloom {
   animation: socialLinkEffectBloom 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
-}
-
-.social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-ripple {
-  animation: socialLinkEffectRipple 380ms cubic-bezier(0.18, 0.88, 0.16, 1) both;
 }
 
 .social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-sheen {
@@ -1012,20 +998,6 @@ body.site-load-playing .os-ambient-backdrop {
   100% {
     opacity: 0;
     transform: scale(1.48);
-  }
-}
-
-@keyframes socialLinkEffectRipple {
-  0% {
-    opacity: 0;
-    transform: scale(0.34);
-  }
-  20% {
-    opacity: 0.88;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.34);
   }
 }
 
@@ -1346,6 +1318,8 @@ body.lastfm-track-panel-open {
   opacity: 1;
   transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
   transform-style: preserve-3d;
+  transform: scale(1);
+  transform-origin: center center;
   --lastfm-track-panel-scene-back-rgb: 255, 84, 114;
 }
 
@@ -1466,7 +1440,11 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-scene[data-panel-scene-spin="loading"] .lastfm-track-panel-scene-rotator {
-  animation: lastfmTrackPanelSceneSpinLoop 920ms linear infinite;
+  animation: lastfmTrackPanelSceneSpinLoop 1840ms linear infinite;
+}
+
+.lastfm-track-panel-scene[data-panel-scene-spin="loading"] {
+  transform: scale(0.5);
 }
 
 .lastfm-track-panel-scene[data-panel-scene-spin="settling"] .lastfm-track-panel-scene-rotator {
