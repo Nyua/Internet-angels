@@ -4294,7 +4294,8 @@
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = SOCIAL_LINK_EFFECT_DURATION_MS;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
-    const LASTFM_PANEL_SCENE_TRANSITION_MS = 240;
+    const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
+    const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     let mobileLinkSelectionTimer = 0;
     let mobileLinkSelectedKey = "";
     let mobileLinkSelectionPhase = "idle";
@@ -4302,6 +4303,8 @@
     let pendingMobileExternalLaunchTimer = 0;
     let pendingMobileExternalPopup = null;
     let socialLinkEffectTimer = 0;
+    let desktopProfilePromptTimer = 0;
+    let lastFmTrackPanelSceneSettleTimer = 0;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
     const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
@@ -4333,6 +4336,11 @@
       window.clearTimeout(socialLinkEffectTimer);
       socialLinkEffectTimer = 0;
     }
+    function clearDesktopProfilePromptTimer() {
+      if (!desktopProfilePromptTimer) return;
+      window.clearTimeout(desktopProfilePromptTimer);
+      desktopProfilePromptTimer = 0;
+    }
     function resetSocialLinkEffect() {
       clearSocialLinkEffectTimer();
       const layer = document.getElementById("social-link-effect-layer");
@@ -4355,6 +4363,23 @@
         layer.dataset.socialLinkEffectState = "idle";
         layer.dataset.socialLinkEffectSite = "";
       }, SOCIAL_LINK_EFFECT_DURATION_MS);
+    }
+    function openExternalPromptDialog(url, trigger = null) {
+      const safeUrl = sanitizeUrl(url);
+      if (!safeUrl) return;
+      const dialog = ensureExternalPrompt();
+      playInteractionSfx("open_soft", "externalConfirmOpen");
+      pendingExternalUrl = safeUrl;
+      lastFocusedTrigger = trigger instanceof HTMLElement ? trigger : null;
+      if (externalPromptUrlEl instanceof HTMLElement) {
+        externalPromptUrlEl.textContent = formatExternalPromptDisplayUrl(safeUrl);
+        externalPromptUrlEl.setAttribute("title", safeUrl);
+      }
+      dialog.hidden = false;
+      dialog.setAttribute("aria-hidden", "false");
+      dialog.classList.add("is-open");
+      const focusTarget = externalPromptCancelButton instanceof HTMLButtonElement ? externalPromptCancelButton : externalPromptAcceptButton;
+      focusTarget?.focus({ preventScroll: true });
     }
     function clearMobileDiscordRevealTimer() {
       if (!mobileDiscordRevealTimer) return;
@@ -4523,41 +4548,21 @@
       }
       return fallback;
     }
-    function launchProfileSidebarExternalWithEffect(url, { trigger = null, target = "_blank" } = {}) {
+    function showDesktopProfilePromptWithEffect(url, trigger = null) {
       const safeUrl = sanitizeUrl(url);
-      if (!safeUrl) return false;
       const triggerElement = trigger instanceof HTMLElement ? trigger : null;
       const siteId = resolveProfileLinkSiteId(triggerElement);
-      if (!siteId) return false;
-      const resolvedTarget = resolveExternalLaunchTarget(triggerElement instanceof HTMLAnchorElement ? triggerElement : null, target || "_blank");
-      let popupWindow = null;
-      if (resolvedTarget === "_blank") {
-        try {
-          popupWindow = window.open("", "_blank");
-          if (popupWindow && "opener" in popupWindow) {
-            popupWindow.opener = null;
-          }
-        } catch {
-          popupWindow = null;
-        }
+      if (!safeUrl || !siteId || isCompactMobileLayout()) return false;
+      clearDesktopProfilePromptTimer();
+      if (externalPromptRoot instanceof HTMLElement) {
+        externalPromptRoot.classList.remove("is-open");
+        externalPromptRoot.hidden = true;
+        externalPromptRoot.setAttribute("aria-hidden", "true");
       }
       playSocialLinkEffect(siteId);
-      window.setTimeout(() => {
-        if (resolvedTarget === "_blank") {
-          let launched = false;
-          if (popupWindow && !popupWindow.closed) {
-            try {
-              popupWindow.location.replace(safeUrl);
-              launched = true;
-            } catch {
-            }
-          }
-          if (!launched) {
-            launchExternal(safeUrl, "_blank");
-          }
-          return;
-        }
-        launchExternal(safeUrl, "_self");
+      desktopProfilePromptTimer = window.setTimeout(() => {
+        desktopProfilePromptTimer = 0;
+        openExternalPromptDialog(safeUrl, triggerElement);
       }, SOCIAL_LINK_EFFECT_DURATION_MS);
       return true;
     }
@@ -4728,24 +4733,16 @@
         }
         if (target.closest("[data-external-confirm-accept]")) {
           const targetUrl = pendingExternalUrl;
-          const trigger = lastFocusedTrigger;
           primeInteractionSfx("externalConfirmAccept");
           playInteractionSfx("confirm_soft", "externalConfirmAccept");
           hideExternalPrompt("silent");
-          if (launchProfileSidebarExternalWithEffect(targetUrl, { trigger, target: "_self" })) {
-            return;
-          }
           launchExternal(targetUrl, "_self");
         }
         if (target.closest("[data-external-confirm-new-tab]")) {
           const targetUrl = pendingExternalUrl;
-          const trigger = lastFocusedTrigger;
           primeInteractionSfx("externalConfirmNewTab");
           playInteractionSfx("confirm_soft", "externalConfirmNewTab");
           hideExternalPrompt("silent");
-          if (launchProfileSidebarExternalWithEffect(targetUrl, { trigger, target: "_blank" })) {
-            return;
-          }
           launchExternal(targetUrl, "_blank");
         }
       });
@@ -4759,14 +4756,10 @@
         }
         if (event.key === "Enter") {
           const targetUrl = pendingExternalUrl;
-          const trigger = lastFocusedTrigger;
           if (!targetUrl) return;
           event.preventDefault();
           playInteractionSfx("confirm_soft", "externalConfirmEnter");
           hideExternalPrompt("silent");
-          if (launchProfileSidebarExternalWithEffect(targetUrl, { trigger, target: "_self" })) {
-            return;
-          }
           launchExternal(targetUrl, "_self");
         }
       });
@@ -4782,6 +4775,7 @@
       return "externalConfirm";
     }
     function hideExternalPrompt(reason = "cancel") {
+      clearDesktopProfilePromptTimer();
       if (!(externalPromptRoot instanceof HTMLElement)) return;
       const wasOpen = externalPromptRoot.classList.contains("is-open");
       if (wasOpen && reason === "cancel") {
@@ -4806,19 +4800,10 @@
         });
         return;
       }
-      const dialog = ensureExternalPrompt();
-      playInteractionSfx("open_soft", "externalConfirmOpen");
-      pendingExternalUrl = safeUrl;
-      lastFocusedTrigger = trigger instanceof HTMLElement ? trigger : null;
-      if (externalPromptUrlEl instanceof HTMLElement) {
-        externalPromptUrlEl.textContent = formatExternalPromptDisplayUrl(safeUrl);
-        externalPromptUrlEl.setAttribute("title", safeUrl);
+      if (showDesktopProfilePromptWithEffect(safeUrl, trigger)) {
+        return;
       }
-      dialog.hidden = false;
-      dialog.setAttribute("aria-hidden", "false");
-      dialog.classList.add("is-open");
-      const focusTarget = externalPromptCancelButton instanceof HTMLButtonElement ? externalPromptCancelButton : externalPromptAcceptButton;
-      focusTarget?.focus({ preventScroll: true });
+      openExternalPromptDialog(safeUrl, trigger);
     }
     function normalizeTrackDetailsQuery(query) {
       return {
@@ -5329,6 +5314,95 @@
       window.clearTimeout(lastFmTrackPanelSceneTimer);
       lastFmTrackPanelSceneTimer = 0;
     }
+    function clearLastFmTrackPanelSceneSettleTimer() {
+      if (!lastFmTrackPanelSceneSettleTimer) return;
+      window.clearTimeout(lastFmTrackPanelSceneSettleTimer);
+      lastFmTrackPanelSceneSettleTimer = 0;
+    }
+    function getLastFmTrackPanelSceneRotator(scene) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const rotator = scene.querySelector("[data-lastfm-track-panel-scene-rotator]");
+      return rotator instanceof HTMLElement ? rotator : null;
+    }
+    function getLastFmTrackPanelSceneFront(scene) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const face = scene.querySelector('[data-lastfm-track-panel-scene-face="front"]');
+      return face instanceof HTMLElement ? face : null;
+    }
+    function renderLastFmTrackPanelSceneShell(markup, options = {}) {
+      return `
+        <div class="lastfm-track-panel-scene-rotator" data-lastfm-track-panel-scene-rotator>
+          <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--front" data-lastfm-track-panel-scene-face="front">
+            ${markup}
+          </div>
+          <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--back" data-lastfm-track-panel-scene-face="back" aria-hidden="true">
+            <div class="lastfm-track-panel-scene-back-card" aria-hidden="true">
+              <span class="lastfm-track-panel-scene-back-shrug">¯\_(ツ)_/¯</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    function createLastFmTrackPanelScene(markup, options = {}) {
+      const scene = document.createElement("div");
+      scene.className = "lastfm-track-panel-scene";
+      scene.dataset.panelSceneState = firstNonEmpty(options?.state, "current");
+      scene.dataset.panelSceneSpin = "idle";
+      scene.dataset.panelSceneLoading = options?.loading ? "true" : "false";
+      const panelType = firstNonEmpty(options?.panelType, "");
+      if (panelType) {
+        scene.dataset.panelType = panelType;
+      }
+      scene.innerHTML = renderLastFmTrackPanelSceneShell(markup, options);
+      return scene;
+    }
+    function syncLastFmTrackPanelSceneChrome(scene, options = {}) {
+      if (!(scene instanceof HTMLElement)) return;
+      const panelType = firstNonEmpty(options?.panelType, scene.dataset.panelType || "");
+      if (panelType) {
+        scene.dataset.panelType = panelType;
+      }
+      if (Object.prototype.hasOwnProperty.call(options, "loading")) {
+        scene.dataset.panelSceneLoading = options.loading ? "true" : "false";
+      }
+    }
+    function resetLastFmTrackPanelSceneTransform(scene) {
+      const rotator = getLastFmTrackPanelSceneRotator(scene);
+      if (!(rotator instanceof HTMLElement)) return;
+      rotator.style.transform = "";
+    }
+    function settleLastFmTrackPanelScene(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      clearLastFmTrackPanelSceneSettleTimer();
+      syncLastFmTrackPanelSceneChrome(scene, { loading: false });
+      const rotator = getLastFmTrackPanelSceneRotator(scene);
+      if (!(rotator instanceof HTMLElement)) {
+        scene.dataset.panelSceneSpin = "idle";
+        return;
+      }
+      if (scene.dataset.panelSceneSpin !== "loading") {
+        scene.dataset.panelSceneSpin = scene.dataset.panelSceneSpin === "handoff-in" ? "handoff-in" : "idle";
+        if (scene.dataset.panelSceneSpin === "idle") {
+          resetLastFmTrackPanelSceneTransform(scene);
+        }
+        return;
+      }
+      const frozenTransform = window.getComputedStyle(rotator).transform;
+      rotator.style.transform = frozenTransform === "none" ? "rotateY(0deg)" : frozenTransform;
+      rotator.getBoundingClientRect();
+      scene.dataset.panelSceneSpin = "settling";
+      requestAnimationFrame(() => {
+        if (!(scene.isConnected && rotator.isConnected) || scene.dataset.panelSceneSpin !== "settling") return;
+        rotator.style.transform = "rotateY(360deg)";
+      });
+      lastFmTrackPanelSceneSettleTimer = window.setTimeout(() => {
+        lastFmTrackPanelSceneSettleTimer = 0;
+        if (!(scene.isConnected && rotator.isConnected)) return;
+        scene.dataset.panelSceneSpin = "idle";
+        resetLastFmTrackPanelSceneTransform(scene);
+        scheduleLastFmTrackPanelFit();
+      }, LASTFM_PANEL_SCENE_SETTLE_MS + 48);
+    }
     function hydrateLastFmTrackPanelScene(scene) {
       if (!(scene instanceof HTMLElement)) return;
       Array.from(scene.querySelectorAll("img")).forEach((image) => {
@@ -5353,36 +5427,41 @@
       if (!(lastFmTrackPanelContent instanceof HTMLElement)) return;
       const shouldAnimate = Boolean(options?.animate);
       const panelType = firstNonEmpty(options?.panelType, "");
+      const isLoading = Boolean(options?.loading);
       const currentScene = getLastFmTrackPanelCurrentScene();
       clearLastFmTrackPanelSceneTimer();
+      clearLastFmTrackPanelSceneSettleTimer();
       Array.from(lastFmTrackPanelContent.querySelectorAll(".lastfm-track-panel-scene")).forEach((scene) => {
         if (scene instanceof HTMLElement && scene !== currentScene) {
           scene.remove();
         }
       });
       if (!shouldAnimate || !(currentScene instanceof HTMLElement)) {
-        lastFmTrackPanelContent.innerHTML = `<div class="lastfm-track-panel-scene" data-panel-scene-state="current">${markup}</div>`;
+        const nextScene = createLastFmTrackPanelScene(markup, {
+          state: "current",
+          panelType,
+          loading: isLoading
+        });
+        lastFmTrackPanelContent.innerHTML = "";
+        lastFmTrackPanelContent.appendChild(nextScene);
         const nextCurrentScene = getLastFmTrackPanelCurrentScene();
-        if (nextCurrentScene instanceof HTMLElement && panelType) {
-          nextCurrentScene.dataset.panelType = panelType;
-        }
         hydrateLastFmTrackPanelScene(nextCurrentScene);
         setLastFmTrackPanelScrollTop();
         return;
       }
-      const incomingScene = document.createElement("div");
-      incomingScene.className = "lastfm-track-panel-scene";
-      incomingScene.dataset.panelSceneState = "incoming";
-      if (panelType) {
-        incomingScene.dataset.panelType = panelType;
-      }
-      incomingScene.innerHTML = markup;
+      const incomingScene = createLastFmTrackPanelScene(markup, {
+        state: "incoming",
+        panelType,
+        loading: isLoading
+      });
       lastFmTrackPanelContent.appendChild(incomingScene);
       hydrateLastFmTrackPanelScene(incomingScene);
       requestAnimationFrame(() => {
         if (!(currentScene.isConnected && incomingScene.isConnected)) return;
         currentScene.dataset.panelSceneState = "outgoing";
+        currentScene.dataset.panelSceneSpin = "handoff-out";
         incomingScene.dataset.panelSceneState = "current";
+        incomingScene.dataset.panelSceneSpin = "handoff-in";
         setLastFmTrackPanelScrollTop();
         scheduleLastFmTrackPanelFit();
       });
@@ -5396,6 +5475,12 @@
             scene.remove();
           }
         });
+        if (incomingScene.isConnected && incomingScene.dataset.panelSceneSpin === "handoff-in") {
+          incomingScene.dataset.panelSceneSpin = incomingScene.dataset.panelSceneLoading === "true" ? "loading" : "idle";
+          if (incomingScene.dataset.panelSceneSpin === "idle") {
+            resetLastFmTrackPanelSceneTransform(incomingScene);
+          }
+        }
         scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_TRANSITION_MS + 48);
     }
@@ -5405,11 +5490,19 @@
         setLastFmTrackPanelSceneMarkup(markup, options);
         return;
       }
-      const panelType = firstNonEmpty(options?.panelType, "");
-      if (panelType) {
-        currentScene.dataset.panelType = panelType;
+      syncLastFmTrackPanelSceneChrome(currentScene, {
+        panelType: firstNonEmpty(options?.panelType, ""),
+        loading: Object.prototype.hasOwnProperty.call(options, "loading") ? options.loading : undefined
+      });
+      const frontFace = getLastFmTrackPanelSceneFront(currentScene);
+      if (frontFace instanceof HTMLElement) {
+        frontFace.innerHTML = markup;
+      } else {
+        currentScene.innerHTML = renderLastFmTrackPanelSceneShell(markup, {
+          panelType: currentScene.dataset.panelType || "",
+          loading: currentScene.dataset.panelSceneLoading === "true"
+        });
       }
-      currentScene.innerHTML = markup;
       hydrateLastFmTrackPanelScene(currentScene);
     }
     function setLastFmPanelArtFace(artShell, nextFace, options = {}) {
@@ -5590,6 +5683,7 @@
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
       clearLastFmTrackPanelSceneTimer();
+      clearLastFmTrackPanelSceneSettleTimer();
       if (lastFmTrackPanelFitRaf) {
         cancelAnimationFrame(lastFmTrackPanelFitRaf);
         lastFmTrackPanelFitRaf = 0;
@@ -5659,7 +5753,8 @@
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       setLastFmTrackPanelSceneMarkup(definition.renderSkeleton(normalizedQuery), {
         animate: shouldAnimateSceneSwap,
-        panelType: definition.panelType
+        panelType: definition.panelType,
+        loading: true
       });
       if (!panel.classList.contains("is-open")) {
         panel.hidden = false;
@@ -5676,9 +5771,12 @@
         const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
         updateLastFmTrackPanelCurrentSceneMarkup(definition.renderContent(loadState.payload), {
-          panelType: definition.panelType
+          panelType: definition.panelType,
+          loading: true
         });
         await definition.afterRender?.(loadState.payload, loadState.cacheKey);
+        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
+        settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
         const nextFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
@@ -5688,8 +5786,10 @@
         void destroySpotifyEmbedController({ resumeShuffle: true });
         void stopTrackPreview({ resumeShuffle: true, resetSource: true });
         updateLastFmTrackPanelCurrentSceneMarkup(definition.renderError(normalizedQuery), {
-          panelType: definition.panelType
+          panelType: definition.panelType,
+          loading: false
         });
+        settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
       }
     }
     async function showLastFmTrackDetails(query, trigger = null) {
