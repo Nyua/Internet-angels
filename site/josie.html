@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260331-josie-115" />
+    <link rel="stylesheet" href="/josie.css?v=20260331-josie-116" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -227,9 +227,20 @@
             </div>
           </div>
         </div>
+        <div
+          id="social-link-effect-layer"
+          class="social-link-effect-layer"
+          data-social-link-effect-state="idle"
+          data-social-link-effect-site=""
+          aria-hidden="true"
+        >
+          <div class="social-link-effect-bloom"></div>
+          <div class="social-link-effect-ripple"></div>
+          <div class="social-link-effect-sheen"></div>
+        </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260331-josie-115"></script>
+    <script src="/josie.client.js?v=20260331-josie-116"></script>
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";

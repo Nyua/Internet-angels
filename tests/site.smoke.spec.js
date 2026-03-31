@@ -247,7 +247,7 @@ test("root skips the intro movie on repeat visits but keeps the fullscreen sound
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
   await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
-  await expect(page).toHaveURL(/\/josie$/);
+  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
   await expect(page).toHaveTitle(/Josie/);
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
 });
@@ -407,7 +407,7 @@ test("mobile root skips the intro movie but still uses the fullscreen sound gate
 
 test("next page redirects to josie", async ({ page }) => {
   await page.goto("/next.html");
-  await expect(page).toHaveURL(/\/josie$/);
+  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
   await expect(page).toHaveTitle(/Josie/);
 });
 
@@ -709,6 +709,41 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(10 * 60 * 1000);
   expect(intervalCalls).not.toContain(15 * 60 * 1000);
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
+});
+
+test("desktop profile links keep the confirm prompt and delay the site-wide pulse until new-tab confirm", async ({ page }) => {
+  await stubWindowOpen(page);
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.waitForSelector(".steam-sidebar-row--spotify .steam-sidebar-link");
+  await clearInteractionSfxLog(page);
+  await page.locator(".steam-sidebar-row--spotify .steam-sidebar-link").click({ force: true });
+  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "idle");
+  await page.locator(".external-link-confirm-button--new-tab").click();
+  await waitForInteractionSfx(page, { soundId: "confirm_soft", source: "externalConfirmNewTab", ownerMode: "top", page: "josie" });
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await drainWindowOpenCalls(page);
+  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "active");
+  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-site", "spotify");
+  await page.waitForTimeout(40);
+  const effectState = await page.locator("#social-link-effect-layer").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      opacity: Number.parseFloat(styles.opacity),
+      rgb: styles.getPropertyValue("--social-link-effect-rgb").trim()
+    };
+  });
+  expect(effectState.opacity).toBeGreaterThan(0);
+  expect(effectState.rgb).toBe("116, 232, 154");
+  await page.waitForTimeout(120);
+  const earlyCalls = await drainWindowOpenCalls(page);
+  expect(earlyCalls.some((entry) => /open\.spotify/i.test(entry.url || ""))).toBe(false);
+  await page.waitForFunction(() => Array.isArray(window.__windowOpenCalls) && window.__windowOpenCalls.some((entry) => /open\.spotify/i.test(entry.url || "")), null, { timeout: 2_000 });
+  const finalCalls = await drainWindowOpenCalls(page);
+  const delayedOpen = finalCalls.find((entry) => /open\.spotify/i.test(entry.url || ""));
+  expect(delayedOpen).toBeDefined();
+  expect(delayedOpen?.target).toBe("_blank");
 });
 
 test("josie stays in night mode and keeps the Discord presence under the hero tagline", async ({ page }) => {
@@ -1601,10 +1636,17 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await firstMobileIconLink.click();
   await expect(firstMobileIconLink).toHaveClass(/is-mobile-selected/);
   await expect(firstMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
+  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "active");
+  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-site", "soundcloud");
   const selectedMobileLinkCount = await page.locator(".steam-sidebar-link--icon-only.is-mobile-selected").count();
   expect(selectedMobileLinkCount).toBe(1);
   await page.waitForTimeout(80);
-  const selectedAuraState = await firstMobileIconLink.evaluate((node) => {
+  const selectedAuraState = await page.evaluate(() => {
+    const node = document.querySelector(".steam-sidebar-link--icon-only");
+    const effect = document.querySelector("#social-link-effect-layer");
+    if (!(node instanceof HTMLElement) || !(effect instanceof HTMLElement)) {
+      return null;
+    }
     const styles = window.getComputedStyle(node);
     const before = window.getComputedStyle(node, "::before");
     const after = window.getComputedStyle(node, "::after");
@@ -1612,17 +1654,23 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
       auraRgb: styles.getPropertyValue("--mobile-link-aura-rgb").trim(),
       beforeOpacity: Number.parseFloat(before.opacity),
       afterOpacity: Number.parseFloat(after.opacity),
-      afterAnimationName: after.animationName
+      afterAnimationName: after.animationName,
+      effectOpacity: Number.parseFloat(window.getComputedStyle(effect).opacity),
+      effectVeilOpacity: Number.parseFloat(window.getComputedStyle(effect, "::before").opacity),
+      effectRgb: window.getComputedStyle(effect).getPropertyValue("--social-link-effect-rgb").trim()
     };
   });
+  expect(selectedAuraState).not.toBeNull();
   expect(selectedAuraState.auraRgb).toBe("255, 148, 84");
   expect(selectedAuraState.beforeOpacity).toBeGreaterThan(0.3);
   expect(selectedAuraState.afterOpacity).toBeGreaterThan(0.2);
   expect(selectedAuraState.afterAnimationName).toContain("mobileSidebarSoundcloudPlume");
+  expect(selectedAuraState.effectOpacity).toBeGreaterThan(0);
+  expect(selectedAuraState.effectVeilOpacity).toBeGreaterThan(0);
+  expect(selectedAuraState.effectRgb).toBe("255, 148, 84");
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
-  await page.waitForTimeout(220);
+  await page.waitForTimeout(100);
   const earlyIconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
-  expect(earlyIconLaunchLog.some((entry) => entry.type === "open")).toBe(false);
   expect(earlyIconLaunchLog.some((entry) => entry.type === "replace")).toBe(false);
   expect(earlyIconLaunchLog.some((entry) => entry.type === "href")).toBe(false);
   await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
@@ -2131,7 +2179,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(2);
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
   await page.locator(".lastfm-track-panel-related-button").first().click();
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Talk");
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("Talk");
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   const relatedArtShell = await showLastFmPanelArtActions(page);
@@ -2366,6 +2414,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   });
 
   await page.route("**/api/lastfm-album-details**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 140));
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2471,7 +2520,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-kicker")).toContainText("Artist details");
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
   const artistAmbient = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     if (!(windowEl instanceof HTMLElement)) {
@@ -2554,7 +2603,33 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("2022");
   await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("indie pop");
   await page.locator(".lastfm-track-panel-related-button--album").first().click();
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
+  await page.waitForFunction(() => {
+    const scenes = document.querySelectorAll(".lastfm-track-panel-scene");
+    const outgoing = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="outgoing"]');
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    const currentWindow = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-window") : null;
+    return scenes.length >= 2 && outgoing instanceof HTMLElement && currentScene instanceof HTMLElement && currentWindow instanceof HTMLElement && currentWindow.classList.contains("is-loading");
+  });
+  const panelSceneState = await page.evaluate(() => {
+    const host = document.querySelector(".lastfm-track-panel-scene-host");
+    const states = Array.from(document.querySelectorAll(".lastfm-track-panel-scene")).map((scene) => scene.getAttribute("data-panel-scene-state"));
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    const currentWindow = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-window") : null;
+    return {
+      hasHost: host instanceof HTMLElement,
+      sceneCount: states.length,
+      states,
+      currentType: currentScene instanceof HTMLElement ? currentScene.getAttribute("data-panel-type") : "",
+      currentLoading: currentWindow instanceof HTMLElement ? currentWindow.classList.contains("is-loading") : false
+    };
+  });
+  expect(panelSceneState.hasHost).toBe(true);
+  expect(panelSceneState.sceneCount).toBeGreaterThanOrEqual(2);
+  expect(panelSceneState.states).toContain("outgoing");
+  expect(panelSceneState.currentType).toBe("album");
+  expect(panelSceneState.currentLoading).toBe(true);
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("Beatopia");
+  await expect(page.locator(".lastfm-track-panel-scene")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1);
   const albumAmbientFromArtistPopup = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
@@ -2679,7 +2754,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   const headerArtistLink = page.locator(".lastfm-track-panel-meta .lastfm-track-panel-inline-link").first();
   await expect(headerArtistLink).toHaveText("beabadoobee");
   await headerArtistLink.click();
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
 
@@ -2687,7 +2762,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   const trackArtistLink = page.locator(".lastfm-track-panel-track-meta .lastfm-track-panel-inline-link").first();
   await expect(trackArtistLink).toHaveText("beabadoobee");
   await trackArtistLink.click();
-  await expect(page.locator(".lastfm-track-panel-title")).toContainText("beabadoobee");
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
 
   expect(apiRequests.some((url) => url.includes("/api/lastfm-artist-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("/api/lastfm-album-details"))).toBe(true);

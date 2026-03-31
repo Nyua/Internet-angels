@@ -874,6 +874,168 @@ body.site-load-playing .os-ambient-backdrop {
   overflow: visible;
 }
 
+.social-link-effect-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  isolation: isolate;
+  overflow: hidden;
+  --social-link-effect-rgb: 248, 249, 252;
+  --social-link-effect-secondary-rgb: 255, 255, 255;
+  --social-link-effect-sheen-rgb: 255, 255, 255;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="soundcloud"] {
+  --social-link-effect-rgb: 255, 148, 84;
+  --social-link-effect-secondary-rgb: 255, 232, 204;
+  --social-link-effect-sheen-rgb: 255, 246, 232;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="spotify"] {
+  --social-link-effect-rgb: 116, 232, 154;
+  --social-link-effect-secondary-rgb: 222, 255, 234;
+  --social-link-effect-sheen-rgb: 240, 255, 244;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="lastfm"] {
+  --social-link-effect-rgb: 255, 114, 143;
+  --social-link-effect-secondary-rgb: 255, 223, 231;
+  --social-link-effect-sheen-rgb: 255, 242, 245;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="discord"] {
+  --social-link-effect-rgb: 176, 188, 255;
+  --social-link-effect-secondary-rgb: 235, 239, 255;
+  --social-link-effect-sheen-rgb: 246, 247, 255;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="steam"] {
+  --social-link-effect-rgb: 152, 220, 255;
+  --social-link-effect-secondary-rgb: 223, 245, 255;
+  --social-link-effect-sheen-rgb: 241, 251, 255;
+}
+
+.social-link-effect-layer[data-social-link-effect-site="twitter"] {
+  --social-link-effect-rgb: 205, 238, 255;
+  --social-link-effect-secondary-rgb: 245, 252, 255;
+  --social-link-effect-sheen-rgb: 255, 255, 255;
+}
+
+.social-link-effect-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(var(--social-link-effect-secondary-rgb), 0.16) 0 12%, rgba(var(--social-link-effect-rgb), 0.08) 28%, rgba(var(--social-link-effect-rgb), 0.02) 54%, transparent 76%),
+    linear-gradient(180deg, rgba(var(--social-link-effect-rgb), 0.12), rgba(var(--social-link-effect-rgb), 0.04) 42%, rgba(0, 0, 0, 0.08) 100%);
+  opacity: 0;
+}
+
+.social-link-effect-bloom,
+.social-link-effect-ripple,
+.social-link-effect-sheen {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.social-link-effect-bloom {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(var(--social-link-effect-secondary-rgb), 0.28) 0 8%, rgba(var(--social-link-effect-rgb), 0.18) 18%, rgba(var(--social-link-effect-rgb), 0.06) 34%, transparent 58%);
+  transform: scale(0.76);
+}
+
+.social-link-effect-ripple {
+  inset: -18vmax;
+  background:
+    radial-gradient(circle at center, transparent 0 18%, rgba(var(--social-link-effect-secondary-rgb), 0.2) 22%, rgba(var(--social-link-effect-rgb), 0.16) 26%, rgba(var(--social-link-effect-rgb), 0.04) 36%, transparent 52%);
+  mix-blend-mode: screen;
+  transform: scale(0.58);
+}
+
+.social-link-effect-sheen {
+  background:
+    linear-gradient(112deg, rgba(var(--social-link-effect-sheen-rgb), 0) 18%, rgba(var(--social-link-effect-sheen-rgb), 0.34) 46%, rgba(var(--social-link-effect-rgb), 0.16) 56%, rgba(var(--social-link-effect-sheen-rgb), 0) 76%);
+  transform: translateX(-20%) skewX(-10deg);
+}
+
+.social-link-effect-layer[data-social-link-effect-state="active"] {
+  opacity: 1;
+}
+
+.social-link-effect-layer[data-social-link-effect-state="active"]::before {
+  animation: socialLinkEffectVeil 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
+}
+
+.social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-bloom {
+  animation: socialLinkEffectBloom 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
+}
+
+.social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-ripple {
+  animation: socialLinkEffectRipple 380ms cubic-bezier(0.18, 0.88, 0.16, 1) both;
+}
+
+.social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-sheen {
+  animation: socialLinkEffectSheen 380ms cubic-bezier(0.2, 0.88, 0.2, 1) both;
+}
+
+@keyframes socialLinkEffectVeil {
+  0% {
+    opacity: 0;
+  }
+  24% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes socialLinkEffectBloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  26% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.34);
+  }
+}
+
+@keyframes socialLinkEffectRipple {
+  0% {
+    opacity: 0;
+    transform: scale(0.52);
+  }
+  22% {
+    opacity: 0.74;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes socialLinkEffectSheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-22%) skewX(-10deg);
+  }
+  34% {
+    opacity: 0.62;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(16%) skewX(-10deg);
+  }
+}
+
 .social-hub {
   position: relative;
   z-index: 3;
@@ -1164,6 +1326,44 @@ body.lastfm-track-panel-open {
   position: relative;
   width: min(980px, calc(100vw - 16px));
   max-height: calc(100vh - 16px);
+}
+
+.lastfm-track-panel-scene-host {
+  position: relative;
+}
+
+.lastfm-track-panel-scene {
+  position: relative;
+  transition:
+    opacity 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lastfm-track-panel-scene[data-panel-scene-state="current"] {
+  opacity: 1;
+  transform: translateX(0);
+  filter: blur(0);
+  pointer-events: auto;
+}
+
+.lastfm-track-panel-scene[data-panel-scene-state="incoming"],
+.lastfm-track-panel-scene[data-panel-scene-state="outgoing"] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lastfm-track-panel-scene[data-panel-scene-state="incoming"] {
+  opacity: 0;
+  transform: translateX(24px);
+  filter: blur(6px);
+}
+
+.lastfm-track-panel-scene[data-panel-scene-state="outgoing"] {
+  opacity: 0;
+  transform: translateX(-20px);
+  filter: blur(6px);
 }
 
 .lastfm-track-panel-window {
@@ -1552,6 +1752,8 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-header,
 .lastfm-track-panel-stats,
 .lastfm-track-panel-summary,
+.lastfm-track-panel-tags,
+.lastfm-track-panel-actions,
 .lastfm-track-panel-preview,
 .lastfm-track-panel-history,
 .lastfm-track-panel-related {
