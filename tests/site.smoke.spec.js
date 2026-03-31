@@ -26,7 +26,13 @@ const SPOTIFY_PREVIEW_AUDIO_BUFFER = createSilentWavBuffer();
 async function stubSpotifyIframeApi(page) {
   await page.addInitScript(() => {
     window.__spotifyEmbedControllers = [];
+    window.__spotifyEmbedControllerMode = { hangNext: false };
     const createController = (target, options, callback) => {
+      if (window.__spotifyEmbedControllerMode?.hangNext) {
+        window.__spotifyEmbedControllerMode.hangNext = false;
+        window.__spotifyEmbedControllers.push({ controller: null, options, hung: true });
+        return;
+      }
       const listeners = new Map();
       if (target instanceof HTMLElement) {
         target.innerHTML = "";
@@ -66,6 +72,12 @@ async function stubSpotifyIframeApi(page) {
       callback?.(controller);
     };
     window.__internetAngelSpotifyIframeApi = { createController };
+    window.__setSpotifyEmbedControllerMode = (nextMode = {}) => {
+      window.__spotifyEmbedControllerMode = {
+        ...(window.__spotifyEmbedControllerMode || {}),
+        ...nextMode
+      };
+    };
     window.__emitSpotifyIframeEvent = (index, eventName, payload) => {
       const entry = window.__spotifyEmbedControllers?.[index];
       entry?.controller?.__emit?.(eventName, payload);
@@ -120,9 +132,10 @@ async function waitForInteractionSfx(page, predicate, timeout = 10_000) {
   return handle.jsonValue();
 }
 
-async function showLastFmPanelArtActions(page) {
-  const artShell = page.locator(".lastfm-track-panel-art--flip").first();
-  await expect(artShell).toBeVisible();
+async function showLastFmPanelArtActions(page, options = {}) {
+  const scope = options.scope ?? page;
+  const artShell = scope.locator(".lastfm-track-panel-art--flip").first();
+  await expect(artShell).toBeVisible({ timeout: options.timeout ?? 10_000 });
   await artShell.locator("[data-lastfm-panel-art-toggle]").click();
   await expect(artShell).toHaveAttribute("data-panel-face", "back");
   return artShell;
@@ -2179,8 +2192,15 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   });
   await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(2);
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
+  await page.evaluate(() => window.__setSpotifyEmbedControllerMode?.({ hangNext: true }));
   await page.locator(".lastfm-track-panel-related-button").first().click();
   await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("Talk");
+  await expect.poll(async () => {
+    return page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"]').evaluate((scene) => ({
+      loading: scene.getAttribute("data-panel-scene-loading"),
+      spin: scene.getAttribute("data-panel-scene-spin")
+    }));
+  }, { timeout: 5_000 }).toEqual({ loading: "false", spin: "idle" });
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   const relatedArtShell = await showLastFmPanelArtActions(page);
@@ -2625,6 +2645,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
     const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
     const currentWindow = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-window") : null;
     const rotator = currentScene instanceof HTMLElement ? currentScene.querySelector("[data-lastfm-track-panel-scene-rotator]") : null;
+    const backCat = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-scene-back-cat") : null;
+    const backCatPaw = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-scene-back-cat-paw") : null;
     const sceneRect = currentScene instanceof HTMLElement ? currentScene.getBoundingClientRect() : null;
     const hostRect = host instanceof HTMLElement ? host.getBoundingClientRect() : null;
     return {
@@ -2635,6 +2657,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
       currentSpin: currentScene instanceof HTMLElement ? currentScene.getAttribute("data-panel-scene-spin") : "",
       currentAnimationName: rotator instanceof HTMLElement ? window.getComputedStyle(rotator).animationName : "",
       currentAnimationDuration: rotator instanceof HTMLElement ? window.getComputedStyle(rotator).animationDuration : "",
+      backCatText: backCat instanceof HTMLElement ? backCat.textContent.trim() : "",
+      backCatPawAnimationName: backCatPaw instanceof HTMLElement ? window.getComputedStyle(backCatPaw).animationName : "",
       widthRatio: sceneRect && hostRect && hostRect.width > 0 ? sceneRect.width / hostRect.width : 0
     };
   });
@@ -2645,8 +2669,11 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(panelSceneState.currentSpin).toBe("loading");
   expect(panelSceneState.currentAnimationName).toContain("lastfmTrackPanelSceneSpinLoop");
   expect(panelSceneState.currentAnimationDuration).toBe("1.84s");
-  expect(panelSceneState.widthRatio).toBeGreaterThan(0.45);
-  expect(panelSceneState.widthRatio).toBeLessThan(0.55);
+  expect(panelSceneState.backCatText).toContain("(=^･ω･^=)");
+  expect(panelSceneState.backCatText).toContain("ﾉ");
+  expect(panelSceneState.backCatPawAnimationName).toContain("lastfmTrackPanelSceneCatWave");
+  expect(panelSceneState.widthRatio).toBeGreaterThan(0.57);
+  expect(panelSceneState.widthRatio).toBeLessThan(0.67);
   await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("Beatopia");
   await expect(page.locator(".lastfm-track-panel-scene")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1);

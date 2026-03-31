@@ -4296,6 +4296,8 @@
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
+    const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
+    const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
     let mobileLinkSelectionTimer = 0;
     let mobileLinkSelectedKey = "";
     let mobileLinkSelectionPhase = "idle";
@@ -5236,12 +5238,27 @@
         }
         embedTarget.innerHTML = "";
         await new Promise((resolve, reject) => {
+          let settled = false;
+          const timeoutId = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error("Spotify embed controller timed out"));
+          }, SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS);
           try {
             iframeApi.createController(embedTarget, {
               uri: spotifyUri,
               width: "100%",
               height: 80
             }, (controller) => {
+              if (settled) {
+                try {
+                  controller?.destroy?.();
+                } catch {
+                }
+                return;
+              }
+              settled = true;
+              window.clearTimeout(timeoutId);
               if (loadToken !== lastFmSpotifyEmbedLoadToken) {
                 try {
                   controller?.destroy?.();
@@ -5270,6 +5287,9 @@
               resolve();
             });
           } catch (error) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeoutId);
             reject(error);
           }
         });
@@ -5337,7 +5357,10 @@
           </div>
           <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--back" data-lastfm-track-panel-scene-face="back" aria-hidden="true">
             <div class="lastfm-track-panel-scene-back-card" aria-hidden="true">
-              <span class="lastfm-track-panel-scene-back-shrug">¯\_(ツ)_/¯</span>
+              <span class="lastfm-track-panel-scene-back-cat">
+                <span class="lastfm-track-panel-scene-back-cat-face">(=^･ω･^=)</span>
+                <span class="lastfm-track-panel-scene-back-cat-paw">ﾉ</span>
+              </span>
             </div>
           </div>
         </div>
@@ -5393,7 +5416,7 @@
       scene.dataset.panelSceneSpin = "settling";
       requestAnimationFrame(() => {
         if (!(scene.isConnected && rotator.isConnected) || scene.dataset.panelSceneSpin !== "settling") return;
-        rotator.style.transform = "rotateY(360deg)";
+        rotator.style.transform = "rotateY(-360deg)";
       });
       lastFmTrackPanelSceneSettleTimer = window.setTimeout(() => {
         lastFmTrackPanelSceneSettleTimer = 0;
@@ -5402,6 +5425,21 @@
         resetLastFmTrackPanelSceneTransform(scene);
         scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_SETTLE_MS + 48);
+    }
+    async function waitForLastFmPanelAfterRender(work) {
+      let timeoutId = 0;
+      try {
+        await Promise.race([
+          Promise.resolve(work).catch(() => {}),
+          new Promise((resolve) => {
+            timeoutId = window.setTimeout(resolve, LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS);
+          })
+        ]);
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      }
     }
     function hydrateLastFmTrackPanelScene(scene) {
       if (!(scene instanceof HTMLElement)) return;
@@ -5774,7 +5812,7 @@
           panelType: definition.panelType,
           loading: true
         });
-        await definition.afterRender?.(loadState.payload, loadState.cacheKey);
+        await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
         settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
         const nextFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
