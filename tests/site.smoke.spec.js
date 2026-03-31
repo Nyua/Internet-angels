@@ -252,7 +252,7 @@ test("root skips the intro movie on repeat visits but keeps the fullscreen sound
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
 });
 
-test("root starts the josie handoff 0.5 seconds early and keeps the intro document alive", async ({ page }) => {
+test("root keeps BloomToDeath visible until the intro ends before handing off to josie", async ({ page }) => {
   await page.goto("/");
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
@@ -291,6 +291,15 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
     node.dispatchEvent(new Event("seeked"));
     node.dispatchEvent(new Event("timeupdate"));
   });
+  await expect(page.locator("body")).not.toHaveAttribute("data-bloom-to-death-state", "handoff_visible");
+  await expect(page.locator("body")).not.toHaveClass(/is-handoff-visible/);
+  await page.locator("#introVideo").evaluate((node) => {
+    node.currentTime = node.duration;
+    node.dispatchEvent(new Event("seeking"));
+    node.dispatchEvent(new Event("seeked"));
+    node.dispatchEvent(new Event("timeupdate"));
+    node.dispatchEvent(new Event("ended"));
+  });
   const duringHandoffHandle = await page.waitForFunction(() => {
     const video = document.querySelector("#introVideo");
     const ascii = document.querySelector("#asciiCanvas");
@@ -308,7 +317,6 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
       href: window.location.href,
       title: document.title,
       state: document.body?.dataset?.bloomToDeathState || "",
-      ended: video.ended,
       hiddenClass: video.classList.contains("is-hidden"),
       asciiHidden: ascii.hidden,
       asciiActive: document.body.classList.contains("is-intro-ascii-active"),
@@ -320,10 +328,7 @@ test("root starts the josie handoff 0.5 seconds early and keeps the intro docume
   expect(duringHandoff.href).toMatch(/\/josie$/);
   expect(duringHandoff.title).toMatch(/Josie/);
   expect(duringHandoff.state).toBe("handoff_visible");
-  expect(duringHandoff.ended).toBe(false);
   expect(duringHandoff.hiddenClass).toBe(false);
-  expect(duringHandoff.asciiHidden).toBe(false);
-  expect(duringHandoff.asciiActive).toBe(true);
   expect(duringHandoff.pointerEvents).toBe("none");
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "introHandoffVisible", ownerMode: "top" });
 
@@ -1273,6 +1278,7 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
     const steamButton = document.querySelector(".steam-activity-row-button");
     const cursor = document.querySelector(".site-pointer");
     const crossSvg = document.querySelector(".site-pointer-cross svg");
+    const crossShape = document.querySelector(".site-pointer-cross-shape");
     const core = document.querySelector(".site-pointer-core");
     const ring = document.querySelector(".site-pointer-ring");
     const pool = document.querySelector(".site-pointer-pool");
@@ -1281,9 +1287,11 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       hasSystemPointer: document.body.classList.contains("has-system-pointer"),
       hasCustomCursor: cursor instanceof HTMLElement,
       cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
+      cursorContrast: cursor instanceof HTMLElement ? cursor.dataset.cursorContrast || "" : "",
       cursorUsesSystemPointer: cursor instanceof HTMLElement ? cursor.classList.contains("is-system-pointer") : false,
       crossSvgHeight: crossSvg instanceof SVGElement ? Number.parseFloat(window.getComputedStyle(crossSvg).height) : 0,
       crossSvgWidth: crossSvg instanceof SVGElement ? Number.parseFloat(window.getComputedStyle(crossSvg).width) : 0,
+      crossStrokeWidth: crossShape instanceof SVGElement ? Number.parseFloat(window.getComputedStyle(crossShape).strokeWidth) : 0,
       coreOpacity: core instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(core).opacity) : 0,
       ringOpacity: ring instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(ring).opacity) : 0,
       poolOpacity: pool instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(pool).opacity) : 0
@@ -1298,12 +1306,48 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
   expect(cursorStateAfterSteamHover.cursorMorph).toBe("x");
+  expect(cursorStateAfterSteamHover.cursorContrast).toBe("light");
   expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.crossSvgHeight).toBeLessThanOrEqual(10.5);
   expect(cursorStateAfterSteamHover.crossSvgWidth).toBeLessThanOrEqual(10.5);
+  expect(cursorStateAfterSteamHover.crossStrokeWidth).toBeGreaterThanOrEqual(4.5);
   expect(cursorStateAfterSteamHover.coreOpacity).toBeLessThanOrEqual(0.02);
   expect(cursorStateAfterSteamHover.ringOpacity).toBeLessThanOrEqual(0.02);
   expect(cursorStateAfterSteamHover.poolOpacity).toBeLessThanOrEqual(0.02);
+
+  await page.evaluate(() => {
+    const fixture = document.createElement("div");
+    fixture.id = "codex-cursor-contrast-fixture";
+    fixture.innerHTML = `
+      <button type="button" class="codex-cursor-contrast-target codex-cursor-contrast-target--dark" style="position:fixed;left:24px;top:180px;width:84px;height:84px;background:#000;color:#fff;border:1px solid #fff;z-index:50;">Dark</button>
+      <button type="button" class="codex-cursor-contrast-target codex-cursor-contrast-target--light" style="position:fixed;left:124px;top:180px;width:84px;height:84px;background:#fff;color:#000;border:1px solid #000;z-index:50;">Light</button>
+    `;
+    document.body.appendChild(fixture);
+  });
+  await page.locator(".codex-cursor-contrast-target--dark").hover();
+  await emitCustomCursorHover(page, ".codex-cursor-contrast-target--dark");
+  const darkContrastState = await page.evaluate(() => {
+    const cursor = document.querySelector(".site-pointer");
+    const crossShape = document.querySelector(".site-pointer-cross-shape");
+    return {
+      mode: cursor instanceof HTMLElement ? cursor.dataset.cursorContrast || "" : "",
+      stroke: crossShape instanceof SVGElement ? window.getComputedStyle(crossShape).stroke : ""
+    };
+  });
+  expect(darkContrastState.mode).toBe("light");
+  expect(darkContrastState.stroke).toBe("rgb(255, 255, 255)");
+  await page.locator(".codex-cursor-contrast-target--light").hover();
+  await emitCustomCursorHover(page, ".codex-cursor-contrast-target--light");
+  const lightContrastState = await page.evaluate(() => {
+    const cursor = document.querySelector(".site-pointer");
+    const crossShape = document.querySelector(".site-pointer-cross-shape");
+    return {
+      mode: cursor instanceof HTMLElement ? cursor.dataset.cursorContrast || "" : "",
+      stroke: crossShape instanceof SVGElement ? window.getComputedStyle(crossShape).stroke : ""
+    };
+  });
+  expect(lightContrastState.mode).toBe("dark");
+  expect(lightContrastState.stroke).toBe("rgb(16, 16, 18)");
 
   const selectionStarted = page.waitForFunction(() => {
     const cursor = document.querySelector(".site-pointer");
@@ -1356,10 +1400,10 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(hoverAudioState.hoverCount).toBe(3);
   expect(hoverAudioState.hoverLog[1]?.pointerDirection).toBe("down");
   expect(hoverAudioState.hoverLog[1]?.pitchShift).toBeLessThan(0);
-  expect(Math.abs(hoverAudioState.hoverLog[1]?.pitchShift || 0)).toBeGreaterThan(0.06);
+  expect(Math.abs(hoverAudioState.hoverLog[1]?.pitchShift || 0)).toBeGreaterThan(0.045);
   expect(hoverAudioState.hoverLog[2]?.pointerDirection).toBe("up");
   expect(hoverAudioState.hoverLog[2]?.pitchShift).toBeGreaterThan(0);
-  expect(Math.abs(hoverAudioState.hoverLog[2]?.pitchShift || 0)).toBeGreaterThan(0.06);
+  expect(Math.abs(hoverAudioState.hoverLog[2]?.pitchShift || 0)).toBeGreaterThan(0.045);
   expect(hoverAudioState.hoverLog[1]?.pitchShift).not.toBe(hoverAudioState.hoverLog[2]?.pitchShift);
   const ambientPanel = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");

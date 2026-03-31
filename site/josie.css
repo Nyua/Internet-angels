@@ -153,6 +153,8 @@ body.has-custom-cursor * {
   --site-cursor-ring-scale-y: 1;
   --site-cursor-pool-scale-x: 1;
   --site-cursor-pool-scale-y: 1;
+  --site-cursor-cross-rgb: 255 255 255;
+  --site-cursor-cross-shadow-rgb: 255 255 255;
   position: fixed;
   left: 0;
   top: 0;
@@ -293,7 +295,13 @@ body.has-custom-cursor * {
 }
 
 .site-pointer-cross-shape {
-  fill: rgba(16, 16, 18, 0.94);
+  fill: none;
+  stroke: rgb(var(--site-cursor-cross-rgb));
+  stroke-width: 4.8;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: geometricPrecision;
 }
 
 .site-pointer-hand svg {
@@ -358,8 +366,14 @@ body[data-theme-resolved="night"] .site-pointer-hand-outline {
   fill: rgba(16, 16, 18, 0.98);
 }
 
-body[data-theme-resolved="night"] .site-pointer-cross-shape {
-  fill: rgba(255, 255, 255, 0.96);
+.site-pointer[data-cursor-contrast="dark"] {
+  --site-cursor-cross-rgb: 16 16 18;
+  --site-cursor-cross-shadow-rgb: 16 16 18;
+}
+
+.site-pointer[data-cursor-contrast="light"] {
+  --site-cursor-cross-rgb: 255 255 255;
+  --site-cursor-cross-shadow-rgb: 255 255 255;
 }
 
 body[data-theme-resolved="night"] .site-pointer-arrow::before {
@@ -599,7 +613,7 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 .site-pointer.is-interactive[data-cursor-morph="x"] .site-pointer-cross {
   opacity: 1;
   transform: scale(1);
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.12));
+  filter: drop-shadow(0 0 4px rgba(var(--site-cursor-cross-shadow-rgb), 0.14));
 }
 
 .site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-core {

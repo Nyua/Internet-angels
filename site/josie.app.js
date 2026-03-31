@@ -7311,7 +7311,7 @@
         </span>
         <span class="site-pointer-cross" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path class="site-pointer-cross-shape" d="M6.1 4.7 12 10.6l5.9-5.9 1.4 1.4-5.9 5.9 5.9 5.9-1.4 1.4-5.9-5.9-5.9 5.9-1.4-1.4 5.9-5.9-5.9-5.9z"></path>
+            <path class="site-pointer-cross-shape" d="M6 6 18 18 M18 6 6 18"></path>
           </svg>
         </span>
         <span class="site-pointer-core"></span>
@@ -7322,6 +7322,7 @@
     document.body.classList.add("has-custom-cursor");
     document.body.classList.remove("has-system-pointer");
     cursorEl.dataset.cursorMorph = "orb";
+    cursorEl.dataset.cursorContrast = "light";
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
     const trailContext = trailCanvas instanceof HTMLCanvasElement ? trailCanvas.getContext("2d") : null;
     if (!(trailCanvas instanceof HTMLCanvasElement) || !trailContext) {
@@ -7362,10 +7363,71 @@
     let pointerEnergy = 0;
     let currentInteractiveTarget = null;
     let currentMorphToken = "orb";
+    let currentContrastMode = "light";
     let selectionAnimationTimer = 0;
     let lastSelectionAnimationAt = 0;
     const trailHistory = [];
     const pointerMoveEventName = "pointermove";
+    function parseCssColor(value) {
+      if (typeof value !== "string" || !value) return null;
+      const match = value.trim().match(/^rgba?\(([^)]+)\)$/i);
+      if (!match) return null;
+      const parts = match[1].split(",").map((part) => part.trim());
+      if (parts.length < 3) return null;
+      const r = Number.parseFloat(parts[0]);
+      const g = Number.parseFloat(parts[1]);
+      const b = Number.parseFloat(parts[2]);
+      const a = parts.length >= 4 ? Number.parseFloat(parts[3]) : 1;
+      if (![r, g, b, a].every(Number.isFinite)) return null;
+      return {
+        r: Math.min(255, Math.max(0, Math.round(r))),
+        g: Math.min(255, Math.max(0, Math.round(g))),
+        b: Math.min(255, Math.max(0, Math.round(b))),
+        a: Math.min(1, Math.max(0, a))
+      };
+    }
+    function resolveColorLuminance(color) {
+      if (!color) return 0;
+      const toLinear = (channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * toLinear(color.r) + 0.7152 * toLinear(color.g) + 0.0722 * toLinear(color.b);
+    }
+    function resolveCursorBackdropColor(target, x, y) {
+      const candidates = [];
+      if (Number.isFinite(x) && Number.isFinite(y) && typeof document.elementsFromPoint === "function") {
+        candidates.push(...document.elementsFromPoint(x, y));
+      }
+      if (target instanceof Element && !candidates.includes(target)) {
+        candidates.unshift(target);
+      }
+      const visited = /* @__PURE__ */ new Set();
+      for (const candidate of candidates) {
+        let current = candidate instanceof Element ? candidate : null;
+        while (current instanceof HTMLElement && current !== document.body && !visited.has(current)) {
+          visited.add(current);
+          const color = parseCssColor(window.getComputedStyle(current).backgroundColor);
+          if (color && color.a > 0.08) {
+            return color;
+          }
+          current = current.parentElement;
+        }
+      }
+      return parseCssColor(window.getComputedStyle(document.body).backgroundColor) || {
+        r: 8,
+        g: 8,
+        b: 10,
+        a: 1
+      };
+    }
+    function syncCursorContrast(target, x = lastX, y = lastY) {
+      const backdropColor = resolveCursorBackdropColor(target, x, y);
+      const nextMode = resolveColorLuminance(backdropColor) >= 0.58 ? "dark" : "light";
+      if (nextMode === currentContrastMode) return;
+      currentContrastMode = nextMode;
+      cursorEl.dataset.cursorContrast = nextMode;
+    }
     function applyCursorMorph(token) {
       const safeToken = typeof token === "string" && token ? token : "orb";
       currentMorphToken = safeToken;
@@ -7513,13 +7575,24 @@
         cursorEl.classList.add("is-visible");
       }
     }
-    function syncInteractiveTarget(target) {
+    function syncInteractiveTarget(target, x = lastX, y = lastY) {
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
-      if (nextTarget === currentInteractiveTarget) return;
+      if (nextTarget === currentInteractiveTarget) {
+        if (nextTarget instanceof HTMLElement) {
+          syncCursorContrast(nextTarget, x, y);
+        }
+        return;
+      }
       currentInteractiveTarget = nextTarget instanceof HTMLElement ? nextTarget : null;
       const interactive = currentInteractiveTarget instanceof HTMLElement;
       applyCursorMorph(interactive ? "x" : "orb");
       cursorEl.classList.toggle("is-interactive", interactive);
+      if (interactive) {
+        syncCursorContrast(currentInteractiveTarget, x, y);
+      } else if (currentContrastMode !== "light") {
+        currentContrastMode = "light";
+        cursorEl.dataset.cursorContrast = "light";
+      }
     }
     function resolvePointerTargetAt(x, y, fallbackTarget = null) {
       if (fallbackTarget instanceof Element && fallbackTarget !== document.body && fallbackTarget !== document.documentElement) {
@@ -7534,7 +7607,7 @@
     function refreshFromPoint() {
       if (!visible) return;
       const target = document.elementFromPoint(lastX, lastY);
-      syncInteractiveTarget(target);
+      syncInteractiveTarget(target, lastX, lastY);
     }
     function syncScrollState(now = performance.now()) {
       const active = scrollDirection !== 0 && now < scrollUntilMs;
@@ -7613,6 +7686,8 @@
       clearSelectionAnimationTimer();
       cursorEl.classList.remove("is-visible", "is-pressed", "is-interactive", "is-scroll", "is-scroll-up", "is-scroll-down", "is-selecting");
       applyCursorMorph("orb");
+      currentContrastMode = "light";
+      cursorEl.dataset.cursorContrast = "light";
     }
     function isTouchLikeCursorEvent(event) {
       return event instanceof PointerEvent && event.pointerType === "touch";
@@ -7632,19 +7707,19 @@
       const point = readCursorEventPoint(event);
       if (!point) return;
       syncPosition(point.x, point.y);
-      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
+      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target), point.x, point.y);
     }
     function onPointerOver(event) {
       if (isTouchLikeCursorEvent(event)) return;
       const point = readCursorEventPoint(event);
       if (!point) return;
-      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
+      syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target), point.x, point.y);
     }
     function onPointerDown(event) {
       if (isTouchLikeCursorEvent(event)) return;
       if (!(event instanceof MouseEvent || event instanceof PointerEvent) || event.button !== 0) return;
       syncPosition(event.clientX, event.clientY);
-      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+      syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target), event.clientX, event.clientY);
       pressed = true;
       cursorEl.classList.add("is-pressed");
     }
@@ -7656,7 +7731,7 @@
         cursorEl.classList.remove("is-pressed");
       }
       if (point) {
-        syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target));
+        syncInteractiveTarget(resolvePointerTargetAt(point.x, point.y, point.target), point.x, point.y);
       }
     }
     function onClick(event) {
@@ -7664,9 +7739,9 @@
       if (!(actionable instanceof HTMLElement)) return;
       if (event instanceof MouseEvent && event.detail > 0) {
         syncPosition(event.clientX, event.clientY);
-        syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target));
+        syncInteractiveTarget(resolvePointerTargetAt(event.clientX, event.clientY, event.target), event.clientX, event.clientY);
       } else {
-        syncInteractiveTarget(actionable);
+        syncInteractiveTarget(actionable, lastX, lastY);
       }
       triggerSelectionAnimation(true);
     }
@@ -7675,7 +7750,7 @@
       if (event.key !== "Enter" && event.key !== " ") return;
       const actionable = resolveCustomCursorInteractiveTarget(event.target);
       if (!(actionable instanceof HTMLElement)) return;
-      syncInteractiveTarget(actionable);
+      syncInteractiveTarget(actionable, lastX, lastY);
       triggerSelectionAnimation(true);
     }
     function onWheel(event) {

@@ -281,8 +281,9 @@
   <script>
     (() => {
       const mobileIntroBypassMaxWidthPx = 820;
-      const handoffLeadSeconds = 0.5;
+      const handoffLeadSeconds = 0;
       const introAsciiLeadSeconds = 4;
+      const introEndHandoffDelayMs = 180;
       const introAsciiChars = ".:-=+*#%@";
       const introAsciiBayer4 = [
         [0, 8, 2, 10],
@@ -290,9 +291,9 @@
         [3, 11, 1, 9],
         [15, 7, 13, 5]
       ];
-      const introAsciiBaseCellSize = 8;
-      const introAsciiWideCellSize = 10;
-      const introAsciiUltraWideCellSize = 12;
+      const introAsciiBaseCellSize = 7;
+      const introAsciiWideCellSize = 9;
+      const introAsciiUltraWideCellSize = 10;
       const introAsciiGlyphScale = 1.08;
       const introAsciiMaxDpr = 1;
       const introAsciiMaxCols = 180;
@@ -323,6 +324,7 @@
       let skipMovieMode = false;
       let repeatVisitClickArmed = false;
       let repeatVisitHandoffTimer = 0;
+      let introEndHandoffTimer = 0;
       let state = "idle";
       let monitorRafId = 0;
       let introAsciiActive = false;
@@ -404,6 +406,12 @@
         if (!repeatVisitHandoffTimer) return;
         window.clearTimeout(repeatVisitHandoffTimer);
         repeatVisitHandoffTimer = 0;
+      }
+
+      function clearIntroEndHandoffTimer() {
+        if (!introEndHandoffTimer) return;
+        window.clearTimeout(introEndHandoffTimer);
+        introEndHandoffTimer = 0;
       }
 
       function clamp01(value) {
@@ -718,6 +726,7 @@
         interactionSfx?.setPage?.("josie");
         clearMonitorLoop();
         clearRepeatVisitTimer();
+        clearIntroEndHandoffTimer();
         stopIntroAscii();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
@@ -738,6 +747,7 @@
         setState("handoff_fallback_navigation");
         clearMonitorLoop();
         clearRepeatVisitTimer();
+        clearIntroEndHandoffTimer();
         stopIntroAscii();
         window.location.replace(resolveJosieUrl().toString());
       }
@@ -860,11 +870,16 @@
       });
 
       introVideo.addEventListener("ended", () => {
-        stopIntroAscii();
         if (iframeReady) {
-          completeHandoff();
+          beginVisualHandoff();
+          clearIntroEndHandoffTimer();
+          introEndHandoffTimer = window.setTimeout(() => {
+            introEndHandoffTimer = 0;
+            completeHandoff();
+          }, introEndHandoffDelayMs);
           return;
         }
+        stopIntroAscii();
         performFallbackNavigation();
       });
       window.addEventListener("resize", () => {
