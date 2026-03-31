@@ -4296,8 +4296,16 @@
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
+    const LASTFM_PANEL_SCENE_LOADING_SPIN_MS = 1840;
+    const LASTFM_PANEL_SCENE_HUNG_SPIN_MS = 4200;
+    const LASTFM_PANEL_SCENE_HUNG_AFTER_SPINS = 5;
+    const LASTFM_PANEL_SCENE_EXPLOSION_AFTER_HUNG_SPINS = 1;
+    const LASTFM_PANEL_SCENE_EXPLOSION_OVERLAY_MS = 1400;
+    const LASTFM_PANEL_SCENE_EXPLOSION_GIF_URL = "/assets/Deltarune_explosion.gif";
+    const LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL = "/assets/deltarune-explosion.mp3";
     const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
     const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
+    const lastFmTrackPanelSceneRuntime = new WeakMap();
     let mobileLinkSelectionTimer = 0;
     let mobileLinkSelectedKey = "";
     let mobileLinkSelectionPhase = "idle";
@@ -5349,8 +5357,207 @@
       const face = scene.querySelector('[data-lastfm-track-panel-scene-face="front"]');
       return face instanceof HTMLElement ? face : null;
     }
+    function getLastFmTrackPanelSceneExplosionImage(scene) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const image = scene.querySelector("[data-lastfm-track-panel-scene-explosion-image]");
+      return image instanceof HTMLImageElement ? image : null;
+    }
+    function getLastFmTrackPanelSceneRuntime(scene) {
+      if (!(scene instanceof HTMLElement)) return null;
+      let runtime = lastFmTrackPanelSceneRuntime.get(scene);
+      if (runtime) return runtime;
+      runtime = {
+        phase: "idle",
+        hungTimer: 0,
+        explosionTimer: 0,
+        explosionHideTimer: 0,
+        explosionAudio: null,
+        explosionNonce: 0
+      };
+      lastFmTrackPanelSceneRuntime.set(scene, runtime);
+      return runtime;
+    }
+    function getLastFmTrackPanelSceneDebugConfig() {
+      const debug = window.__internetAngelLastFmPanelSceneDebug || {};
+      const readPositiveNumber = (value, fallback) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+      };
+      const readPositiveInteger = (value, fallback) => {
+        const parsed = Math.floor(Number(value));
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+      };
+      return {
+        loadingSpinMs: readPositiveNumber(debug.loadingSpinMs, LASTFM_PANEL_SCENE_LOADING_SPIN_MS),
+        hungSpinMs: readPositiveNumber(debug.hungSpinMs, LASTFM_PANEL_SCENE_HUNG_SPIN_MS),
+        hungAfterSpins: readPositiveInteger(debug.hungAfterSpins, LASTFM_PANEL_SCENE_HUNG_AFTER_SPINS),
+        explosionAfterHungSpins: readPositiveInteger(debug.explosionAfterHungSpins, LASTFM_PANEL_SCENE_EXPLOSION_AFTER_HUNG_SPINS),
+        explosionOverlayMs: readPositiveNumber(debug.explosionOverlayMs, LASTFM_PANEL_SCENE_EXPLOSION_OVERLAY_MS),
+        muteExplosionAudio: Boolean(debug.muteExplosionAudio)
+      };
+    }
+    function applyLastFmTrackPanelSceneTiming(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      const timing = getLastFmTrackPanelSceneDebugConfig();
+      scene.style.setProperty("--lastfm-track-panel-scene-loading-spin-ms", `${timing.loadingSpinMs}ms`);
+      scene.style.setProperty("--lastfm-track-panel-scene-hung-spin-ms", `${timing.hungSpinMs}ms`);
+    }
+    function clearLastFmTrackPanelSceneEscalationTimers(scene) {
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return;
+      if (runtime.hungTimer) {
+        window.clearTimeout(runtime.hungTimer);
+        runtime.hungTimer = 0;
+      }
+      if (runtime.explosionTimer) {
+        window.clearTimeout(runtime.explosionTimer);
+        runtime.explosionTimer = 0;
+      }
+      if (runtime.explosionHideTimer) {
+        window.clearTimeout(runtime.explosionHideTimer);
+        runtime.explosionHideTimer = 0;
+      }
+    }
+    function stopLastFmTrackPanelSceneExplosion(scene, { resetImage = false } = {}) {
+      if (!(scene instanceof HTMLElement)) return;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return;
+      if (runtime.explosionHideTimer) {
+        window.clearTimeout(runtime.explosionHideTimer);
+        runtime.explosionHideTimer = 0;
+      }
+      scene.dataset.panelSceneExplosionState = "idle";
+      const explosionImage = getLastFmTrackPanelSceneExplosionImage(scene);
+      if (resetImage && explosionImage instanceof HTMLImageElement) {
+        explosionImage.removeAttribute("src");
+      }
+      const explosionAudio = runtime.explosionAudio;
+      if (explosionAudio instanceof HTMLAudioElement) {
+        try {
+          explosionAudio.pause();
+          explosionAudio.currentTime = 0;
+        } catch {
+        }
+      }
+      runtime.explosionAudio = null;
+      if (runtime.phase === "exploding") {
+        runtime.phase = "hung";
+      }
+    }
+    function teardownLastFmTrackPanelScene(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      clearLastFmTrackPanelSceneEscalationTimers(scene);
+      stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
+      lastFmTrackPanelSceneRuntime.delete(scene);
+    }
+    function triggerLastFmTrackPanelSceneExplosion(scene) {
+      if (!(scene instanceof HTMLElement) || !scene.isConnected) return;
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return;
+      const timing = getLastFmTrackPanelSceneDebugConfig();
+      runtime.explosionTimer = 0;
+      if (scene.dataset.panelSceneLoading !== "true" || scene.dataset.panelSceneSpin !== "hung") return;
+      runtime.phase = "exploding";
+      scene.dataset.panelSceneHangState = "hung";
+      scene.dataset.panelSceneExplosionState = "active";
+      const explosionImage = getLastFmTrackPanelSceneExplosionImage(scene);
+      if (explosionImage instanceof HTMLImageElement) {
+        runtime.explosionNonce += 1;
+        explosionImage.src = `${LASTFM_PANEL_SCENE_EXPLOSION_GIF_URL}?scene-explosion=${runtime.explosionNonce}`;
+      }
+      window.__internetAngelLastFmPanelExplosionLog = Array.isArray(window.__internetAngelLastFmPanelExplosionLog)
+        ? window.__internetAngelLastFmPanelExplosionLog
+        : [];
+      const explosionLogEntry = {
+        timestamp: Date.now(),
+        panelType: scene.dataset.panelType || "",
+        source: "lastfmPanelLoadingExplosion"
+      };
+      window.__internetAngelLastFmPanelExplosionLog.push(explosionLogEntry);
+      if (window.__internetAngelLastFmPanelExplosionLog.length > 20) {
+        window.__internetAngelLastFmPanelExplosionLog.splice(0, window.__internetAngelLastFmPanelExplosionLog.length - 20);
+      }
+      window.dispatchEvent(new CustomEvent("internet-angel:lastfm-panel-explosion", {
+        detail: explosionLogEntry
+      }));
+      if (!timing.muteExplosionAudio) {
+        try {
+          const explosionAudio = new Audio(LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL);
+          explosionAudio.preload = "auto";
+          explosionAudio.volume = 0.72;
+          runtime.explosionAudio = explosionAudio;
+          const playPromise = explosionAudio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {});
+          }
+        } catch {
+        }
+      }
+      runtime.explosionHideTimer = window.setTimeout(() => {
+        runtime.explosionHideTimer = 0;
+        if (!(scene.isConnected && scene.dataset.panelSceneLoading === "true")) return;
+        scene.dataset.panelSceneExplosionState = "complete";
+        if (explosionImage instanceof HTMLImageElement) {
+          explosionImage.removeAttribute("src");
+        }
+        if (runtime.phase === "exploding") {
+          runtime.phase = "hung";
+        }
+      }, timing.explosionOverlayMs);
+    }
+    function syncLastFmTrackPanelSceneEscalation(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      applyLastFmTrackPanelSceneTiming(scene);
+      const runtime = getLastFmTrackPanelSceneRuntime(scene);
+      if (!runtime) return;
+      if (scene.dataset.panelSceneLoading !== "true") {
+        clearLastFmTrackPanelSceneEscalationTimers(scene);
+        stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
+        runtime.phase = "idle";
+        scene.dataset.panelSceneHangState = "idle";
+        scene.dataset.panelSceneExplosionState = "idle";
+        return;
+      }
+      const sceneSpin = scene.dataset.panelSceneSpin || "idle";
+      if (sceneSpin === "loading") {
+        if (runtime.phase === "loading") return;
+        clearLastFmTrackPanelSceneEscalationTimers(scene);
+        stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
+        runtime.phase = "loading";
+        scene.dataset.panelSceneHangState = "loading";
+        scene.dataset.panelSceneExplosionState = "idle";
+        const timing = getLastFmTrackPanelSceneDebugConfig();
+        runtime.hungTimer = window.setTimeout(() => {
+          runtime.hungTimer = 0;
+          if (!(scene.isConnected && scene.dataset.panelSceneLoading === "true" && scene.dataset.panelSceneSpin === "loading")) return;
+          scene.dataset.panelSceneSpin = "hung";
+          syncLastFmTrackPanelSceneEscalation(scene);
+        }, timing.loadingSpinMs * timing.hungAfterSpins);
+        return;
+      }
+      if (sceneSpin === "hung") {
+        if (runtime.phase === "hung" || runtime.phase === "exploding") return;
+        clearLastFmTrackPanelSceneEscalationTimers(scene);
+        runtime.phase = "hung";
+        scene.dataset.panelSceneHangState = "hung";
+        scene.dataset.panelSceneExplosionState = "idle";
+        const timing = getLastFmTrackPanelSceneDebugConfig();
+        runtime.explosionTimer = window.setTimeout(() => {
+          triggerLastFmTrackPanelSceneExplosion(scene);
+        }, timing.hungSpinMs * timing.explosionAfterHungSpins);
+        return;
+      }
+      clearLastFmTrackPanelSceneEscalationTimers(scene);
+      stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
+      runtime.phase = "idle";
+      scene.dataset.panelSceneHangState = scene.dataset.panelSceneLoading === "true" ? "loading" : "idle";
+      scene.dataset.panelSceneExplosionState = "idle";
+    }
     function renderLastFmTrackPanelSceneShell(markup, options = {}) {
       return `
+        <div class="lastfm-track-panel-scene-explosion" data-lastfm-track-panel-scene-explosion aria-hidden="true">
+          <img class="lastfm-track-panel-scene-explosion-image" data-lastfm-track-panel-scene-explosion-image alt="" />
+        </div>
         <div class="lastfm-track-panel-scene-rotator" data-lastfm-track-panel-scene-rotator>
           <div class="lastfm-track-panel-scene-face lastfm-track-panel-scene-face--front" data-lastfm-track-panel-scene-face="front">
             ${markup}
@@ -5361,6 +5568,14 @@
                 <span class="lastfm-track-panel-scene-back-cat-face">(=^･ω･^=)</span>
                 <span class="lastfm-track-panel-scene-back-cat-paw">ﾉ</span>
               </span>
+              <div class="lastfm-track-panel-scene-back-hung">
+                <span class="lastfm-track-panel-scene-back-sad-cat">
+                  <span class="lastfm-track-panel-scene-back-sad-cat-text">ฅ^•</span>
+                  <span class="lastfm-track-panel-scene-back-sad-cat-mouth">︵</span>
+                  <span class="lastfm-track-panel-scene-back-sad-cat-text">•^ฅ</span>
+                </span>
+                <p class="lastfm-track-panel-scene-back-copy">Loading has hung due to an api issue probably :c</p>
+              </div>
             </div>
           </div>
         </div>
@@ -5372,11 +5587,15 @@
       scene.dataset.panelSceneState = firstNonEmpty(options?.state, "current");
       scene.dataset.panelSceneSpin = "idle";
       scene.dataset.panelSceneLoading = options?.loading ? "true" : "false";
+      scene.dataset.panelSceneHangState = options?.loading ? "loading" : "idle";
+      scene.dataset.panelSceneExplosionState = "idle";
       const panelType = firstNonEmpty(options?.panelType, "");
       if (panelType) {
         scene.dataset.panelType = panelType;
       }
       scene.innerHTML = renderLastFmTrackPanelSceneShell(markup, options);
+      applyLastFmTrackPanelSceneTiming(scene);
+      syncLastFmTrackPanelSceneEscalation(scene);
       return scene;
     }
     function syncLastFmTrackPanelSceneChrome(scene, options = {}) {
@@ -5388,6 +5607,7 @@
       if (Object.prototype.hasOwnProperty.call(options, "loading")) {
         scene.dataset.panelSceneLoading = options.loading ? "true" : "false";
       }
+      syncLastFmTrackPanelSceneEscalation(scene);
     }
     function resetLastFmTrackPanelSceneTransform(scene) {
       const rotator = getLastFmTrackPanelSceneRotator(scene);
@@ -5401,19 +5621,22 @@
       const rotator = getLastFmTrackPanelSceneRotator(scene);
       if (!(rotator instanceof HTMLElement)) {
         scene.dataset.panelSceneSpin = "idle";
+        syncLastFmTrackPanelSceneEscalation(scene);
         return;
       }
-      if (scene.dataset.panelSceneSpin !== "loading") {
+      if (!["loading", "hung"].includes(scene.dataset.panelSceneSpin || "")) {
         scene.dataset.panelSceneSpin = scene.dataset.panelSceneSpin === "handoff-in" ? "handoff-in" : "idle";
         if (scene.dataset.panelSceneSpin === "idle") {
           resetLastFmTrackPanelSceneTransform(scene);
         }
+        syncLastFmTrackPanelSceneEscalation(scene);
         return;
       }
       const frozenTransform = window.getComputedStyle(rotator).transform;
       rotator.style.transform = frozenTransform === "none" ? "rotateY(0deg)" : frozenTransform;
       rotator.getBoundingClientRect();
       scene.dataset.panelSceneSpin = "settling";
+      syncLastFmTrackPanelSceneEscalation(scene);
       requestAnimationFrame(() => {
         if (!(scene.isConnected && rotator.isConnected) || scene.dataset.panelSceneSpin !== "settling") return;
         rotator.style.transform = "rotateY(-360deg)";
@@ -5423,6 +5646,7 @@
         if (!(scene.isConnected && rotator.isConnected)) return;
         scene.dataset.panelSceneSpin = "idle";
         resetLastFmTrackPanelSceneTransform(scene);
+        syncLastFmTrackPanelSceneEscalation(scene);
         scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_SETTLE_MS + 48);
     }
@@ -5471,6 +5695,7 @@
       clearLastFmTrackPanelSceneSettleTimer();
       Array.from(lastFmTrackPanelContent.querySelectorAll(".lastfm-track-panel-scene")).forEach((scene) => {
         if (scene instanceof HTMLElement && scene !== currentScene) {
+          teardownLastFmTrackPanelScene(scene);
           scene.remove();
         }
       });
@@ -5480,6 +5705,9 @@
           panelType,
           loading: isLoading
         });
+        if (currentScene instanceof HTMLElement) {
+          teardownLastFmTrackPanelScene(currentScene);
+        }
         lastFmTrackPanelContent.innerHTML = "";
         lastFmTrackPanelContent.appendChild(nextScene);
         const nextCurrentScene = getLastFmTrackPanelCurrentScene();
@@ -5492,34 +5720,39 @@
         panelType,
         loading: isLoading
       });
-      lastFmTrackPanelContent.appendChild(incomingScene);
-      hydrateLastFmTrackPanelScene(incomingScene);
-      requestAnimationFrame(() => {
-        if (!(currentScene.isConnected && incomingScene.isConnected)) return;
-        currentScene.dataset.panelSceneState = "outgoing";
-        currentScene.dataset.panelSceneSpin = "handoff-out";
-        incomingScene.dataset.panelSceneState = "current";
-        incomingScene.dataset.panelSceneSpin = "handoff-in";
-        setLastFmTrackPanelScrollTop();
-        scheduleLastFmTrackPanelFit();
-      });
-      lastFmTrackPanelSceneTimer = window.setTimeout(() => {
-        lastFmTrackPanelSceneTimer = 0;
-        if (currentScene.isConnected) {
-          currentScene.remove();
-        }
-        Array.from(lastFmTrackPanelContent.querySelectorAll('.lastfm-track-panel-scene[data-panel-scene-state="outgoing"]')).forEach((scene) => {
-          if (scene instanceof HTMLElement) {
-            scene.remove();
-          }
+        lastFmTrackPanelContent.appendChild(incomingScene);
+        hydrateLastFmTrackPanelScene(incomingScene);
+        requestAnimationFrame(() => {
+          if (!(currentScene.isConnected && incomingScene.isConnected)) return;
+          currentScene.dataset.panelSceneState = "outgoing";
+          currentScene.dataset.panelSceneSpin = "handoff-out";
+          incomingScene.dataset.panelSceneState = "current";
+          incomingScene.dataset.panelSceneSpin = "handoff-in";
+          syncLastFmTrackPanelSceneEscalation(currentScene);
+          syncLastFmTrackPanelSceneEscalation(incomingScene);
+          setLastFmTrackPanelScrollTop();
+          scheduleLastFmTrackPanelFit();
         });
-        if (incomingScene.isConnected && incomingScene.dataset.panelSceneSpin === "handoff-in") {
-          incomingScene.dataset.panelSceneSpin = incomingScene.dataset.panelSceneLoading === "true" ? "loading" : "idle";
-          if (incomingScene.dataset.panelSceneSpin === "idle") {
-            resetLastFmTrackPanelSceneTransform(incomingScene);
+        lastFmTrackPanelSceneTimer = window.setTimeout(() => {
+          lastFmTrackPanelSceneTimer = 0;
+          if (currentScene.isConnected) {
+            teardownLastFmTrackPanelScene(currentScene);
+            currentScene.remove();
           }
-        }
-        scheduleLastFmTrackPanelFit();
+          Array.from(lastFmTrackPanelContent.querySelectorAll('.lastfm-track-panel-scene[data-panel-scene-state="outgoing"]')).forEach((scene) => {
+            if (scene instanceof HTMLElement) {
+              teardownLastFmTrackPanelScene(scene);
+              scene.remove();
+            }
+          });
+          if (incomingScene.isConnected && incomingScene.dataset.panelSceneSpin === "handoff-in") {
+            incomingScene.dataset.panelSceneSpin = incomingScene.dataset.panelSceneLoading === "true" ? "loading" : "idle";
+            syncLastFmTrackPanelSceneEscalation(incomingScene);
+            if (incomingScene.dataset.panelSceneSpin === "idle") {
+              resetLastFmTrackPanelSceneTransform(incomingScene);
+            }
+          }
+          scheduleLastFmTrackPanelFit();
       }, LASTFM_PANEL_SCENE_TRANSITION_MS + 48);
     }
     function updateLastFmTrackPanelCurrentSceneMarkup(markup, options = {}) {
@@ -5737,6 +5970,11 @@
       lastFmTrackPanelRoot.hidden = true;
       lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
       if (lastFmTrackPanelContent instanceof HTMLElement) {
+        Array.from(lastFmTrackPanelContent.querySelectorAll(".lastfm-track-panel-scene")).forEach((scene) => {
+          if (scene instanceof HTMLElement) {
+            teardownLastFmTrackPanelScene(scene);
+          }
+        });
         lastFmTrackPanelContent.innerHTML = "";
       }
       setTrackPanelOpenState(false);

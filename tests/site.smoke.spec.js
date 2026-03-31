@@ -85,6 +85,13 @@ async function stubSpotifyIframeApi(page) {
   });
 }
 
+async function setLastFmPanelSceneDebug(page, nextDebug = {}) {
+  await page.evaluate((debug) => {
+    window.__internetAngelLastFmPanelSceneDebug = debug;
+    window.__internetAngelLastFmPanelExplosionLog = [];
+  }, nextDebug);
+}
+
 async function stubWindowOpen(page) {
   await page.addInitScript(() => {
     window.__windowOpenCalls = [];
@@ -2819,6 +2826,226 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(apiRequests.some((url) => url.includes("/api/lastfm-artist-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("/api/lastfm-album-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
+});
+
+test("josie escalates stalled panel loads into the hung cat and explosion overlay before recovering", async ({ page }) => {
+  await stubSpotifyIframeApi(page);
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: { track: [] },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "33",
+              url: "https://www.last.fm/music/beabadoobee",
+              image: [{ "#text": "https://example.com/bea-grid.jpg", size: "large" }]
+            }
+          ]
+        },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-artist-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee" },
+        artist: {
+          name: "beabadoobee",
+          artworkUrl: "https://example.com/bea-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee",
+          summary: "A dreamy indie artist.",
+          summaryHasMore: true,
+          listeners: 285055,
+          playcount: 2740015,
+          topTrackCount: 0,
+          topTags: [
+            { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" }
+          ]
+        },
+        topTracks: {
+          artist: "beabadoobee",
+          items: []
+        },
+        topAlbums: {
+          artist: "beabadoobee",
+          items: [
+            {
+              title: "Beatopia",
+              artist: "beabadoobee",
+              artworkUrl: "https://example.com/beatopia-detail.jpg",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/Beatopia",
+              releasedAt: "15 Jul 2022",
+              releaseYear: "2022",
+              topTags: [
+                { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" }
+              ],
+              playcount: 1200456,
+              listeners: 500123
+            }
+          ]
+        }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-album-details**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee", album: "Beatopia" },
+        album: {
+          title: "Beatopia",
+          artist: "beabadoobee",
+          artworkUrl: "https://example.com/beatopia-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/Beatopia",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          summary: "A dreamy sophomore album.",
+          summaryHasMore: true,
+          listeners: 500123,
+          playcount: 1200456,
+          releasedAt: "15 Jul 2022",
+          runtimeMs: 308000,
+          runtimeLabel: "5:08",
+          trackCount: 2,
+          topTags: [
+            { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" }
+          ]
+        },
+        spotify: {
+          matchStatus: "unmatched",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/Talk%20beabadoobee",
+          previewUrl: "",
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: ""
+        },
+        tracks: {
+          items: [
+            {
+              rank: 1,
+              title: "Talk",
+              artist: "beabadoobee",
+              artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+              durationMs: 144000,
+              durationLabel: "2:24",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Talk",
+              userPlaycount: 9,
+              userLoved: true,
+              globalPlaycount: 1820011,
+              listeners: 942304
+            }
+          ]
+        },
+        relatedTracks: {
+          artist: "beabadoobee",
+          items: []
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await setLastFmPanelSceneDebug(page, {
+    loadingSpinMs: 70,
+    hungSpinMs: 160,
+    hungAfterSpins: 5,
+    explosionAfterHungSpins: 1,
+    explosionOverlayMs: 140,
+    muteExplosionAudio: true
+  });
+
+  await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
+  await page.locator(".lastfm-track-panel-related-button--album").first().click();
+
+  await page.waitForFunction(() => {
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    return currentScene instanceof HTMLElement
+      && currentScene.getAttribute("data-panel-scene-loading") === "true"
+      && currentScene.getAttribute("data-panel-scene-spin") === "loading";
+  });
+
+  await page.waitForFunction(() => {
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    return currentScene instanceof HTMLElement
+      && currentScene.getAttribute("data-panel-scene-hang-state") === "hung";
+  });
+
+  const hungState = await page.evaluate(() => {
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    const hungCopy = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-scene-back-copy") : null;
+    const sadCat = currentScene instanceof HTMLElement ? currentScene.querySelector(".lastfm-track-panel-scene-back-sad-cat") : null;
+    const rotator = currentScene instanceof HTMLElement ? currentScene.querySelector("[data-lastfm-track-panel-scene-rotator]") : null;
+    return {
+      hangState: currentScene instanceof HTMLElement ? currentScene.getAttribute("data-panel-scene-hang-state") : "",
+      spinState: currentScene instanceof HTMLElement ? currentScene.getAttribute("data-panel-scene-spin") : "",
+      hungCopy: hungCopy instanceof HTMLElement ? hungCopy.textContent.trim() : "",
+      sadCatText: sadCat instanceof HTMLElement ? sadCat.textContent.trim() : "",
+      animationDuration: rotator instanceof HTMLElement ? window.getComputedStyle(rotator).animationDuration : ""
+    };
+  });
+  expect(hungState.hangState).toBe("hung");
+  expect(hungState.spinState).toBe("hung");
+  expect(hungState.hungCopy).toBe("Loading has hung due to an api issue probably :c");
+  expect(hungState.sadCatText.length).toBeGreaterThan(0);
+  expect(hungState.animationDuration).toBe("0.16s");
+
+  await page.waitForFunction(() => {
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    return currentScene instanceof HTMLElement
+      && currentScene.getAttribute("data-panel-scene-explosion-state") === "active";
+  });
+
+  const explosionState = await page.evaluate(() => {
+    const currentScene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    const explosionImage = currentScene instanceof HTMLElement ? currentScene.querySelector("[data-lastfm-track-panel-scene-explosion-image]") : null;
+    return {
+      explosionState: currentScene instanceof HTMLElement ? currentScene.getAttribute("data-panel-scene-explosion-state") : "",
+      explosionSrc: explosionImage instanceof HTMLImageElement ? explosionImage.getAttribute("src") || "" : "",
+      explosionLogCount: Array.isArray(window.__internetAngelLastFmPanelExplosionLog) ? window.__internetAngelLastFmPanelExplosionLog.length : 0
+    };
+  });
+  expect(explosionState.explosionState).toBe("active");
+  expect(explosionState.explosionSrc).toContain("Deltarune_explosion.gif");
+  expect(explosionState.explosionLogCount).toBe(1);
+
+  await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("Beatopia");
+  await expect.poll(async () => {
+    return page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"]').evaluate((scene) => ({
+      loading: scene.getAttribute("data-panel-scene-loading"),
+      spin: scene.getAttribute("data-panel-scene-spin"),
+      hang: scene.getAttribute("data-panel-scene-hang-state")
+    }));
+  }).toEqual({ loading: "false", spin: "idle", hang: "idle" });
 });
 
 test("josie keeps track details on the inline spotify layout when spotify has no preview clip", async ({ page }) => {
