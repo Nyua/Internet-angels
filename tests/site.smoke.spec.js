@@ -773,32 +773,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
 });
 
-test("desktop profile links play the site-wide pulse before opening the confirm prompt", async ({ page }) => {
+test("desktop profile links open the confirm prompt immediately with no full-screen flash", async ({ page }) => {
   await stubWindowOpen(page);
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await page.waitForSelector(".steam-sidebar-row--spotify .steam-sidebar-link");
   await clearInteractionSfxLog(page);
   await page.locator(".steam-sidebar-row--spotify .steam-sidebar-link").click({ force: true });
-  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "active");
-  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-site", "spotify");
-  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
-  await page.waitForTimeout(40);
-  const effectState = await page.locator("#social-link-effect-layer").evaluate((node) => {
-    const styles = window.getComputedStyle(node);
-    return {
-      opacity: Number.parseFloat(styles.opacity),
-      rgb: styles.getPropertyValue("--social-link-effect-rgb").trim()
-    };
-  });
-  expect(effectState.opacity).toBeGreaterThan(0);
-  expect(effectState.rgb).toBe("116, 232, 154");
-  await page.waitForTimeout(120);
+  await expect(page.locator("#social-link-effect-layer")).toHaveCount(0);
   const earlyCalls = await drainWindowOpenCalls(page);
   expect(earlyCalls.some((entry) => /open\.spotify/i.test(entry.url || ""))).toBe(false);
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "externalConfirmOpen", ownerMode: "top", page: "josie" });
   await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
-  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "idle");
   await page.locator(".external-link-confirm-button--new-tab").click();
   await waitForInteractionSfx(page, { soundId: "confirm_soft", source: "externalConfirmNewTab", ownerMode: "top", page: "josie" });
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
@@ -1215,6 +1201,78 @@ test("josie keeps real custom status text when it differs from the emoji name", 
 
   await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
   await expect(page.locator(".discord-presence-headline")).toContainText("holding on");
+  await expect(page.locator(".discord-presence-headline")).not.toContainText("ame_jam");
+});
+
+test("josie strips a leading emoji token from custom status text and keeps the real message", async ({ page }) => {
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless",
+            global_name: "FoundLifeless",
+            avatar: "avatar-hash",
+            premium_type: 2
+          },
+          activities: [
+            {
+              type: 4,
+              name: "Custom Status",
+              state: "Ame_Jam bunii fans are eating GOOD",
+              emoji: {
+                id: "123456789012345678",
+                name: "ame_jam",
+                animated: false
+              }
+            }
+          ],
+          discord_status: "online",
+          listening_to_spotify: false,
+          spotify: {},
+          active_on_discord_web: true,
+          active_on_discord_desktop: true,
+          active_on_discord_mobile: false,
+          kv: {}
+        },
+        presence: {
+          displayName: "foundlifeless",
+          username: "foundlifeless",
+          statusKey: "online",
+          statusLabel: "Online",
+          avatarUrl: "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256",
+          avatarDecorationUrl: "",
+          bannerUrl: "",
+          hasNitro: true,
+          nitroBadgeIconUrl: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png",
+          customStatusText: "Ame_Jam bunii fans are eating GOOD",
+          primaryActivity: null,
+          spotify: {
+            isListening: false,
+            song: "",
+            artist: "",
+            album: "",
+            albumArtUrl: "",
+            trackUrl: ""
+          }
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
+  await expect(page.locator(".discord-presence-headline")).toHaveText("bunii fans are eating GOOD");
+  await expect(page.locator(".discord-presence-headline")).not.toContainText("Ame_Jam");
   await expect(page.locator(".discord-presence-headline")).not.toContainText("ame_jam");
 });
 
@@ -1699,15 +1757,13 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await firstMobileIconLink.click();
   await expect(firstMobileIconLink).toHaveClass(/is-mobile-selected/);
   await expect(firstMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
-  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-state", "active");
-  await expect(page.locator("#social-link-effect-layer")).toHaveAttribute("data-social-link-effect-site", "soundcloud");
+  await expect(page.locator("#social-link-effect-layer")).toHaveCount(0);
   const selectedMobileLinkCount = await page.locator(".steam-sidebar-link--icon-only.is-mobile-selected").count();
   expect(selectedMobileLinkCount).toBe(1);
   await page.waitForTimeout(80);
   const selectedAuraState = await page.evaluate(() => {
     const node = document.querySelector(".steam-sidebar-link--icon-only");
-    const effect = document.querySelector("#social-link-effect-layer");
-    if (!(node instanceof HTMLElement) || !(effect instanceof HTMLElement)) {
+    if (!(node instanceof HTMLElement)) {
       return null;
     }
     const styles = window.getComputedStyle(node);
@@ -1717,10 +1773,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
       auraRgb: styles.getPropertyValue("--mobile-link-aura-rgb").trim(),
       beforeOpacity: Number.parseFloat(before.opacity),
       afterOpacity: Number.parseFloat(after.opacity),
-      afterAnimationName: after.animationName,
-      effectOpacity: Number.parseFloat(window.getComputedStyle(effect).opacity),
-      effectVeilOpacity: Number.parseFloat(window.getComputedStyle(effect, "::before").opacity),
-      effectRgb: window.getComputedStyle(effect).getPropertyValue("--social-link-effect-rgb").trim()
+      afterAnimationName: after.animationName
     };
   });
   expect(selectedAuraState).not.toBeNull();
@@ -1728,9 +1781,6 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(selectedAuraState.beforeOpacity).toBeGreaterThan(0.3);
   expect(selectedAuraState.afterOpacity).toBeGreaterThan(0.2);
   expect(selectedAuraState.afterAnimationName).toContain("mobileSidebarSoundcloudPlume");
-  expect(selectedAuraState.effectOpacity).toBeGreaterThan(0);
-  expect(selectedAuraState.effectVeilOpacity).toBeGreaterThan(0);
-  expect(selectedAuraState.effectRgb).toBe("255, 148, 84");
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
   await page.waitForTimeout(100);
   const earlyIconLaunchLog = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
@@ -2257,16 +2307,30 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await page.waitForTimeout(1_600);
   const midMorphState = await page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"]').evaluate((scene) => {
     const currentTitle = scene.querySelector('[data-lastfm-track-panel-scene-layer="current"] .lastfm-track-panel-title');
+    const nextLayer = scene.querySelector('[data-lastfm-track-panel-scene-layer="next"]');
+    const nextLayerStyle = nextLayer instanceof HTMLElement ? window.getComputedStyle(nextLayer) : null;
     return {
       phase: scene.getAttribute("data-panel-scene-phase"),
       spin: scene.getAttribute("data-panel-scene-spin"),
-      title: currentTitle instanceof HTMLElement ? currentTitle.textContent.trim() : ""
+      title: currentTitle instanceof HTMLElement ? currentTitle.textContent.trim() : "",
+      nextOpacity: nextLayerStyle?.opacity || "",
+      nextVisibility: nextLayerStyle?.visibility || ""
     };
   });
   expect(midMorphState).toEqual({
     phase: "loading",
     spin: "idle",
-    title: "One Time"
+    title: "One Time",
+    nextOpacity: "0",
+    nextVisibility: "hidden"
+  });
+  await page.evaluate(() => {
+    const scene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    if (!(scene instanceof HTMLElement)) return;
+    window.__codexPanelMorphLayers = {
+      current: scene.querySelector('[data-lastfm-track-panel-scene-layer="current"]'),
+      next: scene.querySelector('[data-lastfm-track-panel-scene-layer="next"]')
+    };
   });
   await expect(page.locator('[data-lastfm-track-panel-scene-layer="next"] .lastfm-track-panel-window')).toHaveCount(1);
   await expect(page.locator('[data-lastfm-track-panel-scene-layer="next"] .lastfm-track-panel-title')).toContainText("Talk");
@@ -2277,6 +2341,23 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       phase: scene.getAttribute("data-panel-scene-phase")
     }));
   }, { timeout: 5_000 }).toEqual({ loading: "false", spin: "idle", phase: "stable" });
+  const settledMorphLayerState = await page.evaluate(() => {
+    const scene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
+    const tracked = window.__codexPanelMorphLayers || {};
+    if (!(scene instanceof HTMLElement)) {
+      return null;
+    }
+    return {
+      currentWasStagedNext: scene.querySelector('[data-lastfm-track-panel-scene-layer="current"]') === tracked.next,
+      nextWasPreviousCurrent: scene.querySelector('[data-lastfm-track-panel-scene-layer="next"]') === tracked.current,
+      nextChildElementCount: scene.querySelector('[data-lastfm-track-panel-scene-layer="next"]')?.children.length ?? -1
+    };
+  });
+  expect(settledMorphLayerState).toEqual({
+    currentWasStagedNext: true,
+    nextWasPreviousCurrent: true,
+    nextChildElementCount: 0
+  });
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   const relatedArtShell = await showLastFmPanelArtActions(page);

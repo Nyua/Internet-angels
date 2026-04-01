@@ -929,113 +929,6 @@ body.site-load-playing .os-ambient-backdrop {
   overflow: visible;
 }
 
-.social-link-effect-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 12;
-  pointer-events: none;
-  opacity: 0;
-  isolation: isolate;
-  overflow: hidden;
-  --social-link-effect-rgb: 248, 249, 252;
-  --social-link-effect-secondary-rgb: 255, 255, 255;
-  --social-link-effect-shadow-rgb: 14, 14, 18;
-  filter: saturate(1.16);
-}
-
-.social-link-effect-layer[data-social-link-effect-site="soundcloud"] {
-  --social-link-effect-rgb: 255, 148, 84;
-  --social-link-effect-secondary-rgb: 255, 232, 204;
-}
-
-.social-link-effect-layer[data-social-link-effect-site="spotify"] {
-  --social-link-effect-rgb: 116, 232, 154;
-  --social-link-effect-secondary-rgb: 222, 255, 234;
-}
-
-.social-link-effect-layer[data-social-link-effect-site="lastfm"] {
-  --social-link-effect-rgb: 255, 114, 143;
-  --social-link-effect-secondary-rgb: 255, 223, 231;
-}
-
-.social-link-effect-layer[data-social-link-effect-site="discord"] {
-  --social-link-effect-rgb: 176, 188, 255;
-  --social-link-effect-secondary-rgb: 235, 239, 255;
-}
-
-.social-link-effect-layer[data-social-link-effect-site="steam"] {
-  --social-link-effect-rgb: 152, 220, 255;
-  --social-link-effect-secondary-rgb: 223, 245, 255;
-}
-
-.social-link-effect-layer[data-social-link-effect-site="twitter"] {
-  --social-link-effect-rgb: 205, 238, 255;
-  --social-link-effect-secondary-rgb: 245, 252, 255;
-}
-
-.social-link-effect-layer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 50% 46%, rgba(var(--social-link-effect-secondary-rgb), 0.42) 0 10%, rgba(var(--social-link-effect-rgb), 0.26) 18%, rgba(var(--social-link-effect-rgb), 0.1) 34%, rgba(var(--social-link-effect-rgb), 0.02) 58%, transparent 76%),
-    linear-gradient(180deg, rgba(var(--social-link-effect-rgb), 0.2), rgba(var(--social-link-effect-rgb), 0.08) 42%, rgba(var(--social-link-effect-shadow-rgb), 0.14) 100%);
-  opacity: 0;
-}
-
-.social-link-effect-bloom {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.social-link-effect-bloom {
-  background:
-    radial-gradient(circle at 50% 48%, rgba(var(--social-link-effect-secondary-rgb), 0.5) 0 10%, rgba(var(--social-link-effect-rgb), 0.34) 18%, rgba(var(--social-link-effect-rgb), 0.14) 30%, rgba(var(--social-link-effect-rgb), 0.04) 48%, transparent 62%);
-  mix-blend-mode: screen;
-  filter: blur(12px);
-  transform: scale(0.64);
-}
-
-.social-link-effect-layer[data-social-link-effect-state="active"] {
-  opacity: 1;
-}
-
-.social-link-effect-layer[data-social-link-effect-state="active"]::before {
-  animation: socialLinkEffectVeil 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
-}
-
-.social-link-effect-layer[data-social-link-effect-state="active"] .social-link-effect-bloom {
-  animation: socialLinkEffectBloom 380ms cubic-bezier(0.18, 0.9, 0.18, 1) both;
-}
-
-@keyframes socialLinkEffectVeil {
-  0% {
-    opacity: 0;
-  }
-  24% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes socialLinkEffectBloom {
-  0% {
-    opacity: 0;
-    transform: scale(0.56);
-  }
-  24% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.48);
-  }
-}
-
 .social-hub {
   position: relative;
   z-index: 3;
@@ -1435,6 +1328,7 @@ body.lastfm-track-panel-open {
   position: absolute;
   inset: 0;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transform: translateY(10px) scale(0.994);
   filter: blur(12px);
@@ -1598,9 +1492,10 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-scene[data-panel-scene-phase="loading"] .lastfm-track-panel-scene-layer--next {
-  opacity: 0.22;
-  transform: translateY(6px) scale(0.996);
-  filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px) scale(0.994);
+  filter: blur(12px);
 }
 
 .lastfm-track-panel-scene[data-panel-scene-phase="morphing"] .lastfm-track-panel-scene-veil {
@@ -1615,6 +1510,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-scene[data-panel-scene-phase="morphing"] .lastfm-track-panel-scene-layer--next {
   opacity: 1;
+  visibility: visible;
   transform: translateY(0) scale(1);
   filter: blur(0);
 }

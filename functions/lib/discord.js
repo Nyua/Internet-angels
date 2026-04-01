@@ -49,11 +49,8 @@ function buildSpotifyTrackUrl(trackId) {
 function buildCustomStatusText(activity) {
   const safeActivity = activity && typeof activity === "object" ? activity : null;
   if (!safeActivity) return "";
-  const emoji = safeActivity.emoji && typeof safeActivity.emoji === "object"
-    ? firstNonEmpty(safeActivity.emoji.name)
-    : "";
   const text = firstNonEmpty(safeActivity.state, safeActivity.details);
-  return [emoji, text].filter(Boolean).join(" ").trim();
+  return text;
 }
 
 function buildPrimaryActivity(activities, spotifyData, listeningToSpotify) {

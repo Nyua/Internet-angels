@@ -2736,6 +2736,34 @@
   function normalizeDiscordCustomStatusToken(value) {
     return String(value || "").trim().toLowerCase().replace(/^:+|:+$/g, "").replace(/[\s_-]+/g, "");
   }
+  function stripLeadingDiscordCustomStatusToken(text, emojiAlt) {
+    const rawText = firstNonEmpty(text);
+    const rawEmojiAlt = firstNonEmpty(emojiAlt);
+    if (!rawText || !rawEmojiAlt) return rawText;
+    const normalizedEmoji = normalizeDiscordCustomStatusToken(rawEmojiAlt);
+    if (!normalizedEmoji) return rawText;
+    const baseToken = rawEmojiAlt.trim().replace(/^:+|:+$/g, "");
+    const candidateTokens = new Set([
+      baseToken,
+      `:${baseToken}:`,
+      baseToken.replace(/[_-]+/g, " "),
+      baseToken.replace(/[\s-]+/g, "_"),
+      baseToken.replace(/[\s_]+/g, "-")
+    ]);
+    for (const candidate of candidateTokens) {
+      const safeCandidate = String(candidate || "").trim();
+      if (!safeCandidate) continue;
+      const escapedCandidate = safeCandidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`^\\s*${escapedCandidate}(?=$|[\\s:.,!?;\\-])`, "i");
+      if (!pattern.test(rawText)) continue;
+      const stripped = rawText.replace(pattern, "").replace(/^[\\s:._,-]+/, "").trim();
+      if (!stripped || normalizeDiscordCustomStatusToken(stripped) === normalizedEmoji) {
+        return "";
+      }
+      return stripped;
+    }
+    return rawText;
+  }
   function buildDiscordPresenceCardModel(payload) {
     const safePayload = payload && typeof payload === "object" ? payload : null;
     const presence = safePayload?.presence && typeof safePayload.presence === "object" ? safePayload.presence : null;
@@ -2753,8 +2781,8 @@
     const albumArtUrl = sanitizeUrl(spotify?.albumArtUrl);
     const customEmoji = extractDiscordCustomStatusEmojiData(activities);
     const normalizedEmojiName = normalizeDiscordCustomStatusToken(customEmoji.alt);
-    const normalizedCustomStatusText = normalizeDiscordCustomStatusToken(presence?.customStatusText);
-    const customStatusText = normalizedCustomStatusText && normalizedCustomStatusText === normalizedEmojiName ? "" : firstNonEmpty(presence?.customStatusText);
+    const customStatusText = stripLeadingDiscordCustomStatusToken(presence?.customStatusText, customEmoji.alt);
+    const normalizedCustomStatusText = normalizeDiscordCustomStatusToken(customStatusText);
     let headline = isListeningToSpotify
       ? `Listening to ${firstNonEmpty(spotify?.song, "Unknown track")}`
       : firstNonEmpty(
@@ -4360,8 +4388,8 @@
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
     let mobileLinksRevealTimer = 0;
-    const SOCIAL_LINK_EFFECT_DURATION_MS = 380;
-    const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = SOCIAL_LINK_EFFECT_DURATION_MS;
+    const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
+    const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = PROFILE_LINK_LAUNCH_DELAY_MS;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
@@ -4387,7 +4415,6 @@
     let mobileLinkAnimationTimer = 0;
     let pendingMobileExternalLaunchTimer = 0;
     let pendingMobileExternalPopup = null;
-    let socialLinkEffectTimer = 0;
     let desktopProfilePromptTimer = 0;
     let lastFmTrackPanelSceneSettleTimer = 0;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
@@ -4416,38 +4443,10 @@
       if (!(candidate instanceof HTMLElement)) return "";
       return sanitizeProfileLinkSiteId(candidate.getAttribute("data-profile-site-id"));
     }
-    function clearSocialLinkEffectTimer() {
-      if (!socialLinkEffectTimer) return;
-      window.clearTimeout(socialLinkEffectTimer);
-      socialLinkEffectTimer = 0;
-    }
     function clearDesktopProfilePromptTimer() {
       if (!desktopProfilePromptTimer) return;
       window.clearTimeout(desktopProfilePromptTimer);
       desktopProfilePromptTimer = 0;
-    }
-    function resetSocialLinkEffect() {
-      clearSocialLinkEffectTimer();
-      const layer = document.getElementById("social-link-effect-layer");
-      if (!(layer instanceof HTMLElement)) return;
-      layer.dataset.socialLinkEffectState = "idle";
-      layer.dataset.socialLinkEffectSite = "";
-    }
-    function playSocialLinkEffect(siteId) {
-      const layer = document.getElementById("social-link-effect-layer");
-      const safeSiteId = sanitizeProfileLinkSiteId(siteId);
-      if (!(layer instanceof HTMLElement) || !safeSiteId) return;
-      clearSocialLinkEffectTimer();
-      layer.dataset.socialLinkEffectState = "idle";
-      layer.dataset.socialLinkEffectSite = safeSiteId;
-      void layer.offsetWidth;
-      layer.dataset.socialLinkEffectState = "active";
-      socialLinkEffectTimer = window.setTimeout(() => {
-        socialLinkEffectTimer = 0;
-        if (!(layer instanceof HTMLElement)) return;
-        layer.dataset.socialLinkEffectState = "idle";
-        layer.dataset.socialLinkEffectSite = "";
-      }, SOCIAL_LINK_EFFECT_DURATION_MS);
     }
     function openExternalPromptDialog(url, trigger = null) {
       const safeUrl = sanitizeUrl(url);
@@ -4638,17 +4637,7 @@
       const triggerElement = trigger instanceof HTMLElement ? trigger : null;
       const siteId = resolveProfileLinkSiteId(triggerElement);
       if (!safeUrl || !siteId || isCompactMobileLayout()) return false;
-      clearDesktopProfilePromptTimer();
-      if (externalPromptRoot instanceof HTMLElement) {
-        externalPromptRoot.classList.remove("is-open");
-        externalPromptRoot.hidden = true;
-        externalPromptRoot.setAttribute("aria-hidden", "true");
-      }
-      playSocialLinkEffect(siteId);
-      desktopProfilePromptTimer = window.setTimeout(() => {
-        desktopProfilePromptTimer = 0;
-        openExternalPromptDialog(safeUrl, triggerElement);
-      }, SOCIAL_LINK_EFFECT_DURATION_MS);
+      openExternalPromptDialog(safeUrl, triggerElement);
       return true;
     }
     function launchMobileExternalWithSelection(url, { trigger = null, target = "_blank" } = {}) {
@@ -4658,8 +4647,6 @@
       const resolvedTarget = resolveExternalLaunchTarget(triggerElement instanceof HTMLAnchorElement ? triggerElement : null, target || "_blank");
       const selectedLink = resolveMobileProfileIconLink(triggerElement);
       const useProfileIconAura = Boolean(selectedLink);
-      const profileLinkSiteId = resolveProfileLinkSiteId(triggerElement);
-      const useSiteWideEffect = Boolean(profileLinkSiteId);
       if (useProfileIconAura && pendingMobileExternalLaunchTimer) {
         return;
       }
@@ -4683,9 +4670,6 @@
       }
       pendingMobileExternalPopup = popupWindow;
       const launchDelayMs = useProfileIconAura ? MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS : MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS;
-      if (useSiteWideEffect) {
-        playSocialLinkEffect(profileLinkSiteId);
-      }
       pendingMobileExternalLaunchTimer = window.setTimeout(() => {
         pendingMobileExternalLaunchTimer = 0;
         setMobileLinksLaunchPending(false);
@@ -5856,6 +5840,23 @@
       lockLastFmTrackPanelSceneHeight(scene, NaN);
       setLastFmTrackPanelScenePhase(scene, "stable");
     }
+    function swapLastFmTrackPanelSceneLayers(scene) {
+      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(scene);
+      const nextLayer = getLastFmTrackPanelSceneNextLayer(scene);
+      if (!(currentLayer instanceof HTMLElement && nextLayer instanceof HTMLElement)) {
+        return false;
+      }
+      currentLayer.classList.remove("lastfm-track-panel-scene-layer--current");
+      currentLayer.classList.add("lastfm-track-panel-scene-layer--next");
+      currentLayer.setAttribute("data-lastfm-track-panel-scene-layer", "next");
+      currentLayer.setAttribute("aria-hidden", "true");
+      currentLayer.innerHTML = "";
+      nextLayer.classList.remove("lastfm-track-panel-scene-layer--next");
+      nextLayer.classList.add("lastfm-track-panel-scene-layer--current");
+      nextLayer.setAttribute("data-lastfm-track-panel-scene-layer", "current");
+      nextLayer.removeAttribute("aria-hidden");
+      return true;
+    }
     function isLastFmTrackPanelSceneMorphActive(scene, nonce) {
       const runtime = getLastFmTrackPanelSceneRuntime(scene);
       if (!runtime) return false;
@@ -5960,8 +5961,10 @@
         }, Math.max(LASTFM_PANEL_MORPH_CONTENT_MS, LASTFM_PANEL_MORPH_SIZE_MS) + 48);
       });
       if (!(scene.isConnected && currentLayer.isConnected && nextLayer.isConnected)) return false;
-      currentLayer.replaceChildren(...Array.from(nextLayer.childNodes));
-      nextLayer.innerHTML = "";
+      if (!swapLastFmTrackPanelSceneLayers(scene)) {
+        currentLayer.replaceChildren(...Array.from(nextLayer.childNodes));
+        nextLayer.innerHTML = "";
+      }
       clearLastFmTrackPanelSceneMorph(scene);
       scene.dataset.panelSceneLoading = "false";
       scene.dataset.panelSceneSpin = "idle";
@@ -6682,7 +6685,6 @@
       clearMobileLinksRevealTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
-      resetSocialLinkEffect();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
       hideLastFmTrackDetails("silent");
