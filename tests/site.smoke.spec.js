@@ -546,7 +546,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("BEGGING THE WITNESS");
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("Backdoor");
+  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("Ericdoa");
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
     if (!(copy instanceof HTMLElement)) return false;

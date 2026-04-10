@@ -1644,7 +1644,7 @@
   }
   function findPreferredInitialShuffleTrack(tracks) {
     const safeTracks = Array.isArray(tracks) ? tracks : [];
-    const preferredTitle = "begging the witness";
+    const preferredTitle = "backdoor";
     return safeTracks.find((track) => normalizeShuffleTrackLookup(track?.title) === preferredTitle) || null;
   }
   function pickWeightedShuffleTrack(tracks, excludeId = "") {
