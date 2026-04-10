@@ -32,6 +32,7 @@
   var socialHubState = null;
   var ambientBackdropController = null;
   var siteCursorController = null;
+  var INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT = "internet-angel:performance-tier-change";
   function startDocumentTitleTypewriter(finalTitle = "Josie") {
     const safeTitle = String(finalTitle || "").trim();
     if (!safeTitle) return;
@@ -55,6 +56,12 @@
   }
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+  function getInternetAngelPerformanceState() {
+    return window.__internetAngelPerformanceState || null;
+  }
+  function isDesktopPerformanceDegraded() {
+    return Boolean(getInternetAngelPerformanceState()?.isDegraded?.());
   }
   function applyPermanentNightTheme() {
     if (!(document.body instanceof HTMLElement)) return;
@@ -1719,6 +1726,7 @@
     let reactiveFlash = 0;
     let reactiveVisualSignature = "";
     let lastVisualizerFrameMs = 0;
+    let performanceDegraded = isDesktopPerformanceDegraded();
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
@@ -1746,6 +1754,19 @@
         targets.push(waveSurface);
       }
       return targets;
+    }
+    function syncVisualizerPerformanceMode() {
+      const mode = performanceDegraded ? "degraded" : "full";
+      const layerHost = document.getElementById("os-shuffle-visualizer-layer");
+      if (layerHost instanceof HTMLElement) {
+        layerHost.setAttribute("data-visualizer-mode", mode);
+      }
+      if (playerRoot instanceof HTMLElement) {
+        playerRoot.setAttribute("data-visualizer-mode", mode);
+      }
+      if (waveSurface instanceof HTMLElement) {
+        waveSurface.setAttribute("data-visualizer-mode", mode);
+      }
     }
     function resolveShuffleTheme(track) {
       const themeSeed = hashText(`${track?.title || "Shuffle"}|${track?.artist || "Unknown Artist"}`).padStart(8, "0");
@@ -1856,11 +1877,11 @@
       });
     }
     function syncReactiveVisuals(rawBeat = 0, rawFlash = 0) {
-      const targetBeat = clamp2(rawBeat, 0, 1);
+      const targetBeat = clamp2(performanceDegraded ? 0 : rawBeat, 0, 1);
       const beatAttack = targetBeat > reactiveBeat ? 0.34 : 0.14;
       reactiveBeat = clamp2(reactiveBeat + (targetBeat - reactiveBeat) * beatAttack, 0, 1);
       reactiveBeat *= targetBeat > 0.008 ? 0.998 : 0.948;
-      reactiveFlash = clamp2(Math.max(rawFlash, reactiveFlash * 0.86), 0, 1);
+      reactiveFlash = clamp2(Math.max(performanceDegraded ? 0 : rawFlash, reactiveFlash * 0.86), 0, 1);
       const glowOpacity = Math.min(0.46, 0.16 + reactiveBeat * 0.24 + reactiveFlash * 0.06);
       const frostOpacity = Math.min(0.96, 0.76 + reactiveBeat * 0.18 + reactiveFlash * 0.04);
       const auraBlur = 30 + reactiveBeat * 22 + reactiveFlash * 18;
@@ -1930,6 +1951,7 @@
       };
     }
     function syncUi() {
+      syncVisualizerPerformanceMode();
       if (titleEl instanceof HTMLElement) {
         titleEl.textContent = currentTrack?.title || (loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle...");
       }
@@ -2016,6 +2038,10 @@
       await chooseNextTrack({ autoplay: true, excludeCurrent: false });
     }
     function ensureWavePortal() {
+      if (performanceDegraded) {
+        hideWavePortal();
+        return null;
+      }
       const layerHost = document.getElementById("os-shuffle-visualizer-layer");
       if (!(layerHost instanceof HTMLDivElement)) return null;
       if (!(wavePortal instanceof HTMLDivElement) || wavePortal.parentElement !== layerHost) {
@@ -2336,7 +2362,7 @@
     }
     function renderLoop(nowMs) {
       if (disposed) return;
-      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden);
+      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !performanceDegraded);
       const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? SHUFFLE_ACTIVE_FRAME_INTERVAL_MS : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
         rafId = window.requestAnimationFrame(renderLoop);
@@ -2351,6 +2377,15 @@
         hideWavePortal();
       }
       rafId = window.requestAnimationFrame(renderLoop);
+    }
+    function onPerformanceTierChange() {
+      performanceDegraded = isDesktopPerformanceDegraded();
+      traceValues = new Float32Array(0);
+      traceSmoothingValues = new Float32Array(0);
+      hideWavePortal();
+      syncReactiveVisuals(0, 0);
+      syncVisualizerPerformanceMode();
+      syncUi();
     }
     async function attemptPlay() {
       await waitForSiteLoadCompletion();
@@ -2449,6 +2484,7 @@
       window.addEventListener("resize", viewportGeometryListener, { passive: true });
       window.visualViewport?.addEventListener("resize", viewportGeometryListener, { passive: true });
       window.visualViewport?.addEventListener("scroll", viewportGeometryListener, { passive: true });
+      syncVisualizerPerformanceMode();
       if (playbackUnlocked && !compactPlayerMode) {
         ensureWaveCanvasSize();
       } else {
@@ -2471,6 +2507,7 @@
       waveSurface = null;
       hideWavePortal();
       invalidateWaveLayout();
+      syncVisualizerPerformanceMode();
       traceValues = new Float32Array(0);
       traceSmoothingValues = new Float32Array(0);
       titleEl = null;
@@ -2566,6 +2603,7 @@
         window.cancelAnimationFrame(rafId);
         rafId = 0;
       }
+      window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
       if (previewCtx && previewCtx.state !== "closed") {
         void previewCtx.close().catch(() => {
         });
@@ -2605,6 +2643,8 @@
       loadState = "error";
       syncUi();
     });
+    window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
+    syncVisualizerPerformanceMode();
     rafId = window.requestAnimationFrame(renderLoop);
     void ensureManifest().then((tracks) => {
       if (disposed || !tracks.length || currentTrack) return;
@@ -6786,6 +6826,7 @@
     }
     if (root2 instanceof HTMLElement) {
       root2.setAttribute("data-social-hub-ready", "true");
+      getInternetAngelPerformanceState()?.markReady?.();
     }
     if (mobileSpeakerButton instanceof HTMLButtonElement) {
       mobileSpeakerButton.addEventListener("click", onMobileSpeakerToggleClick);
@@ -7122,6 +7163,7 @@
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
     const compactMobileLayout = isCompactMobileLayout();
     const enableAmbientPointerResponse = !compactMobileLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
+    let performanceDegraded = isDesktopPerformanceDegraded();
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -7162,7 +7204,7 @@
       return (seed ^ Math.imul(cycleIndex + 1, salt)) >>> 0;
     }
     function updatePointerState() {
-      if (!enableAmbientPointerResponse) {
+      if (!enableAmbientPointerResponse || performanceDegraded) {
         pointerCurrentX = renderWidth * 0.5;
         pointerCurrentY = renderHeight * 0.5;
         pointerStrength = 0;
@@ -7173,7 +7215,7 @@
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
-      if (!enableAmbientPointerResponse) {
+      if (!enableAmbientPointerResponse || performanceDegraded) {
         return { offsetX: 0, offsetY: 0, influence: 0 };
       }
       if (pointerStrength < 0.002) {
@@ -7550,7 +7592,11 @@
       ctx.restore();
     }
     function shouldAnimate() {
-      return !prefersReducedMotion && !document.hidden && !document.body.classList.contains("site-load-playing") && Boolean(root?.classList.contains("state-os-ready"));
+      return !prefersReducedMotion
+        && !performanceDegraded
+        && !document.hidden
+        && !document.body.classList.contains("site-load-playing")
+        && Boolean(root?.classList.contains("state-os-ready"));
     }
     function handlePointerMove(event) {
       if (disposed || event.pointerType === "touch") return;
@@ -7606,6 +7652,14 @@
           drawStaticFrame(0);
         }
       }
+      osAmbientBackdrop.setAttribute(
+        "data-ambient-motion",
+        prefersReducedMotion || performanceDegraded ? "frozen" : "running"
+      );
+    }
+    function handlePerformanceTierChange() {
+      performanceDegraded = isDesktopPerformanceDegraded();
+      sync();
     }
     window.addEventListener("resize", resize, { passive: true });
     if (window.visualViewport) {
@@ -7617,6 +7671,7 @@
       window.addEventListener("pointerout", handlePointerOut, { passive: true });
       window.addEventListener("blur", handleWindowBlur);
     }
+    window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, handlePerformanceTierChange);
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     if (root instanceof HTMLElement) {
       bodyObserver.observe(root, { attributes: true, attributeFilter: ["class"] });
@@ -7641,6 +7696,7 @@
           window.removeEventListener("pointerout", handlePointerOut);
           window.removeEventListener("blur", handleWindowBlur);
         }
+        window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, handlePerformanceTierChange);
       }
     };
   }
@@ -7653,7 +7709,7 @@
     osAmbientBackdrop.setAttribute("data-ambient-renderer", "legacy");
     osAmbientBackdrop.setAttribute(
       "data-ambient-motion",
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "frozen" : "running"
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || isDesktopPerformanceDegraded() ? "frozen" : "running"
     );
     document.querySelector("#os-ambient-overlay")?.remove?.();
     return createAmbientBackdropController();
@@ -8761,6 +8817,16 @@
       trailContext.setTransform(1, 0, 0, 1, 0, 0);
       trailContext.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
     }
+    function stopRenderLoop() {
+      if (!rafId) return;
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    function startRenderLoop() {
+      if (disposed || performanceDegraded || rafId) return;
+      lastFrameMs = performance.now();
+      rafId = requestAnimationFrame(tick);
+    }
     resizeTrailCanvas();
     let visible = false;
     let pressed = false;
@@ -8782,6 +8848,7 @@
     let currentContrastMode = "light";
     let selectionAnimationTimer = 0;
     let lastSelectionAnimationAt = 0;
+    let performanceDegraded = isDesktopPerformanceDegraded();
     const trailHistory = [];
     const pointerMoveEventName = "pointermove";
     function parseCssColor(value) {
@@ -8967,6 +9034,20 @@
         cursorEl.classList.remove("is-selecting");
       }, selectionAnimationDurationMs);
     }
+    function applyPerformanceMode() {
+      cursorEl.classList.toggle("is-degraded", performanceDegraded);
+      if (performanceDegraded) {
+        scrollDirection = 0;
+        scrollUntilMs = 0;
+        trailHistory.length = 0;
+        cursorEl.style.setProperty("--cursor-tail-opacity", "0");
+        clearTrailCanvas();
+        cursorEl.classList.remove("is-scroll", "is-scroll-up", "is-scroll-down");
+        stopRenderLoop();
+        return;
+      }
+      startRenderLoop();
+    }
     function syncPosition(x, y) {
       if (!visible) {
         primeCursor(x, y);
@@ -8983,7 +9064,9 @@
       targetY = y;
       headX = x;
       headY = y;
-      pushTrailPoint(x, y, now, true);
+      if (!performanceDegraded) {
+        pushTrailPoint(x, y, now, true);
+      }
       cursorEl.style.setProperty("--cursor-x", `${headX.toFixed(2)}px`);
       cursorEl.style.setProperty("--cursor-y", `${headY.toFixed(2)}px`);
       if (!visible) {
@@ -9035,6 +9118,7 @@
       }
     }
     function setScrollDirectionFromWheel(deltaY) {
+      if (performanceDegraded) return;
       if (!Number.isFinite(deltaY) || deltaY === 0) return;
       scrollDirection = deltaY > 0 ? 1 : -1;
       scrollUntilMs = performance.now() + scrollMorphHoldMs;
@@ -9046,6 +9130,12 @@
       headY = targetY;
       cursorEl.style.setProperty("--cursor-x", `${headX.toFixed(2)}px`);
       cursorEl.style.setProperty("--cursor-y", `${headY.toFixed(2)}px`);
+      if (performanceDegraded) {
+        cursorEl.style.setProperty("--cursor-tail-opacity", "0");
+        clearTrailCanvas();
+        syncScrollState(nowMs);
+        return;
+      }
       pointerEnergy *= Math.exp(-deltaMs * 0.018);
       syncScrollState(nowMs);
       const idleMs = Math.max(0, nowMs - lastMoveMs);
@@ -9090,7 +9180,11 @@
       if (visible) {
         renderTrail(nowMs, deltaMs);
       }
-      rafId = requestAnimationFrame(tick);
+      if (!performanceDegraded) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = 0;
+      }
     }
     function hideCursor() {
       visible = false;
@@ -9181,6 +9275,10 @@
         hideCursor();
       }
     }
+    function onPerformanceTierChange() {
+      performanceDegraded = isDesktopPerformanceDegraded();
+      applyPerformanceMode();
+    }
     window.addEventListener(pointerMoveEventName, onPointerMove, { passive: true });
     window.addEventListener("pointerover", onPointerOver, { passive: true, capture: true });
     window.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
@@ -9192,17 +9290,15 @@
     window.addEventListener("resize", resizeTrailCanvas, { passive: true });
     window.addEventListener("mouseout", onWindowMouseOut);
     window.addEventListener("blur", hideCursor);
+    window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    rafId = requestAnimationFrame(tick);
+    applyPerformanceMode();
     return {
       refresh: refreshFromPoint,
       dispose() {
         if (disposed) return;
         disposed = true;
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
+        stopRenderLoop();
         window.removeEventListener(pointerMoveEventName, onPointerMove);
         window.removeEventListener("pointerover", onPointerOver, true);
         window.removeEventListener("pointerdown", onPointerDown, true);
@@ -9214,6 +9310,7 @@
         window.removeEventListener("resize", resizeTrailCanvas);
         window.removeEventListener("mouseout", onWindowMouseOut);
         window.removeEventListener("blur", hideCursor);
+        window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         currentInteractiveTarget = null;
         clearSelectionAnimationTimer();

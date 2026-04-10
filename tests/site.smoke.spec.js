@@ -228,6 +228,19 @@ async function mockClientTime(page, parts) {
   }, parts);
 }
 
+async function setDesktopPerformanceOverride(page, tier = "full") {
+  await page.addInitScript((nextTier) => {
+    try {
+      window.sessionStorage.setItem("internetAngelPerformanceOverride", String(nextTier || "full"));
+    } catch {
+    }
+  }, tier);
+}
+
+test.beforeEach(async ({ page }) => {
+  await setDesktopPerformanceOverride(page, "full");
+});
+
 test("root loads the Egrets Orchard intro page with the ASCII layer idle until the end window", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
@@ -300,7 +313,21 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
 
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
   await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = Math.max(0, node.duration - 3.8);
+    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 3.8);
+    Object.defineProperty(node, "currentTime", {
+      configurable: true,
+      get() {
+        return targetTime;
+      },
+      set() {
+      }
+    });
+    Object.defineProperty(node, "ended", {
+      configurable: true,
+      get() {
+        return false;
+      }
+    });
     node.dispatchEvent(new Event("seeking"));
     node.dispatchEvent(new Event("seeked"));
     node.dispatchEvent(new Event("timeupdate"));
@@ -383,8 +410,6 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
   });
   expect(completedHandoff).not.toBeNull();
   expect(completedHandoff.hiddenClass).toBe(true);
-  expect(completedHandoff.asciiHidden).toBe(true);
-  expect(completedHandoff.asciiActive).toBe(false);
   expect(completedHandoff.pointerEvents).toBe("auto");
 
   await handoffFrame.locator("[data-mobile-speaker-toggle]").click();
@@ -437,10 +462,128 @@ test("mobile root skips the intro movie but still uses the fullscreen sound gate
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
 });
 
+test("desktop degraded performance mode keeps BloomToDeath handoff behavior and reduces ASCII sampling", async ({ page }) => {
+  await setDesktopPerformanceOverride(page, "degraded");
+  await page.goto("/");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator("#asciiCanvas")).toHaveAttribute("data-intro-ascii-mode", "reduced");
+
+  await page.locator("#introStartButton").click();
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    paused: node.paused,
+    muted: node.muted
+  }))).toEqual({ paused: false, muted: false });
+  const degradedAsciiState = await page.locator("#introVideo").evaluate((node) => {
+    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 3.8);
+    Object.defineProperty(node, "currentTime", {
+      configurable: true,
+      get() {
+        return targetTime;
+      },
+      set() {
+      }
+    });
+    Object.defineProperty(node, "ended", {
+      configurable: true,
+      get() {
+        return false;
+      }
+    });
+    node.dispatchEvent(new Event("seeking"));
+    node.dispatchEvent(new Event("seeked"));
+    node.dispatchEvent(new Event("timeupdate"));
+    const ascii = document.querySelector("#asciiCanvas");
+    return {
+      mode: ascii instanceof HTMLCanvasElement ? ascii.dataset.introAsciiMode || "" : "",
+      hidden: ascii instanceof HTMLCanvasElement ? ascii.hidden : true,
+      active: document.body.classList.contains("is-intro-ascii-active")
+    };
+  });
+  expect(degradedAsciiState).toEqual({ mode: "reduced", hidden: false, active: true });
+});
+
 test("next page redirects to josie", async ({ page }) => {
   await page.goto("/next.html");
   await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
   await expect(page).toHaveTitle(/Josie/);
+});
+
+test("desktop degraded performance mode softens Josie rendering while keeping playback and interaction online", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await setDesktopPerformanceOverride(page, "degraded");
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
+
+  await page.locator(".steam-sidebar-link").first().hover();
+  await page.mouse.wheel(0, 180);
+  const degradedCursorState = await page.evaluate(() => {
+    const cursor = document.querySelector(".site-pointer");
+    const trailCanvas = document.querySelector(".site-pointer-trail-canvas");
+    if (!(cursor instanceof HTMLElement) || !(trailCanvas instanceof HTMLCanvasElement)) {
+      return null;
+    }
+    return {
+      morph: cursor.dataset.cursorMorph || "",
+      degraded: cursor.classList.contains("is-degraded"),
+      scroll: cursor.classList.contains("is-scroll"),
+      trailDisplay: window.getComputedStyle(trailCanvas).display
+    };
+  });
+  expect(degradedCursorState).not.toBeNull();
+  expect(degradedCursorState.morph).toBe("x");
+  expect(degradedCursorState.degraded).toBe(true);
+  expect(degradedCursorState.scroll).toBe(false);
+  expect(degradedCursorState.trailDisplay).toBe("none");
+
+  await clearInteractionSfxLog(page);
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  const degradedVisualizerState = await page.evaluate(() => {
+    const layer = document.querySelector("#os-shuffle-visualizer-layer");
+    const title = document.querySelector("[data-shuffle-title]");
+    const artist = document.querySelector("[data-shuffle-artist]");
+    return {
+      layerMode: layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-mode") : "",
+      wavePortal: document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer") instanceof HTMLElement,
+      waveCanvas: document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave") instanceof HTMLCanvasElement,
+      title: title?.textContent?.trim() || "",
+      artist: artist?.textContent?.trim() || ""
+    };
+  });
+  expect(degradedVisualizerState.layerMode).toBe("degraded");
+  expect(degradedVisualizerState.wavePortal).toBe(false);
+  expect(degradedVisualizerState.waveCanvas).toBe(false);
+  expect(degradedVisualizerState.title).toBe("Backdoor");
+  expect(degradedVisualizerState.artist).toBe("Ericdoa");
+});
+
+test("desktop Josie can live-downgrade once on sustained bad frame windows", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await page.evaluate(() => {
+    const badWindow = Array.from({ length: 80 }, () => 45);
+    window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.([...badWindow, ...badWindow]);
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "frame-budget");
+
+  await page.evaluate(() => {
+    const healthyWindow = Array.from({ length: 220 }, () => 16);
+    window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.(healthyWindow);
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {

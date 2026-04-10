@@ -277,6 +277,7 @@
     </button>
   </div>
 
+  <script src="/performance-tier.js?v=20260410-performance-1"></script>
   <script src="/interaction-sfx.js?v=20260329-josie-102"></script>
   <script>
     (() => {
@@ -294,10 +295,16 @@
       const introAsciiBaseCellSize = 7;
       const introAsciiWideCellSize = 9;
       const introAsciiUltraWideCellSize = 10;
+      const introAsciiReducedBaseCellSize = 10;
+      const introAsciiReducedWideCellSize = 12;
+      const introAsciiReducedUltraWideCellSize = 13;
       const introAsciiGlyphScale = 1.08;
       const introAsciiMaxDpr = 1;
       const introAsciiMaxCols = 180;
       const introAsciiMaxRows = 92;
+      const introAsciiReducedMaxFps = 12;
+      const introAsciiReducedMaxCols = 108;
+      const introAsciiReducedMaxRows = 56;
       const repeatVisitHandoffDelayMs = 160;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Egrets Orchard.mov";
@@ -339,6 +346,8 @@
       let introAsciiRows = 0;
       let introAsciiCellW = introAsciiBaseCellSize;
       let introAsciiCellH = Math.round(introAsciiBaseCellSize * 1.32);
+      let introAsciiMode = "full";
+      let introAsciiLastRenderMs = 0;
       let introAsciiFont = "";
       let introAsciiLumBuffer = new Float32Array(0);
       let introAsciiAlphaBuffer = new Uint8Array(0);
@@ -451,6 +460,22 @@
         return value;
       }
 
+      function isDesktopPerformanceDegraded() {
+        return Boolean(window.__internetAngelPerformanceState?.isDegraded?.());
+      }
+
+      function resolveIntroAsciiMode() {
+        return isDesktopPerformanceDegraded() ? "reduced" : "full";
+      }
+
+      function applyIntroAsciiMode() {
+        const nextMode = resolveIntroAsciiMode();
+        if (asciiCanvas instanceof HTMLCanvasElement) {
+          asciiCanvas.dataset.introAsciiMode = nextMode;
+        }
+        return nextMode;
+      }
+
       function getIntroViewportSize() {
         if (window.visualViewport) {
           return {
@@ -478,14 +503,17 @@
       }
 
       function resolveIntroAsciiCellSize(viewportWidth, viewportHeight) {
-        let baseCellSize = introAsciiBaseCellSize;
+        const reducedMode = applyIntroAsciiMode() === "reduced";
+        let baseCellSize = reducedMode ? introAsciiReducedBaseCellSize : introAsciiBaseCellSize;
         if (viewportWidth >= 1800) {
-          baseCellSize = introAsciiUltraWideCellSize;
+          baseCellSize = reducedMode ? introAsciiReducedUltraWideCellSize : introAsciiUltraWideCellSize;
         } else if (viewportWidth >= 1400) {
-          baseCellSize = introAsciiWideCellSize;
+          baseCellSize = reducedMode ? introAsciiReducedWideCellSize : introAsciiWideCellSize;
         }
-        const widthBound = Math.ceil(viewportWidth / introAsciiMaxCols);
-        const heightBound = Math.ceil(viewportHeight / (introAsciiMaxRows * 1.32));
+        const maxCols = reducedMode ? introAsciiReducedMaxCols : introAsciiMaxCols;
+        const maxRows = reducedMode ? introAsciiReducedMaxRows : introAsciiMaxRows;
+        const widthBound = Math.ceil(viewportWidth / maxCols);
+        const heightBound = Math.ceil(viewportHeight / (maxRows * 1.32));
         return Math.max(baseCellSize, widthBound, heightBound);
       }
 
@@ -494,7 +522,8 @@
         const viewport = getIntroViewportSize();
         const nextW = viewport.width;
         const nextH = viewport.height;
-        const nextDpr = Math.min(introAsciiMaxDpr, Math.max(1, window.devicePixelRatio || 1));
+        const nextMode = applyIntroAsciiMode();
+        const nextDpr = nextMode === "reduced" ? 1 : Math.min(introAsciiMaxDpr, Math.max(1, window.devicePixelRatio || 1));
         const nextCellW = resolveIntroAsciiCellSize(nextW, nextH);
         const nextCellH = Math.round(nextCellW * 1.32);
         const nextCols = Math.max(2, Math.floor(nextW / nextCellW));
@@ -504,6 +533,7 @@
           && nextW === introAsciiViewportW
           && nextH === introAsciiViewportH
           && nextDpr === introAsciiDpr
+          && nextMode === introAsciiMode
           && nextCellW === introAsciiCellW
           && nextCellH === introAsciiCellH
         ) {
@@ -512,6 +542,7 @@
         introAsciiViewportW = nextW;
         introAsciiViewportH = nextH;
         introAsciiDpr = nextDpr;
+        introAsciiMode = nextMode;
         asciiCanvas.width = Math.max(1, Math.floor(introAsciiViewportW * introAsciiDpr));
         asciiCanvas.height = Math.max(1, Math.floor(introAsciiViewportH * introAsciiDpr));
         asciiCanvas.style.width = `${introAsciiViewportW}px`;
@@ -596,6 +627,19 @@
         }
       }
 
+      function shouldRenderIntroAsciiFrame(nowMs = performance.now()) {
+        if (applyIntroAsciiMode() !== "reduced") {
+          introAsciiLastRenderMs = nowMs;
+          return true;
+        }
+        const minFrameIntervalMs = 1000 / introAsciiReducedMaxFps;
+        if (nowMs - introAsciiLastRenderMs < minFrameIntervalMs) {
+          return false;
+        }
+        introAsciiLastRenderMs = nowMs;
+        return true;
+      }
+
       function stopIntroAscii() {
         introAsciiActive = false;
         document.body.classList.remove("is-intro-ascii-active");
@@ -616,6 +660,7 @@
         if (asciiCanvas instanceof HTMLCanvasElement) {
           asciiCanvas.hidden = true;
         }
+        introAsciiLastRenderMs = 0;
       }
 
       function queueIntroAsciiFrame() {
@@ -623,13 +668,13 @@
           return;
         }
         if (typeof introVideo.requestVideoFrameCallback === "function") {
-          introAsciiVideoFrameId = introVideo.requestVideoFrameCallback(() => {
+          introAsciiVideoFrameId = introVideo.requestVideoFrameCallback((nowMs) => {
             introAsciiVideoFrameId = 0;
             if (!introAsciiActive || document.hidden) {
               queueIntroAsciiFrame();
               return;
             }
-            if (introVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            if (introVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && shouldRenderIntroAsciiFrame(nowMs)) {
               configureIntroAsciiCanvas();
               renderIntroAsciiFrame();
             }
@@ -640,7 +685,7 @@
         introAsciiRafId = window.requestAnimationFrame(renderIntroAsciiLoop);
       }
 
-      function renderIntroAsciiLoop() {
+      function renderIntroAsciiLoop(nowMs = performance.now()) {
         introAsciiRafId = 0;
         if (!introAsciiActive || !(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) {
           return;
@@ -648,6 +693,7 @@
         queueIntroAsciiFrame();
         if (document.hidden) return;
         if (introVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        if (!shouldRenderIntroAsciiFrame(nowMs)) return;
         configureIntroAsciiCanvas();
         renderIntroAsciiFrame();
       }
@@ -657,6 +703,7 @@
         introAsciiActive = true;
         asciiCanvas.hidden = false;
         document.body.classList.add("is-intro-ascii-active");
+        introAsciiLastRenderMs = 0;
         configureIntroAsciiCanvas(true);
         renderIntroAsciiFrame();
         queueIntroAsciiFrame();
@@ -887,7 +934,9 @@
         introVideo.src = introVideoPath;
         introVideo.load();
       }
+      applyIntroAsciiMode();
       showStartButton();
+      window.__internetAngelPerformanceState?.markReady?.();
 
       introVideo.addEventListener("loadeddata", () => {
         introVideo.classList.add("is-ready");
@@ -930,6 +979,16 @@
         if (!document.hidden && introStarted) {
           syncIntroAsciiState();
         }
+      });
+      window.addEventListener("internet-angel:performance-tier-change", () => {
+        applyIntroAsciiMode();
+        if (!introAsciiActive) {
+          configureIntroAsciiCanvas(true);
+          return;
+        }
+        introAsciiLastRenderMs = 0;
+        configureIntroAsciiCanvas(true);
+        renderIntroAsciiFrame();
       });
 
       introStartButton?.addEventListener("click", () => {
