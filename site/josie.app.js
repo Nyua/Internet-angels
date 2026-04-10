@@ -12,6 +12,8 @@
   var socialHubShowcases = document.querySelector("#social-hub-showcases");
   var socialHubSidebar = document.querySelector("#social-hub-sidebar");
   var socialHubProfileTagline = document.querySelector("#social-hub-profile-tagline");
+  var siteAudioControl = document.querySelector("[data-site-audio-control]");
+  var siteVolumeSlider = document.querySelector("[data-site-volume-slider]");
   var mobileSpeakerToggle = document.querySelector("[data-mobile-speaker-toggle]");
   var interactionSfx = window.__internetAngelInteractionSfx || null;
   var CUSTOM_CURSOR_INTERACTIVE_SELECTOR = [
@@ -30,6 +32,27 @@
   var socialHubState = null;
   var ambientBackdropController = null;
   var siteCursorController = null;
+  function startDocumentTitleTypewriter(finalTitle = "Josie") {
+    const safeTitle = String(finalTitle || "").trim();
+    if (!safeTitle) return;
+    const chars = Array.from(safeTitle);
+    let index = 0;
+    let blink = true;
+    const writeNext = () => {
+      if (index >= chars.length) {
+        document.title = safeTitle;
+        window.__internetAngelTitleTypewriterDone = true;
+        return;
+      }
+      index += 1;
+      document.title = `${chars.slice(0, index).join("")}${blink ? "|" : ""}`;
+      blink = !blink;
+      window.setTimeout(writeNext, 95);
+    };
+    window.__internetAngelTitleTypewriterDone = false;
+    document.title = "|";
+    window.setTimeout(writeNext, 180);
+  }
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
@@ -96,6 +119,7 @@
   var STEAM_PROXY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1e3;
   var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
   var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
+  var DISCORD_PROFILE_HANDLE = "foundlifeless";
   var PROFILE_LINK_SITE_IDS = /* @__PURE__ */ new Set(["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"]);
   var compactMobileLayoutQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`) : null;
   function isCompactMobileLayout() {
@@ -1704,10 +1728,11 @@
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
+    const SHUFFLE_MAX_VOLUME = 0.077;
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
-    audioEl.volume = 0.077;
+    audioEl.volume = SHUFFLE_MAX_VOLUME;
     function resolveTrackUrl(track) {
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
@@ -1749,6 +1774,7 @@
     function buildPublicState() {
       return {
         muted: Boolean(audioEl.muted),
+        volumeRatio: SHUFFLE_MAX_VOLUME > 0 ? clamp2(audioEl.volume / SHUFFLE_MAX_VOLUME, 0, 1) : 0,
         playing: Boolean(currentTrack) && !audioEl.paused,
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack)
@@ -2470,6 +2496,16 @@
       syncAudioOutputGain();
       syncUi();
     }
+    function setVolumeRatio(nextRatio) {
+      const numericRatio = Number(nextRatio);
+      const ratio = clamp2(Number.isFinite(numericRatio) ? numericRatio : 1, 0, 1);
+      audioEl.volume = clamp2(SHUFFLE_MAX_VOLUME * ratio, 0, 1);
+      if (ratio > 0 && audioEl.muted) {
+        audioEl.muted = false;
+      }
+      syncAudioOutputGain();
+      syncUi();
+    }
     function toggleMuted() {
       setMuted(!audioEl.muted);
       return audioEl.muted;
@@ -2582,6 +2618,7 @@
       ensureStarted,
       toggleMuted,
       setMuted,
+      setVolumeRatio,
       isMuted,
       getState: buildPublicState,
       subscribe,
@@ -4303,9 +4340,12 @@
       const statusDot = onlineState === null ? "" : `<span class="steam-link-status-dot steam-link-status-dot--${onlineState ? "online" : "offline"}" data-status="${onlineState ? "online" : "offline"}" aria-hidden="true" title="${onlineState ? "Online" : "Offline"}"></span>`;
       const siteLabel = escapeHtml(SITE_THEME_LABEL[site.id] || site.label);
       const iconMarkup = `<span class="steam-sidebar-site-icon-shell${onlineState === null ? "" : " steam-sidebar-site-icon-shell--status"}">${renderSidebarSiteIcon(site.id)}${statusDot}</span>`;
+      const copyHandle = site.id === "discord" ? DISCORD_PROFILE_HANDLE : "";
       if (compact) {
         const mobileSiteId = escapeHtml(site.id);
-        const iconLinkMarkup = openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
+        const iconLinkMarkup = copyHandle
+          ? `<button class="steam-sidebar-link steam-sidebar-link--icon-only steam-sidebar-link--copy" type="button" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" data-mobile-selection-phase="idle" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}" title="Copy Discord handle">${iconMarkup}</button>`
+          : openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
         return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${mobileSiteId}">
         ${iconLinkMarkup}
@@ -4313,9 +4353,11 @@
     `;
       }
       const profileSiteId = escapeHtml(site.id);
-      const linkMarkup = openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-profile-site-id="${profileSiteId}">${siteLabel}</a>` : `<span class="steam-sidebar-link" data-profile-site-id="${profileSiteId}">${siteLabel}</span>`;
+      const linkMarkup = copyHandle
+        ? `<button class="steam-sidebar-link steam-sidebar-link--copy" type="button" data-profile-site-id="${profileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}">${siteLabel}</button>`
+        : openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-profile-site-id="${profileSiteId}">${siteLabel}</a>` : `<span class="steam-sidebar-link" data-profile-site-id="${profileSiteId}">${siteLabel}</span>`;
       return `
-      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${profileSiteId}"${openUrl ? ` data-open-url="${escapeHtml(openUrl)}"` : ""}>
+      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${profileSiteId}"${openUrl && !copyHandle ? ` data-open-url="${escapeHtml(openUrl)}"` : ""}>
         <div class="steam-sidebar-row-main">
           <p class="steam-sidebar-row-title">
             <span class="steam-sidebar-row-title-wrap">
@@ -4415,9 +4457,12 @@
     let mobileLinkAnimationTimer = 0;
     let pendingMobileExternalLaunchTimer = 0;
     let pendingMobileExternalPopup = null;
+    let profileCopyToastTimer = 0;
     let desktopProfilePromptTimer = 0;
     let lastFmTrackPanelSceneSettleTimer = 0;
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
+    const audioControlShell = siteAudioControl instanceof HTMLElement ? siteAudioControl : null;
+    const shuffleVolumeSlider = siteVolumeSlider instanceof HTMLInputElement ? siteVolumeSlider : null;
     const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
     const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
     const interactionSfxController = interactionSfx && typeof interactionSfx.play === "function" ? interactionSfx : null;
@@ -4429,6 +4474,80 @@
     function playInteractionSfx(soundId, source, meta = {}) {
       if (!interactionSfxController) return;
       interactionSfxController.play({ soundId, source, meta });
+    }
+    async function copyTextToClipboard(text) {
+      const safeText = String(text || "").trim();
+      if (!safeText) return false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+          await navigator.clipboard.writeText(safeText);
+          return true;
+        } catch {
+        }
+      }
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = safeText;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, safeText.length);
+        const copied = typeof document.execCommand === "function" ? document.execCommand("copy") : false;
+        textarea.remove();
+        return copied;
+      } catch {
+        return false;
+      }
+    }
+    function ensureProfileCopyToast() {
+      let toast = document.querySelector("[data-profile-copy-toast]");
+      if (toast instanceof HTMLElement) return toast;
+      toast = document.createElement("div");
+      toast.className = "profile-copy-toast";
+      toast.setAttribute("data-profile-copy-toast", "");
+      toast.setAttribute("data-profile-copy-toast-state", "idle");
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
+      toast.innerHTML = `
+        <span class="profile-copy-toast-icon" aria-hidden="true">${renderSidebarSiteIcon("discord")}</span>
+        <span class="profile-copy-toast-text" data-profile-copy-toast-text></span>
+      `;
+      document.body.appendChild(toast);
+      return toast;
+    }
+    function showProfileCopyToast(message) {
+      const toast = ensureProfileCopyToast();
+      const textEl = toast.querySelector("[data-profile-copy-toast-text]");
+      if (textEl instanceof HTMLElement) {
+        textEl.textContent = firstNonEmpty(message, "Copied");
+      }
+      if (profileCopyToastTimer) {
+        window.clearTimeout(profileCopyToastTimer);
+        profileCopyToastTimer = 0;
+      }
+      toast.setAttribute("data-profile-copy-toast-state", "idle");
+      void toast.offsetWidth;
+      toast.setAttribute("data-profile-copy-toast-state", "visible");
+      profileCopyToastTimer = window.setTimeout(() => {
+        profileCopyToastTimer = 0;
+        toast.setAttribute("data-profile-copy-toast-state", "idle");
+      }, 1400);
+    }
+    async function handleProfileHandleCopy(trigger) {
+      if (!(trigger instanceof HTMLElement)) return;
+      const handle = firstNonEmpty(trigger.getAttribute("data-profile-copy-handle"), DISCORD_PROFILE_HANDLE);
+      if (!handle) return;
+      const selectedLink = resolveMobileProfileIconLink(trigger);
+      if (selectedLink instanceof HTMLElement && isCompactMobileLayout()) {
+        markMobileLinkSelected(selectedLink);
+      }
+      primeInteractionSfx("profileHandleCopy");
+      const copied = await copyTextToClipboard(handle);
+      playInteractionSfx(copied ? "confirm_soft" : "cancel_soft", copied ? "profileHandleCopied" : "profileHandleCopyFailed");
+      showProfileCopyToast(copied ? `Copied ${handle}` : `Copy ${handle}`);
     }
     function setInteractionSfxExternalAudioActive(active) {
       interactionSfxController?.setExternalAudioActive?.(Boolean(active));
@@ -4719,6 +4838,9 @@
     function syncMobileSpeakerToggle(enabled) {
       if (!(mobileSpeakerButton instanceof HTMLButtonElement)) return;
       mobileSpeakerButton.hidden = !enabled;
+      if (audioControlShell instanceof HTMLElement) {
+        audioControlShell.hidden = !enabled;
+      }
       mobileSpeakerButton.setAttribute("aria-hidden", enabled ? "false" : "true");
       if (!enabled) return;
       const state = shufflePlayerController.getState();
@@ -4728,8 +4850,18 @@
       mobileSpeakerButton.dataset.audioPlaying = String(state.playing);
       mobileSpeakerButton.dataset.audioBlocked = String(state.blocked);
       mobileSpeakerButton.dataset.audioHasTrack = String(state.hasTrack);
+      mobileSpeakerButton.dataset.audioVolume = String(clamp2(Number(state.volumeRatio) || 0, 0, 1).toFixed(2));
+      if (audioControlShell instanceof HTMLElement) {
+        audioControlShell.dataset.audioMuted = String(state.muted);
+        audioControlShell.dataset.audioVolume = mobileSpeakerButton.dataset.audioVolume;
+      }
       mobileSpeakerButton.setAttribute("aria-label", label);
       mobileSpeakerButton.setAttribute("title", label);
+      if (shuffleVolumeSlider instanceof HTMLInputElement) {
+        const volumePercent = Math.round(clamp2(Number(state.volumeRatio) || 0, 0, 1) * 100);
+        shuffleVolumeSlider.value = String(volumePercent);
+        shuffleVolumeSlider.setAttribute("aria-valuetext", `${volumePercent}%`);
+      }
     }
     async function onMobileSpeakerToggleClick(event) {
       if (!(event.currentTarget instanceof HTMLButtonElement)) return;
@@ -4743,6 +4875,12 @@
         return;
       }
       shufflePlayerController.toggleMuted();
+    }
+    function onShuffleVolumeInput(event) {
+      const slider = event.currentTarget;
+      if (!(slider instanceof HTMLInputElement)) return;
+      const volumeRatio = clamp2(Number(slider.value) / 100, 0, 1);
+      shufflePlayerController.setVolumeRatio(volumeRatio);
     }
     function launchExternal(url, target = "_blank") {
       const safeUrl = sanitizeUrl(url);
@@ -6555,6 +6693,12 @@
         }, lastFmTrackButton);
         return;
       }
+      const copyHandleButton = target.closest("[data-profile-copy-handle]");
+      if (copyHandleButton instanceof HTMLElement) {
+        event.preventDefault();
+        void handleProfileHandleCopy(copyHandleButton);
+        return;
+      }
       const anchor = target.closest("a[href]");
       if (anchor instanceof HTMLAnchorElement) {
         const anchorUrl = sanitizeUrl(anchor.href);
@@ -6649,6 +6793,9 @@
         syncMobileSpeakerToggle(true);
       });
     }
+    if (shuffleVolumeSlider instanceof HTMLInputElement) {
+      shuffleVolumeSlider.addEventListener("input", onShuffleVolumeInput);
+    }
     const handleMobileSelectionVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         clearMobileLinkSelectedState();
@@ -6668,6 +6815,7 @@
       setInteractionSfxExternalAudioActive(false);
       hideExternalPrompt("silent");
       mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
+      shuffleVolumeSlider?.removeEventListener("input", onShuffleVolumeInput);
       mobileSpeakerToggleUnsubscribe?.();
       mobileSpeakerToggleUnsubscribe = null;
       if (window.__internetAngelShuffleDebug === shuffleDebugController) {
@@ -6675,6 +6823,9 @@
       }
       if (mobileSpeakerButton instanceof HTMLButtonElement) {
         mobileSpeakerButton.hidden = true;
+      }
+      if (audioControlShell instanceof HTMLElement) {
+        audioControlShell.hidden = true;
       }
       externalPromptRoot?.remove();
       externalPromptRoot = null;
@@ -6685,6 +6836,11 @@
       clearMobileLinksRevealTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
+      if (profileCopyToastTimer) {
+        window.clearTimeout(profileCopyToastTimer);
+        profileCopyToastTimer = 0;
+      }
+      document.querySelector("[data-profile-copy-toast]")?.remove();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
       hideLastFmTrackDetails("silent");
@@ -9121,6 +9277,7 @@
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     applyPermanentNightTheme();
+    startDocumentTitleTypewriter("Josie");
     setReadyState();
     ambientBackdropController = createAdaptiveAmbientBackdropController();
     siteCursorController = createSiteCursorController();

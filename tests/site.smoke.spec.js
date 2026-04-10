@@ -357,7 +357,7 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
   const duringHandoff = await duringHandoffHandle.jsonValue();
   expect(duringHandoff).not.toBeNull();
   expect(duringHandoff.href).toMatch(/\/josie$/);
-  expect(duringHandoff.title).toMatch(/Josie/);
+  expect(duringHandoff.title).toMatch(/^\|?$|^J|^Jo|^Jos|^Josi|^Josie$/);
   expect(duringHandoff.state).toBe("handoff_visible");
   expect(duringHandoff.hiddenClass).toBe(false);
   expect(duringHandoff.pointerEvents).toBe("none");
@@ -368,6 +368,7 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
   });
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
   await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
+  await expect(page).toHaveTitle("Josie");
   const completedHandoff = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
     const ascii = document.querySelector("#asciiCanvas");
@@ -466,6 +467,15 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.addInitScript(() => {
     const originalSetInterval = window.setInterval.bind(window);
     window.__codexIntervalCalls = [];
+    window.__clipboardWrites = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__clipboardWrites.push(String(text));
+        }
+      }
+    });
     window.setInterval = (handler, timeout, ...args) => {
       window.__codexIntervalCalls.push(Number(timeout));
       return originalSetInterval(handler, timeout, ...args);
@@ -484,6 +494,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
     timeout: 30_000
   });
+  await expect.poll(() => page.title(), { timeout: 2_000 }).toBe("Josie");
+  await expect.poll(() => page.evaluate(() => Boolean(window.__internetAngelTitleTypewriterDone)), { timeout: 2_000 }).toBe(true);
   const stageScrollbarState = await page.locator(".os-stage").evaluate((node) => {
     const styles = window.getComputedStyle(node);
     return {
@@ -512,6 +524,20 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopSpeakerRect.top).toBeLessThan(28);
   expect(desktopSpeakerRect.width).toBeGreaterThanOrEqual(40);
   expect(desktopSpeakerRect.height).toBeGreaterThanOrEqual(40);
+  const audioControl = page.locator("[data-site-audio-control]");
+  await expect(audioControl).toBeVisible();
+  const initialAudioControlWidth = await audioControl.evaluate((node) => node.getBoundingClientRect().width);
+  expect(initialAudioControlWidth).toBeLessThanOrEqual(46);
+  await audioControl.hover();
+  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_000 }).toBeGreaterThan(150);
+  await page.locator("[data-site-volume-slider]").evaluate((node) => {
+    if (!(node instanceof HTMLInputElement)) return;
+    node.value = "42";
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-volume", "0.42");
+  await page.mouse.move(420, 420);
+  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_500 }).toBeLessThanOrEqual(48);
   await page.locator("[data-mobile-speaker-toggle]").click();
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
   await page.waitForFunction(() => {
@@ -751,8 +777,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(heroShellStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(heroShellStyles.boxShadow).not.toContain("120vmax");
-  await page.locator(".steam-sidebar-row--discord").evaluate((node) => node.click());
-  await expect(page.locator(".external-link-confirm")).toHaveClass(/is-open/);
+  await page.locator(".steam-sidebar-row--discord .steam-sidebar-link").click({ force: true });
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await expect(page.locator("[data-profile-copy-toast]")).toHaveAttribute("data-profile-copy-toast-state", "visible");
+  await expect(page.locator("[data-profile-copy-toast]")).toContainText("Copied foundlifeless");
+  const discordCopyState = await page.evaluate(() => ({
+    clipboardWrites: window.__clipboardWrites || [],
+    discordHref: document.querySelector(".steam-sidebar-row--discord .steam-sidebar-link")?.getAttribute("href") || "",
+    discordCopyHandle: document.querySelector(".steam-sidebar-row--discord .steam-sidebar-link")?.getAttribute("data-profile-copy-handle") || ""
+  }));
+  expect(discordCopyState.clipboardWrites).toContain("foundlifeless");
+  expect(discordCopyState.discordHref).toBe("");
+  expect(discordCopyState.discordCopyHandle).toBe("foundlifeless");
 
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",
@@ -1584,6 +1620,15 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await page.addInitScript(() => {
     const launchLog = [];
     window.__codexExternalLaunchLog = launchLog;
+    window.__clipboardWrites = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__clipboardWrites.push(String(text));
+        }
+      }
+    });
     window.open = (url = "", target = "", features = "") => {
       const popup = {
         closed: false,
@@ -1748,6 +1793,30 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(852 - mobileCentering.cinnaRect.bottom).toBeLessThan(18);
   expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(140);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.__codexExternalLaunchLog.length = 0;
+    window.__clipboardWrites.length = 0;
+  });
+  const discordMobileIconLink = page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="discord"]');
+  await discordMobileIconLink.click();
+  await expect(discordMobileIconLink).toHaveClass(/is-mobile-selected/);
+  await expect(discordMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
+  await expect(page.locator("[data-profile-copy-toast]")).toHaveAttribute("data-profile-copy-toast-state", "visible");
+  await expect(page.locator("[data-profile-copy-toast]")).toContainText("Copied foundlifeless");
+  await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
+  await page.waitForTimeout(520);
+  const mobileDiscordCopyState = await page.evaluate(() => ({
+    clipboardWrites: window.__clipboardWrites.slice(),
+    launchLog: window.__codexExternalLaunchLog.slice(),
+    href: document.querySelector('.steam-sidebar-link--icon-only[data-mobile-site-id="discord"]')?.getAttribute("href") || "",
+    copyHandle: document.querySelector('.steam-sidebar-link--icon-only[data-mobile-site-id="discord"]')?.getAttribute("data-profile-copy-handle") || ""
+  }));
+  expect(mobileDiscordCopyState.clipboardWrites).toContain("foundlifeless");
+  expect(mobileDiscordCopyState.launchLog).toEqual([]);
+  expect(mobileDiscordCopyState.href).toBe("");
+  expect(mobileDiscordCopyState.copyHandle).toBe("foundlifeless");
+  await page.waitForFunction(() => !document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected"), { timeout: 2_000 });
 
   await page.evaluate(() => {
     window.__codexExternalLaunchLog.length = 0;

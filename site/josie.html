@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260401-josie-135" />
+    <link rel="stylesheet" href="/josie.css?v=20260410-josie-136" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -167,28 +167,34 @@
         }) || null;
       })();
     </script>
-    <button
-      type="button"
-      class="mobile-speaker-toggle"
-      data-mobile-speaker-toggle
-      data-audio-muted="false"
-      data-audio-playing="false"
-      hidden
-      aria-label="Enable audio"
-    >
-      <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--unmuted" aria-hidden="true">
-        <svg viewBox="0 0 24 24" focusable="false">
-          <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
-          <path d="M16.1 9.2a4.26 4.26 0 0 1 0 5.6M18.52 6.98a7.42 7.42 0 0 1 0 10.04" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
-        </svg>
-      </span>
-      <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--muted" aria-hidden="true">
-        <svg viewBox="0 0 24 24" focusable="false">
-          <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
-          <path d="m16.3 8.1 4.5 4.5m0-4.5-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
-        </svg>
-      </span>
-    </button>
+    <div class="site-audio-control" data-site-audio-control hidden>
+      <button
+        type="button"
+        class="mobile-speaker-toggle"
+        data-mobile-speaker-toggle
+        data-audio-muted="false"
+        data-audio-playing="false"
+        hidden
+        aria-label="Enable audio"
+      >
+        <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--unmuted" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
+            <path d="M16.1 9.2a4.26 4.26 0 0 1 0 5.6M18.52 6.98a7.42 7.42 0 0 1 0 10.04" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
+          </svg>
+        </span>
+        <span class="mobile-speaker-toggle-icon mobile-speaker-toggle-icon--muted" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M4 9.4h3.45l4.51-3.9c.43-.37 1.04-.07 1.04.5v12c0 .57-.61.87-1.04.5l-4.51-3.9H4.01c-.56 0-1.01-.45-1.01-1.01v-3.18c0-.56.45-1.01 1.01-1.01Z" fill="currentColor"/>
+            <path d="m16.3 8.1 4.5 4.5m0-4.5-4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.55"/>
+          </svg>
+        </span>
+      </button>
+      <label class="site-audio-volume" aria-label="Music volume">
+        <span class="site-audio-volume-label">Volume</span>
+        <input class="site-audio-volume-slider" data-site-volume-slider type="range" min="0" max="100" step="1" value="100" aria-label="Music volume" />
+      </label>
+    </div>
     <main class="corner-shell theme-chrome state-os-ready">
       <section id="os-stage" class="os-stage" aria-hidden="false">
         <div id="os-ambient-backdrop" class="os-ambient-backdrop" aria-hidden="true">
@@ -229,7 +235,7 @@
         </div>
       </section>
     </main>
-    <script src="/josie.client.js?v=20260401-josie-135"></script>
+    <script src="/josie.client.js?v=20260410-josie-136"></script>
     <script>
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";

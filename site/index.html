@@ -326,6 +326,8 @@
       let repeatVisitHandoffTimer = 0;
       let introEndHandoffTimer = 0;
       let state = "idle";
+      let titleTypewriterTimer = 0;
+      let titleTypewriterToken = 0;
       let monitorRafId = 0;
       let introAsciiActive = false;
       let introAsciiRafId = 0;
@@ -344,6 +346,35 @@
       const introAsciiSampleCanvas = document.createElement("canvas");
       const introAsciiSampleCtx = introAsciiSampleCanvas.getContext("2d", { willReadFrequently: true });
       const introAsciiFillCache = new Map();
+
+      function startDocumentTitleTypewriter(finalTitle) {
+        const safeTitle = String(finalTitle || "").trim();
+        if (!safeTitle) return;
+        const token = ++titleTypewriterToken;
+        const chars = Array.from(safeTitle);
+        let index = 0;
+        let cursorVisible = true;
+        if (titleTypewriterTimer) {
+          window.clearTimeout(titleTypewriterTimer);
+          titleTypewriterTimer = 0;
+        }
+        window.__internetAngelTitleTypewriterDone = false;
+        document.title = "|";
+        const writeNext = () => {
+          if (token !== titleTypewriterToken) return;
+          if (index >= chars.length) {
+            document.title = safeTitle;
+            window.__internetAngelTitleTypewriterDone = true;
+            titleTypewriterTimer = 0;
+            return;
+          }
+          index += 1;
+          document.title = `${chars.slice(0, index).join("")}${cursorVisible ? "|" : ""}`;
+          cursorVisible = !cursorVisible;
+          titleTypewriterTimer = window.setTimeout(writeNext, 95);
+        };
+        titleTypewriterTimer = window.setTimeout(writeNext, 180);
+      }
 
       function setState(nextState) {
         state = nextState;
@@ -657,7 +688,7 @@
       function updateTopLevelUrlForJosie() {
         const url = resolveJosieUrl();
         window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-        document.title = "Josie";
+        startDocumentTitleTypewriter("Josie");
       }
 
       function preloadJosieFrame() {
@@ -821,6 +852,7 @@
       }
 
       if (!(introVideo instanceof HTMLVideoElement)) return;
+      startDocumentTitleTypewriter("BloomToDeath");
       setState("idle");
       repeatVisitMode = hasSeenIntroBefore();
       skipMovieMode = repeatVisitMode || shouldSkipIntro();

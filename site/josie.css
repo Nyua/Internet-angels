@@ -1156,6 +1156,61 @@ body.site-load-playing .os-ambient-backdrop {
   color: var(--text-secondary);
 }
 
+.profile-copy-toast {
+  position: fixed;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 9px 14px 9px 10px;
+  border: 1px solid rgba(176, 188, 255, 0.22);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(235, 239, 255, 0.2), transparent 42%),
+    rgba(12, 12, 18, 0.82);
+  color: rgba(248, 249, 252, 0.94);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.26),
+    0 0 22px rgba(176, 188, 255, 0.12);
+  backdrop-filter: blur(16px) saturate(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -10px) scale(0.96);
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.profile-copy-toast[data-profile-copy-toast-state="visible"] {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.profile-copy-toast-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  color: rgb(176, 188, 255);
+  filter: drop-shadow(0 0 10px rgba(176, 188, 255, 0.34));
+}
+
+.profile-copy-toast-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-copy-toast-text {
+  font-family: "Open Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 640px) {
   .external-link-confirm {
     padding: 16px;
@@ -3565,6 +3620,22 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   font-weight: 700;
 }
 
+.steam-sidebar-link--copy {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: none;
+}
+
+.steam-sidebar-link--copy::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
 .steam-sidebar-link-shell {
   min-width: 0;
   width: 100%;
@@ -4284,7 +4355,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   display: none;
 }
 
-.mobile-speaker-toggle {
+.site-audio-control {
   position: fixed;
   left: calc(env(safe-area-inset-left, 0px) + 12px);
   top: calc(env(safe-area-inset-top, 0px) + 12px);
@@ -4294,14 +4365,37 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   padding: 0;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
   background: rgba(12, 12, 16, 0.62);
   color: #a7acb4;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  overflow: hidden;
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.site-audio-control[hidden] {
+  display: none !important;
+}
+
+.mobile-speaker-toggle {
+  position: relative;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: inherit;
   outline: none;
 }
 
@@ -4313,6 +4407,57 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.12),
     0 0 0 4px rgba(167, 172, 180, 0.16);
+}
+
+.site-audio-volume {
+  width: 124px;
+  flex: 0 0 124px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 2px;
+  opacity: 0;
+  transform: translateX(-10px) scaleX(0.84);
+  transform-origin: left center;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease 1000ms,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms;
+}
+
+.site-audio-volume-label {
+  color: rgba(248, 249, 252, 0.66);
+  font-family: "PixelMplus12", "Open Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.site-audio-volume-slider {
+  width: 68px;
+  min-width: 68px;
+  accent-color: #f090c2;
+  cursor: none;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 821px) {
+  .site-audio-control:hover,
+  .site-audio-control:focus-within {
+    width: 174px;
+    border-color: rgba(255, 255, 255, 0.13);
+    background: rgba(12, 12, 16, 0.78);
+    transition-delay: 0ms, 0ms, 0ms;
+  }
+
+  .site-audio-control:hover .site-audio-volume,
+  .site-audio-control:focus-within .site-audio-volume {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+    pointer-events: auto;
+    transition-delay: 0ms, 0ms;
+  }
 }
 
 .mobile-speaker-toggle-icon {
