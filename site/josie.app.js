@@ -1718,6 +1718,7 @@
     let siteLoadWaitPromise = null;
     let siteLoadClassObserver = null;
     let initialTrackQueued = false;
+    let initialTrackQueuePromise = null;
     let visualizerCopyHideTimer = 0;
     let visualizerCopyEnterRafId = 0;
     let visualizerCopyTrackKey = "";
@@ -2026,16 +2027,24 @@
       return siteLoadWaitPromise;
     }
     async function queueInitialTrackPlayback() {
+      if (initialTrackQueuePromise) return initialTrackQueuePromise;
       if (initialTrackQueued || disposed || currentTrack || !waveformTracks.length) return;
       initialTrackQueued = true;
-      await waitForSiteLoadCompletion();
-      if (disposed || currentTrack || !waveformTracks.length) return;
-      const preferredTrack = findPreferredInitialShuffleTrack(waveformTracks);
-      if (preferredTrack) {
-        await chooseAndLoadTrack(preferredTrack, { autoplay: true });
-        return;
+      initialTrackQueuePromise = (async () => {
+        await waitForSiteLoadCompletion();
+        if (disposed || currentTrack || !waveformTracks.length) return;
+        const preferredTrack = findPreferredInitialShuffleTrack(waveformTracks);
+        if (preferredTrack) {
+          await chooseAndLoadTrack(preferredTrack, { autoplay: true });
+          return;
+        }
+        await chooseNextTrack({ autoplay: true, excludeCurrent: false });
+      })();
+      try {
+        await initialTrackQueuePromise;
+      } finally {
+        initialTrackQueuePromise = null;
       }
-      await chooseNextTrack({ autoplay: true, excludeCurrent: false });
     }
     function ensureWavePortal() {
       if (performanceDegraded) {
@@ -2556,7 +2565,7 @@
       if (disposed) return;
       if (!currentTrack) {
         await queueInitialTrackPlayback();
-        if (!currentTrack && waveformTracks.length) {
+        if (!currentTrack && waveformTracks.length && !initialTrackQueuePromise) {
           await chooseNextTrack({ autoplay: true, excludeCurrent: false });
         }
         syncUi();
