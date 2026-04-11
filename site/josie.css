@@ -6146,7 +6146,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .josie-mobile-audio-chip::after,
   .josie-mobile-audio-chip-meter span,
   .josie-mobile-audio-chip.is-playing .josie-mobile-audio-chip-icon,
-  .josie-mobile-audio-chip[data-shuffle-mode="compact"].is-playing .josie-mobile-audio-chip-icon {
+  .josie-mobile-audio-chip[data-shuffle-mode="compact"].is-playing .josie-mobile-audio-chip-icon,
+  .steam-sidebar-link--icon-only,
+  .steam-sidebar-link--icon-only::after {
     animation: none !important;
   }
 }
@@ -6263,7 +6265,132 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .social-hub-showcases {
-    display: none !important;
+<<<<<<< ours
+<<<<<<< ours
+    display: none;
+    width: 100%;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(100%, 336px);
+    max-width: 336px;
+    margin: 12px auto 0;
+    padding:
+      0 max(10px, env(safe-area-inset-right, 0px))
+      calc(env(safe-area-inset-bottom, 0px) + 14px)
+      max(10px, env(safe-area-inset-left, 0px));
+=======
+    display: flex;
+    width: min(100%, 336px);
+    margin: 10px auto 0;
+>>>>>>> theirs
+=======
+    display: flex;
+    width: min(100%, 336px);
+    margin: 10px auto 0;
+>>>>>>> theirs
+  }
+
+  .social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-mobile {
+    width: 100%;
+  }
+
+<<<<<<< ours
+<<<<<<< ours
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase {
+    display: none;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal {
+    display: block;
+    width: 100%;
+    border-radius: 18px !important;
+    overflow: hidden;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-section {
+    padding: 8px 0 6px;
+    gap: 6px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-section + .lastfm-section {
+    padding-top: 9px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-section-title {
+    padding-left: 0.75rem;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-list {
+    border-top-width: 1px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-item {
+    border-bottom-width: 1px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-button {
+    min-height: 56px;
+    padding: 8px 0.75rem;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 0.95fr);
+    column-gap: 0.6rem;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-meta {
+    margin-left: 0;
+    justify-self: start;
+    text-align: left;
+    font-size: 12px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-age {
+    display: none;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-media-grid {
+    padding: 0 0.75rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-media-count {
+    left: 4px;
+    bottom: 4px;
+    min-height: 18px;
+    padding: 0 6px;
+    font-size: 9px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-media-copy {
+    min-height: 36px;
+    padding: 4px 5px 6px;
+    gap: 1px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-media-title {
+    font-size: 16px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-media-subtitle {
+    font-size: 14px;
+=======
+=======
+>>>>>>> theirs
+  .social-hub-showcases--mobile-lastfm .lastfm-sections {
+    gap: 9px;
+  }
+
+  .social-hub-showcases--mobile-lastfm .lastfm-section {
+    padding: 9px 10px 10px;
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
   }
 
   .os-shuffle-visualizer-layer {
@@ -6312,7 +6439,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .steam-hero-name,
   .steam-hero-name--compact-mobile {
     margin-top: 8px;
-    font-size: clamp(29px, 8.32vw, 37px);
+    font-size: clamp(58px, 16.64vw, 74px);
     line-height: 1;
     letter-spacing: 0.01em;
   }
@@ -6613,6 +6740,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     color: inherit;
     isolation: isolate;
     transform: scale(1);
+    animation: mobileSidebarIconIdleFloat 4.6s ease-in-out infinite;
     transition:
       transform 160ms ease,
       filter 180ms ease,
@@ -6784,6 +6912,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     filter: blur(10px);
     pointer-events: none;
     z-index: 0;
+    animation: mobileSidebarIconIdleAura 4.6s ease-in-out infinite;
   }
 
   .steam-sidebar-row--soundcloud .steam-sidebar-link--icon-only::after {
@@ -6825,6 +6954,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .steam-sidebar-link--icon-only.is-mobile-selected {
     transform: scale(0.98);
     filter: saturate(1.08);
+    animation: none;
   }
 
   .steam-sidebar-link--icon-only.is-mobile-selected::before {
@@ -6952,6 +7082,28 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     }
   }
 
+  @keyframes mobileSidebarIconIdleFloat {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-1.5px) scale(1.012);
+    }
+  }
+
+  @keyframes mobileSidebarIconIdleAura {
+    0%,
+    100% {
+      opacity: 0.08;
+      transform: scale(0.62);
+    }
+    50% {
+      opacity: 0.2;
+      transform: scale(0.7);
+    }
+  }
+
   @keyframes mobileSidebarSoundcloudPlume {
     0% {
       opacity: 0;
@@ -7057,8 +7209,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .discord-presence-body {
-    min-height: 72px;
-    padding: 8px;
+    min-height: 67px;
+    padding: 5.5px 8px;
     gap: 8px;
   }
 
@@ -7167,6 +7319,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     width: min(176px, 44vw);
     height: auto;
     object-fit: contain;
+    opacity: 0.8;
     max-width: min(176px, 44vw);
     max-height: min(192px, 22svh);
   }
@@ -7369,7 +7522,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 10px;
+  padding: 7.5px 10px;
 }
 
 .discord-presence-avatar-stack {
@@ -7597,8 +7750,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   }
 
   .discord-presence-body {
-    min-height: 72px;
-    padding: 8px;
+    min-height: 67px;
+    padding: 5.5px 8px;
     gap: 8px;
   }
 

@@ -33,6 +33,7 @@
   var ambientBackdropController = null;
   var siteCursorController = null;
   var INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT = "internet-angel:performance-tier-change";
+  var internetAngelReactivePulseState = { beat: 0, flash: 0, sampled: false };
   var josieTitleTypewriterTimer = 0;
   var josieTitleTypewriterToken = 0;
   function startDocumentTitleTypewriter(finalTitle = "Josie") {
@@ -79,6 +80,24 @@
   }
   function isDesktopPerformanceDegraded() {
     return Boolean(getInternetAngelPerformanceState()?.isDegraded?.());
+  }
+  function getInternetAngelReactivePulse() {
+    const pulse = internetAngelReactivePulseState;
+    if (!pulse || typeof pulse !== "object") {
+      return { beat: 0, flash: 0, sampled: false };
+    }
+    return {
+      beat: clamp(Number(pulse.beat) || 0, 0, 1),
+      flash: clamp(Number(pulse.flash) || 0, 0, 1),
+      sampled: Boolean(pulse.sampled)
+    };
+  }
+  function setInternetAngelReactivePulse(beat = 0, flash = 0, sampled = false) {
+    internetAngelReactivePulseState = {
+      beat: clamp(Number(beat) || 0, 0, 1),
+      flash: clamp(Number(flash) || 0, 0, 1),
+      sampled: Boolean(sampled)
+    };
   }
   function applyPermanentNightTheme() {
     if (!(document.body instanceof HTMLElement)) return;
@@ -146,15 +165,23 @@
   var DISCORD_PROFILE_HANDLE = "foundlifeless";
   var PROFILE_LINK_SITE_IDS = /* @__PURE__ */ new Set(["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"]);
   var compactMobileLayoutQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`) : null;
+  function hasCompactMobileInput() {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return Boolean(
+      window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches
+    );
+  }
   function isCompactMobileLayout() {
     if (typeof window === "undefined") return false;
-    return Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
+    const isNarrowViewport = Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
+    if (!isNarrowViewport) return false;
+    return hasCompactMobileInput();
   }
   function shouldFetchSitePayload(siteId) {
     const normalizedSiteId = String(siteId || "").trim().toLowerCase();
     if (!normalizedSiteId) return false;
     if (isCompactMobileLayout()) {
-      return normalizedSiteId === "steam" || normalizedSiteId === "discord";
+      return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
     }
     return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
   }
@@ -185,10 +212,18 @@
     if (siteId === "lastfm") {
       return {
         ...basePolicy,
-        bootRefresh: !compactMobile,
-        autoRefresh: !compactMobile,
+        bootRefresh: true,
+        autoRefresh: true,
         visibleOnly: true,
-        intervalMs: compactMobile ? 0 : LASTFM_PROXY_REFRESH_INTERVAL_MS
+<<<<<<< ours
+<<<<<<< ours
+        intervalMs: compactMobile ? 30 * 60 * 1e3 : LASTFM_PROXY_REFRESH_INTERVAL_MS
+=======
+        intervalMs: LASTFM_PROXY_REFRESH_INTERVAL_MS
+>>>>>>> theirs
+=======
+        intervalMs: LASTFM_PROXY_REFRESH_INTERVAL_MS
+>>>>>>> theirs
       };
     }
     if (siteId === "twitter" || siteId === "spotify" || siteId === "soundcloud") {
@@ -1903,6 +1938,7 @@
       reactiveBeat = clamp2(reactiveBeat + (targetBeat - reactiveBeat) * beatAttack, 0, 1);
       reactiveBeat *= targetBeat > 0.008 ? 0.998 : 0.948;
       reactiveFlash = clamp2(Math.max(performanceDegraded ? 0 : rawFlash, reactiveFlash * 0.86), 0, 1);
+      setInternetAngelReactivePulse(reactiveBeat, reactiveFlash, reactiveBeat > 0.004 || reactiveFlash > 0.004);
       const glowOpacity = Math.min(0.46, 0.16 + reactiveBeat * 0.24 + reactiveFlash * 0.06);
       const frostOpacity = Math.min(0.96, 0.76 + reactiveBeat * 0.18 + reactiveFlash * 0.04);
       const auraBlur = 30 + reactiveBeat * 22 + reactiveFlash * 18;
@@ -2940,13 +2976,7 @@
       avatarDecorationUrl,
       statusKey,
       headline,
-      meta: isListeningToSpotify
-        ? firstNonEmpty(spotify?.artist ? `by ${spotify.artist}` : "", spotify?.album)
-        : firstNonEmpty(
-          presence?.primaryActivity?.subtitle,
-          presence?.statusLabel,
-          profile.statusText
-        ),
+      meta: "",
       showAlbumArt: Boolean(isListeningToSpotify && albumArtUrl),
       albumArtUrl,
       customStatusEmojiUrl: customEmoji.url,
@@ -2980,7 +3010,6 @@
                       ${model.customStatusEmojiUrl ? `<img class="discord-presence-custom-emoji" src="${escapeHtml(model.customStatusEmojiUrl)}" alt="${escapeHtml(model.customStatusEmojiAlt || "")}" loading="lazy" decoding="async" />` : ""}
                       <p class="discord-presence-headline">${escapeHtml(model.headline)}</p>
                     </div>
-                    ${model.meta ? `<p class="discord-presence-meta">${escapeHtml(model.meta)}</p>` : ""}
                   </div>
                   ${model.showAlbumArt ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(model.albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
                 </div>
@@ -3124,8 +3153,8 @@
       </li>
     `;
   }
-  function renderLastFmRecentTracks(items, currentlyListening = null) {
-    const maxVisibleRows = 10;
+  function renderLastFmRecentTracks(items, currentlyListening = null, options = {}) {
+    const maxVisibleRows = clamp2(Number(options?.maxVisibleRows) || 10, 1, 10);
     const entries = Array.isArray(items) ? items.slice(0, maxVisibleRows) : [];
     const nowPlaying = currentlyListening && typeof currentlyListening === "object" ? currentlyListening : null;
     const filteredEntries = nowPlaying ? entries.filter((entry) => {
@@ -3172,8 +3201,9 @@
     </div>
   `;
   }
-  function renderLastFmMediaGrid(items, kind) {
-    const entries = Array.isArray(items) ? items.slice(0, 8) : [];
+  function renderLastFmMediaGrid(items, kind, options = {}) {
+    const maxItems = clamp2(Number(options?.maxItems) || 8, 1, 8);
+    const entries = Array.isArray(items) ? items.slice(0, maxItems) : [];
     if (!entries.length) {
       return '<p class="social-card-empty">No chart entries available.</p>';
     }
@@ -3206,29 +3236,51 @@
     </ul>
   `;
   }
-  function renderLastFmShowcase(site, payload) {
+  function renderLastFmShowcase(site, payload, options = {}) {
+    const mobile = Boolean(options?.mobile);
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
-    const recentTracks = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
-    const topArtists = Array.isArray(sections.topArtists) ? sections.topArtists : [];
+    const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
+<<<<<<< ours
+<<<<<<< ours
+    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
+=======
+    const recentTracks = mobile ? recentTrackSource.slice(0, 4) : recentTrackSource;
+    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
+    const topArtists = mobile ? topArtistsSource.slice(0, 3) : topArtistsSource;
+>>>>>>> theirs
+=======
+    const recentTracks = mobile ? recentTrackSource.slice(0, 4) : recentTrackSource;
+    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
+    const topArtists = mobile ? topArtistsSource.slice(0, 3) : topArtistsSource;
+>>>>>>> theirs
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
+    const showcaseVariant = mobile ? "lastfm-mobile" : "lastfm-sections";
+    const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
+    const topAlbumsSection = mobile ? "" : `
+            <section class="lastfm-section">
+              <h4 class="lastfm-section-title">Top Albums</h4>
+              ${renderLastFmMediaGrid(topAlbums, "albums")}
+            </section>
+    `;
     return `
-    <article class="steam-showcase steam-showcase--${escapeHtml(site.id)} steam-showcase--lastfm-chart steam-showcase--lastfm-minimal" data-site-id="${escapeHtml(site.id)}" data-showcase-variant="lastfm-sections">
+    <article class="steam-showcase steam-showcase--${escapeHtml(site.id)} steam-showcase--lastfm-chart steam-showcase--lastfm-minimal${mobileClass}" data-site-id="${escapeHtml(site.id)}" data-showcase-variant="${showcaseVariant}">
       <div class="steam-showcase-body steam-showcase-body--single steam-showcase-body--lastfm-minimal">
         <section class="steam-showcase-content steam-showcase-content--full steam-showcase-content--lastfm-minimal">
           <div class="lastfm-sections">
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Recent Tracks</h4>
-              ${renderLastFmRecentTracks(recentTracks, currentlyListening)}
+              ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 4 : 10 })}
             </section>
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Artists</h4>
+<<<<<<< ours
+              ${renderLastFmMediaGrid(topArtistsSource, "artists", { maxItems: mobile ? 3 : 8 })}
+=======
               ${renderLastFmMediaGrid(topArtists, "artists")}
+>>>>>>> theirs
             </section>
-            <section class="lastfm-section">
-              <h4 class="lastfm-section-title">Top Albums</h4>
-              ${renderLastFmMediaGrid(topAlbums, "albums")}
-            </section>
+            ${topAlbumsSection}
           </div>
         </section>
       </div>
@@ -4331,6 +4383,7 @@
     return assetPromise;
   }
   function createCinnaMobileGifController(sidebarRoot) {
+    const CINNA_GIF_OPACITY = "0.8";
     let disposed = false;
     let restartTimerId = 0;
     let rafId = 0;
@@ -4341,6 +4394,7 @@
       return { dispose() {
       } };
     }
+    gifImage.style.opacity = CINNA_GIF_OPACITY;
     const safeUrl = sanitizeUrl(gifImage.getAttribute("data-cinna-gif-src") || gifImage.getAttribute("src") || "");
     if (!safeUrl) {
       return { dispose() {
@@ -4373,6 +4427,7 @@
       if (Array.isArray(asset.frames) && asset.frames.length) {
         canvas = document.createElement("canvas");
         canvas.className = "cinna-mobile-gif cinna-mobile-gif--canvas";
+        canvas.style.opacity = CINNA_GIF_OPACITY;
         canvas.width = asset.width || asset.frames[0].width || 1;
         canvas.height = asset.height || asset.frames[0].height || 1;
         canvas.style.aspectRatio = `${canvas.width} / ${canvas.height}`;
@@ -4444,7 +4499,7 @@
         const mobileSiteId = escapeHtml(site.id);
         const iconLinkMarkup = copyHandle
           ? `<button class="steam-sidebar-link steam-sidebar-link--icon-only steam-sidebar-link--copy" type="button" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" data-profile-copy-control="" data-profile-copy-state="idle" data-mobile-selection-phase="idle" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}" title="Copy Discord handle">${iconMarkup}<span class="steam-sidebar-copy-feedback steam-sidebar-copy-feedback--mobile" data-profile-copy-feedback aria-hidden="true">Copied</span></button>`
-          : openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
+          : openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_self" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
         return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${mobileSiteId}">
         ${iconLinkMarkup}
@@ -4545,7 +4600,7 @@
     let mobileLinksRevealPlayed = false;
     let mobileLinksRevealTimer = 0;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
-    const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = PROFILE_LINK_LAUNCH_DELAY_MS;
+    const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
@@ -6860,9 +6915,19 @@
         });
       }
       if (compactMobile) {
-        showcases.innerHTML = "";
-        showcases.hidden = true;
+        const lastFmSite = sites.find((site) => site.id === "lastfm");
+        const lastFmPayload = lastFmSite ? payloadById.get("lastfm") : null;
+        if (lastFmSite) {
+          showcases.hidden = false;
+          showcases.classList.add("social-hub-showcases--mobile-lastfm");
+          showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), { mobile: true });
+        } else {
+          showcases.innerHTML = "";
+          showcases.hidden = true;
+          showcases.classList.remove("social-hub-showcases--mobile-lastfm");
+        }
       } else {
+        showcases.classList.remove("social-hub-showcases--mobile-lastfm");
         showcases.hidden = false;
         showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
@@ -7226,8 +7291,12 @@
     let lastAmbientFrameMs = 0;
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
     const compactMobileLayout = isCompactMobileLayout();
-    const enableAmbientPointerResponse = !compactMobileLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
+    const coarsePointerLayout = Boolean(window.matchMedia?.("(pointer: coarse)")?.matches || window.matchMedia?.("(hover: none)")?.matches);
+    const enableMobileAudioStarPulse = compactMobileLayout || coarsePointerLayout;
+    const enableAmbientPointerResponse = !coarsePointerLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
     let performanceDegraded = isDesktopPerformanceDegraded();
+    let mobileAudioPulseBeat = 0;
+    let mobileAudioPulseFlash = 0;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -7306,6 +7375,19 @@
       pointerCurrentX += (pointerTargetX - pointerCurrentX) * 0.16;
       pointerCurrentY += (pointerTargetY - pointerCurrentY) * 0.16;
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
+    }
+    function updateMobileAudioPulse() {
+      if (!enableMobileAudioStarPulse || prefersReducedMotion || performanceDegraded) {
+        mobileAudioPulseBeat *= 0.84;
+        mobileAudioPulseFlash *= 0.78;
+        return;
+      }
+      const pulse = getInternetAngelReactivePulse();
+      const attack = pulse.beat > mobileAudioPulseBeat ? 0.42 : 0.18;
+      mobileAudioPulseBeat = clamp(mobileAudioPulseBeat + (pulse.beat - mobileAudioPulseBeat) * attack, 0, 1);
+      mobileAudioPulseBeat *= pulse.sampled ? 0.992 : 0.95;
+      const flashTarget = pulse.flash;
+      mobileAudioPulseFlash = clamp(Math.max(flashTarget, mobileAudioPulseFlash * 0.84), 0, 1);
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
       if (!enableAmbientPointerResponse || performanceDegraded) {
@@ -7799,15 +7881,18 @@
       }
     }
     function drawStar(starState) {
-      const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 0.96);
-      drawPixelBurst(starState.x, starState.y, {
+      const mobileBeatLift = enableMobileAudioStarPulse ? mobileAudioPulseBeat * 0.52 + mobileAudioPulseFlash * 0.38 : 0;
+      const mobileArmBoost = enableMobileAudioStarPulse ? Math.min(2, Math.round(mobileAudioPulseBeat * 2.1 + mobileAudioPulseFlash * 1.4)) : 0;
+      const mobileOrbit = enableMobileAudioStarPulse ? mobileAudioPulseBeat * 1.3 + mobileAudioPulseFlash * 2.2 : 0;
+      const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12 + mobileBeatLift), 0, 1);
+      drawPixelBurst(starState.x + Math.sin(starState.x * 0.02 + mobileAudioPulseFlash * 9) * mobileOrbit, starState.y + Math.cos(starState.y * 0.022 + mobileAudioPulseBeat * 7) * mobileOrbit, {
         cellSize: getAmbientPixelCell(starState.size > 1 ? 1 : 0.85),
         alpha,
         coreCells: 1,
-        armCells: starState.size,
-        diagonalCells: starState.size > 1 ? 1 : 0,
-        armAlphaScale: 0.72,
-        diagonalAlphaScale: 0.34
+        armCells: starState.size + mobileArmBoost,
+        diagonalCells: starState.size > 1 || mobileArmBoost > 0 ? 1 : 0,
+        armAlphaScale: 0.72 + mobileBeatLift * 0.18,
+        diagonalAlphaScale: 0.34 + mobileBeatLift * 0.14
       });
     }
     function drawShootingStar(shootingStarState) {
@@ -7930,6 +8015,7 @@
       const timeSec = timeMs * 0.001;
       const allowShootingStars = timeMs > 0 && !prefersReducedMotion && !performanceDegraded;
       updatePointerState();
+      updateMobileAudioPulse();
       activeShootingStarFields = allowShootingStars
         ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
         : [];

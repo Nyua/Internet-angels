@@ -127,6 +127,10 @@ See [MIGRATION.md](./MIGRATION.md) for:
 
 ## GitHub And CI
 
-- GitHub Actions workflow: `.github/workflows/ci.yml`
+- GitHub Actions CI workflow: `.github/workflows/ci.yml`
 - Runs unit tests on every push and pull request to `main`
 - Runs the Playwright smoke suite when a GitHub Actions secret named `LASTFM_API_KEY` is configured
+- GitHub Actions deploy workflow: `.github/workflows/deploy.yml`
+- Deploys `dist/` to Cloudflare Pages production on every push to `main` (and supports manual dispatch)
+- Requires repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+- Production updates only happen from commits that land on `main`

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Josie</title>
-    <link rel="stylesheet" href="/josie.css?v=20260410-josie-137" />
+    <link rel="stylesheet" href="/josie.css?v=20260411-josie-138" />
     <style>
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
@@ -220,7 +220,7 @@
                 <section id="social-hub-profile-tagline" class="social-hub-profile-tagline" aria-label="Profile secondary"></section>
                 <aside id="social-hub-sidebar" class="social-hub-sidebar" aria-label="Profile sidebar"></aside>
               </div>
-              <section id="social-hub-showcases" class="social-hub-showcases" aria-label="Social showcases"></section>
+              <section id="social-hub-showcases" class="social-hub-showcases social-hub-showcases--mobile-lastfm" aria-label="Social showcases"></section>
             </div>
           </div>
         </div>
@@ -304,12 +304,20 @@
         const referenceWidthPx = 2560;
         const minScale = 0.58;
         const compactMobileBreakpointPx = 820;
+        function isCompactMobileViewport() {
+          const viewportWidth = window.innerWidth || Number.POSITIVE_INFINITY;
+          if (viewportWidth > compactMobileBreakpointPx) return false;
+          if (typeof window.matchMedia !== "function") return false;
+          return Boolean(
+            window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches
+          );
+        }
         let rafId = 0;
         function applyHubScale() {
           const root = document.querySelector("#social-hub-root");
           const frame = document.querySelector("#social-hub-scale-frame");
           if (!(root instanceof HTMLElement) || !(frame instanceof HTMLElement)) return;
-          if (window.innerWidth <= compactMobileBreakpointPx) {
+          if (isCompactMobileViewport()) {
             root.style.removeProperty("zoom");
             root.style.removeProperty("will-change");
             root.style.removeProperty("width");
@@ -361,6 +369,17 @@
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
         const handoffMode = Boolean(window.__josieHandoffMode);
         const compactMobileBreakpointPx = 820;
+        function isCompactMobileViewport() {
+          const viewportWidth = Math.min(
+            window.innerWidth || Number.POSITIVE_INFINITY,
+            window.visualViewport?.width || Number.POSITIVE_INFINITY
+          );
+          if (viewportWidth > compactMobileBreakpointPx) return false;
+          if (typeof window.matchMedia !== "function") return false;
+          return Boolean(
+            window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches
+          );
+        }
         const targetFrameMs = 1000 / 24;
         const slicePlaybackSlowdown = 1;
         const defaultDurationMs = 2200;
@@ -375,9 +394,6 @@
           height: loadingIconReferenceBoxes.loadingIcon.height / loadingIconReferenceBoxes.profileLinks.height
         };
         const loadingIconDefaultPath = "/assets/site-load-slices/site-load-loading-icon.gif";
-        const loadingIconVariantPath = "/assets/something.gif";
-        const loadingIconVariantChance = 0.2;
-        const useLoadingIconVariant = Math.random() < loadingIconVariantChance;
         const sliceOrder = [
           "profilePicture",
           "profileLinks",
@@ -389,7 +405,7 @@
         const slicePaths = {
           profilePicture: "/assets/site-load-slices/site-load-profile-picture.gif",
           profileLinks: "/assets/site-load-slices/site-load-profile-links.gif",
-          loadingIcon: useLoadingIconVariant ? loadingIconVariantPath : loadingIconDefaultPath,
+          loadingIcon: loadingIconDefaultPath,
           titlebar: "/assets/site-load-slices/site-load-titlebar.gif",
           recentActivity: "/assets/site-load-slices/site-load-recent-activity.gif",
           lastfmShowcase: "/assets/site-load-slices/site-load-lastfm-showcase.gif"
@@ -416,7 +432,7 @@
         let overlayRoot = null;
         let loopHandle = 0;
         window.__amesLoadingIconVariantPath = slicePaths.loadingIcon;
-        window.__amesLoadingIconUsesVariant = useLoadingIconVariant;
+        window.__amesLoadingIconUsesVariant = false;
 
         if (handoffMode) {
           window.__amesSiteLoadPlaying = false;
@@ -763,11 +779,7 @@
         }
 
         function startSequence() {
-          const viewportWidth = Math.min(
-            window.innerWidth || Number.POSITIVE_INFINITY,
-            window.visualViewport?.width || Number.POSITIVE_INFINITY
-          );
-          if (viewportWidth <= compactMobileBreakpointPx) {
+          if (isCompactMobileViewport()) {
             setSiteLoadPlaying(false);
             return;
           }
@@ -786,5 +798,4 @@
     </script>
   </body>
 </html>
-
 
