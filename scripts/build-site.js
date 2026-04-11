@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 const siteDir = path.join(rootDir, "site");
@@ -87,6 +88,44 @@ function buildAvatarManifest() {
   return { avatars };
 }
 
+function hashFileVersion(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return "";
+  }
+  const content = fs.readFileSync(filePath);
+  return crypto.createHash("sha256").update(content).digest("hex").slice(0, 10);
+}
+
+function rewriteHtmlAssetVersions() {
+  const assetVersionCache = new Map();
+  const htmlFiles = fs.readdirSync(distDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === ".html")
+    .map((entry) => path.join(distDir, entry.name));
+  const assetPattern = /(["'])(\/[^"'?#]+\.(?:css|js))(?:\?v=[^"'#]*)?\1/g;
+  for (const htmlPath of htmlFiles) {
+    const original = fs.readFileSync(htmlPath, "utf8");
+    const rewritten = original.replace(assetPattern, (match, quote, assetPath) => {
+      const normalizedAssetPath = String(assetPath || "").trim();
+      if (!normalizedAssetPath) {
+        return match;
+      }
+      let version = assetVersionCache.get(normalizedAssetPath);
+      if (!version) {
+        const assetFsPath = path.join(distDir, normalizedAssetPath.replace(/^\//, "").replaceAll("/", path.sep));
+        version = hashFileVersion(assetFsPath);
+        if (!version) {
+          return match;
+        }
+        assetVersionCache.set(normalizedAssetPath, version);
+      }
+      return `${quote}${normalizedAssetPath}?v=${version}${quote}`;
+    });
+    if (rewritten !== original) {
+      fs.writeFileSync(htmlPath, rewritten, "utf8");
+    }
+  }
+}
+
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
 fs.cpSync(siteDir, distDir, {
@@ -109,6 +148,7 @@ if (fs.existsSync(appOutputPath)) {
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
+rewriteHtmlAssetVersions();
 
 const oversizedFiles = collectOversizedFiles(distDir);
 if (oversizedFiles.length) {
