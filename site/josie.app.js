@@ -7214,6 +7214,8 @@
     let stars = [];
     let glints = [];
     let flares = [];
+    let shootingStars = [];
+    let activeShootingStarFields = [];
     let pointerTargetX = 0;
     let pointerTargetY = 0;
     let pointerCurrentX = 0;
@@ -7265,6 +7267,35 @@
     function hashCycleSeed(seed, cycleIndex, salt) {
       return (seed ^ Math.imul(cycleIndex + 1, salt)) >>> 0;
     }
+    function resolveRadialRepulsion(x, y, originX, originY, radius, shift, seed) {
+      if (!(radius > 0) || !(shift > 0)) {
+        return { offsetX: 0, offsetY: 0, influence: 0 };
+      }
+      const dx = x - originX;
+      const dy = y - originY;
+      let distance = Math.hypot(dx, dy);
+      let dirX = 0;
+      let dirY = 0;
+      if (distance < 1e-3) {
+        const angle = ((seed % 360) / 360 + originX * 0.0003 + originY * 0.0002) * TAU;
+        dirX = Math.cos(angle);
+        dirY = Math.sin(angle);
+        distance = 0;
+      } else {
+        dirX = dx / distance;
+        dirY = dy / distance;
+      }
+      if (distance >= radius) {
+        return { offsetX: 0, offsetY: 0, influence: 0 };
+      }
+      const influence = smoothstep(1 - distance / radius);
+      const repel = shift * influence;
+      return {
+        offsetX: dirX * repel,
+        offsetY: dirY * repel,
+        influence
+      };
+    }
     function updatePointerState() {
       if (!enableAmbientPointerResponse || performanceDegraded) {
         pointerCurrentX = renderWidth * 0.5;
@@ -7283,29 +7314,70 @@
       if (pointerStrength < 0.002) {
         return { offsetX: 0, offsetY: 0, influence: 0 };
       }
-      const dx = x - pointerCurrentX;
-      const dy = y - pointerCurrentY;
-      let distance = Math.hypot(dx, dy);
-      let dirX = 0;
-      let dirY = 0;
-      if (distance < 1e-3) {
-        const angle = ((seed % 360) / 360 + pointerCurrentX * 0.0003 + pointerCurrentY * 0.0002) * TAU;
-        dirX = Math.cos(angle);
-        dirY = Math.sin(angle);
-        distance = 0;
-      } else {
-        dirX = dx / distance;
-        dirY = dy / distance;
-      }
-      if (distance >= radius) {
+      const repulsion = resolveRadialRepulsion(
+        x,
+        y,
+        pointerCurrentX,
+        pointerCurrentY,
+        radius,
+        shift,
+        seed
+      );
+      if (repulsion.influence <= 0.001) {
         return { offsetX: 0, offsetY: 0, influence: 0 };
       }
-      const influence = smoothstep(1 - distance / radius) * pointerStrength;
-      const repel = shift * influence;
       return {
-        offsetX: dirX * repel,
-        offsetY: dirY * repel,
-        influence
+        offsetX: repulsion.offsetX * pointerStrength,
+        offsetY: repulsion.offsetY * pointerStrength,
+        influence: repulsion.influence * pointerStrength
+      };
+    }
+    function resolveLineRepulsion(x, y, startX, startY, endX, endY, radius, shift, seed) {
+      const segmentDx = endX - startX;
+      const segmentDy = endY - startY;
+      const segmentLengthSq = segmentDx * segmentDx + segmentDy * segmentDy;
+      if (segmentLengthSq < 1e-3) {
+        return resolveRadialRepulsion(x, y, endX, endY, radius, shift, seed);
+      }
+      const segmentT = clamp(((x - startX) * segmentDx + (y - startY) * segmentDy) / segmentLengthSq, 0, 1);
+      const nearestX = startX + segmentDx * segmentT;
+      const nearestY = startY + segmentDy * segmentT;
+      const radial = resolveRadialRepulsion(x, y, nearestX, nearestY, radius, shift, seed);
+      if (radial.influence <= 0.001) {
+        return radial;
+      }
+      const headWeight = 0.68 + segmentT * 0.44;
+      return {
+        offsetX: radial.offsetX * headWeight,
+        offsetY: radial.offsetY * headWeight,
+        influence: clamp(radial.influence * headWeight, 0, 1)
+      };
+    }
+    function resolveShootingStarRepulsion(x, y, field, seed) {
+      const laneRepulsion = resolveLineRepulsion(
+        x,
+        y,
+        field.tailX,
+        field.tailY,
+        field.headX,
+        field.headY,
+        field.repelRadius,
+        field.repelShift * 0.78,
+        field.seed ^ seed
+      );
+      const headRepulsion = resolveRadialRepulsion(
+        x,
+        y,
+        field.headX,
+        field.headY,
+        field.repelRadius * 0.82,
+        field.repelShift * 1.18,
+        field.seed + seed
+      );
+      return {
+        offsetX: laneRepulsion.offsetX + headRepulsion.offsetX,
+        offsetY: laneRepulsion.offsetY + headRepulsion.offsetY,
+        influence: Math.max(laneRepulsion.influence * 0.82, headRepulsion.influence)
       };
     }
     function createAmbientMotionState(rng, options) {
@@ -7325,16 +7397,28 @@
         motion.offsetY *= 0.22;
       }
       const repulsion = resolvePointerRepulsion(anchorX + motion.offsetX, anchorY + motion.offsetY, radius, shift, seed);
-      const targetOffsetX = repulsion.offsetX;
-      const targetOffsetY = repulsion.offsetY;
-      const easePerSecond = repulsion.influence > 0.001 ? motion.repelEase : motion.returnEase;
+      let targetOffsetX = repulsion.offsetX;
+      let targetOffsetY = repulsion.offsetY;
+      let strongestInfluence = repulsion.influence;
+      for (const shootingStarField of activeShootingStarFields) {
+        const shootingStarRepulsion = resolveShootingStarRepulsion(
+          anchorX + motion.offsetX,
+          anchorY + motion.offsetY,
+          shootingStarField,
+          seed
+        );
+        targetOffsetX += shootingStarRepulsion.offsetX;
+        targetOffsetY += shootingStarRepulsion.offsetY;
+        strongestInfluence = Math.max(strongestInfluence, shootingStarRepulsion.influence);
+      }
+      const easePerSecond = strongestInfluence > 0.001 ? motion.repelEase : motion.returnEase;
       const blend = 1 - Math.exp(-ambientDeltaSec * easePerSecond);
       motion.offsetX += (targetOffsetX - motion.offsetX) * blend;
       motion.offsetY += (targetOffsetY - motion.offsetY) * blend;
       return {
         x: anchorX + motion.offsetX,
         y: anchorY + motion.offsetY,
-        influence: repulsion.influence
+        influence: strongestInfluence
       };
     }
     function buildStarPrototype(rng, index) {
@@ -7421,6 +7505,29 @@
           returnEaseMin: 0.34,
           returnEaseSpan: 0.26
         })
+      };
+    }
+    function buildShootingStarPrototype(rng, index) {
+      return {
+        seed: (Math.floor(rng() * 4294967295) ^ Math.imul(index + 1, 668265263)) >>> 0,
+        cycleOffset: rng() * 36,
+        cycleDuration: (compactMobileLayout ? 18 : 13) + rng() * (compactMobileLayout ? 18 : 20),
+        visibleDurationMin: 1.05 + rng() * 0.45,
+        visibleDurationSpan: 0.55 + rng() * 0.65,
+        entryBandMin: 0.06 + rng() * 0.16,
+        entryBandSpan: 0.18 + rng() * 0.24,
+        travelDropMin: 0.08 + rng() * 0.08,
+        travelDropSpan: 0.12 + rng() * 0.18,
+        upwardChance: 0.12 + rng() * 0.12,
+        trailLengthMin: (compactMobileLayout ? 74 : 120) + rng() * (compactMobileLayout ? 44 : 90),
+        trailLengthSpan: (compactMobileLayout ? 50 : 86) + rng() * (compactMobileLayout ? 64 : 136),
+        alphaMin: 0.56 + rng() * 0.12,
+        alphaSpan: 0.18 + rng() * 0.12,
+        repelRadiusMin: (compactMobileLayout ? 56 : 92) + rng() * (compactMobileLayout ? 18 : 40),
+        repelRadiusSpan: (compactMobileLayout ? 24 : 42) + rng() * (compactMobileLayout ? 24 : 44),
+        repelShiftMin: (compactMobileLayout ? 4.4 : 8.8) + rng() * (compactMobileLayout ? 2.2 : 5.2),
+        repelShiftSpan: (compactMobileLayout ? 2.8 : 4.6) + rng() * (compactMobileLayout ? 3.2 : 6.4),
+        headCoreChance: 0.34 + rng() * 0.22
       };
     }
     function resolveStarState(star, timeSec) {
@@ -7529,6 +7636,54 @@
         progress
       };
     }
+    function resolveShootingStarState(shootingStar, timeSec) {
+      const localTime = timeSec + shootingStar.cycleOffset;
+      const cycleIndex = Math.floor(localTime / shootingStar.cycleDuration);
+      const elapsed = localTime - cycleIndex * shootingStar.cycleDuration;
+      const rng = createSeededRandom(hashCycleSeed(shootingStar.seed, cycleIndex, 1580030173));
+      const visibleDuration = shootingStar.visibleDurationMin + rng() * shootingStar.visibleDurationSpan;
+      if (elapsed < 0 || elapsed > visibleDuration) {
+        return null;
+      }
+      const offscreenPad = Math.max(72 * Math.max(1, dpr), Math.min(renderWidth, renderHeight) * 0.16);
+      const startFromLeft = rng() < 0.5;
+      const startX = startFromLeft ? -offscreenPad : renderWidth + offscreenPad;
+      const endX = startFromLeft ? renderWidth + offscreenPad : -offscreenPad;
+      const startY = (shootingStar.entryBandMin + rng() * shootingStar.entryBandSpan) * renderHeight;
+      const travelDrop = (shootingStar.travelDropMin + rng() * shootingStar.travelDropSpan) * renderHeight;
+      const endY = startY + (rng() < shootingStar.upwardChance ? -travelDrop * 0.45 : travelDrop);
+      const progress = clamp(elapsed / visibleDuration, 0, 1);
+      const travelProgress = 1 - Math.pow(1 - progress, 1.6);
+      const fadeInRatio = 0.08 + rng() * 0.08;
+      const fadeOutRatio = 0.18 + rng() * 0.12;
+      const alphaEnvelope = evaluateCycleEnvelope(progress, fadeInRatio, fadeOutRatio);
+      const headX = startX + (endX - startX) * travelProgress;
+      const headY = startY + (endY - startY) * travelProgress;
+      const pathDx = endX - startX;
+      const pathDy = endY - startY;
+      const pathLength = Math.max(1, Math.hypot(pathDx, pathDy));
+      const dirX = pathDx / pathLength;
+      const dirY = pathDy / pathLength;
+      const trailLength = shootingStar.trailLengthMin + rng() * shootingStar.trailLengthSpan;
+      const alpha = clamp(shootingStar.alphaMin + rng() * shootingStar.alphaSpan, 0.42, 0.96) * alphaEnvelope;
+      const repelRadius = shootingStar.repelRadiusMin + rng() * shootingStar.repelRadiusSpan;
+      const repelShift = (shootingStar.repelShiftMin + rng() * shootingStar.repelShiftSpan) * alphaEnvelope;
+      return {
+        seed: shootingStar.seed,
+        headX,
+        headY,
+        tailX: headX - dirX * trailLength,
+        tailY: headY - dirY * trailLength,
+        dirX,
+        dirY,
+        alpha,
+        trailLength,
+        repelRadius,
+        repelShift,
+        coreCells: rng() < shootingStar.headCoreChance ? 2 : 1,
+        armCells: rng() < 0.55 ? 2 : 1
+      };
+    }
     function clearCanvas() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = false;
@@ -7540,9 +7695,12 @@
       const starCount = compactMobileLayout ? Math.max(34, Math.min(72, Math.round(area / 42e3))) : Math.max(54, Math.min(168, Math.round(area / 28e3)));
       const glintCount = compactMobileLayout ? Math.max(0, Math.min(4, Math.round(area / 34e4))) : Math.max(7, Math.min(16, Math.round(area / 19e4)));
       const flareCount = compactMobileLayout ? 0 : Math.max(1, Math.min(2, Math.round(area / 14e5)));
+      const shootingStarCount = compactMobileLayout ? 1 : 2;
       stars = Array.from({ length: starCount }, (_, index) => buildStarPrototype(rng, index));
       glints = Array.from({ length: glintCount }, (_, index) => buildGlintPrototype(rng, index));
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
+      shootingStars = Array.from({ length: shootingStarCount }, (_, index) => buildShootingStarPrototype(rng, index));
+      activeShootingStarFields = [];
       pointerTargetX = renderWidth * 0.5;
       pointerTargetY = renderHeight * 0.5;
       pointerCurrentX = pointerTargetX;
@@ -7614,6 +7772,32 @@
         fillPixelCell(gridX - step, gridY - step, cellSize, diagonalAlpha);
       }
     }
+    function drawPixelTrail(headX, headY, dirX, dirY, lengthPx, options = {}) {
+      const cellSize = Math.max(1, Math.round(options.cellSize || getAmbientPixelCell()));
+      const baseAlpha = clamp(options.alpha || 0, 0, 1);
+      if (baseAlpha <= 0.002) return;
+      const directionLength = Math.max(1e-4, Math.hypot(dirX, dirY));
+      const unitX = dirX / directionLength;
+      const unitY = dirY / directionLength;
+      const normalX = -unitY;
+      const normalY = unitX;
+      const trailLength = Math.max(cellSize * 3, lengthPx);
+      const stepPx = cellSize * 0.92;
+      const stepCount = Math.max(4, Math.ceil(trailLength / stepPx));
+      for (let step = 0; step < stepCount; step += 1) {
+        const ratio = step / Math.max(1, stepCount - 1);
+        const distancePx = ratio * trailLength;
+        const sampleX = headX - unitX * distancePx;
+        const sampleY = headY - unitY * distancePx;
+        const trailAlpha = baseAlpha * Math.pow(1 - ratio, 1.28) * (0.34 + (1 - ratio) * 0.56);
+        fillPixelCell(Math.round(sampleX / cellSize), Math.round(sampleY / cellSize), cellSize, trailAlpha);
+        if (ratio < 0.42) {
+          const sideAlpha = trailAlpha * (1 - ratio / 0.42) * 0.54;
+          fillPixelCell(Math.round((sampleX + normalX * cellSize) / cellSize), Math.round((sampleY + normalY * cellSize) / cellSize), cellSize, sideAlpha);
+          fillPixelCell(Math.round((sampleX - normalX * cellSize) / cellSize), Math.round((sampleY - normalY * cellSize) / cellSize), cellSize, sideAlpha);
+        }
+      }
+    }
     function drawStar(starState) {
       const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 0.96);
       drawPixelBurst(starState.x, starState.y, {
@@ -7625,6 +7809,43 @@
         armAlphaScale: 0.72,
         diagonalAlphaScale: 0.34
       });
+    }
+    function drawShootingStar(shootingStarState) {
+      const cellSize = getAmbientPixelCell(shootingStarState.coreCells > 1 ? 1.15 : 1);
+      drawPixelTrail(
+        shootingStarState.headX,
+        shootingStarState.headY,
+        shootingStarState.dirX,
+        shootingStarState.dirY,
+        shootingStarState.trailLength,
+        {
+          cellSize,
+          alpha: shootingStarState.alpha * 0.92
+        }
+      );
+      drawPixelBurst(shootingStarState.headX, shootingStarState.headY, {
+        cellSize,
+        alpha: shootingStarState.alpha,
+        coreCells: shootingStarState.coreCells,
+        armCells: shootingStarState.armCells,
+        diagonalCells: 1,
+        coreAlphaScale: 1.18,
+        armAlphaScale: 0.82,
+        diagonalAlphaScale: 0.4
+      });
+      drawPixelBurst(
+        shootingStarState.headX + shootingStarState.dirX * cellSize,
+        shootingStarState.headY + shootingStarState.dirY * cellSize,
+        {
+          cellSize,
+          alpha: shootingStarState.alpha * 0.28,
+          coreCells: 1,
+          armCells: 1,
+          diagonalCells: 0,
+          coreAlphaScale: 1,
+          armAlphaScale: 0.46
+        }
+      );
     }
     function drawGlint(glintState, timeSec) {
       const pulseBase = 0.5 + Math.sin(timeSec * glintState.pulseSpeed + glintState.pulsePhase) * 0.5;
@@ -7707,7 +7928,11 @@
     function drawStaticFrame(timeMs) {
       clearCanvas();
       const timeSec = timeMs * 0.001;
+      const allowShootingStars = timeMs > 0 && !prefersReducedMotion && !performanceDegraded;
       updatePointerState();
+      activeShootingStarFields = allowShootingStars
+        ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
+        : [];
       ctx.save();
       ctx.globalCompositeOperation = "source-over";
       for (const star of stars) {
@@ -7722,6 +7947,9 @@
         if (flareState) {
           drawFlare(flareState, prefersReducedMotion ? 0 : timeSec);
         }
+      }
+      for (const shootingStarState of activeShootingStarFields) {
+        drawShootingStar(shootingStarState);
       }
       ctx.restore();
     }
