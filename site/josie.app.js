@@ -1748,7 +1748,7 @@
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
-    const SHUFFLE_TRACE_OPACITY_SCALE = 1;
+    const SHUFFLE_TRACE_OPACITY_SCALE = 2;
     const SHUFFLE_MAX_CANVAS_DPR = 1;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";

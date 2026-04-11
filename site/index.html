@@ -290,6 +290,10 @@
       let state = "idle";
       let titleTypewriterTimer = 0;
       let titleTypewriterToken = 0;
+      const titleTypewriterTimingScale = 2;
+      const titleTypewriterStartDelayMs = 180 * titleTypewriterTimingScale;
+      const titleTypewriterStepDelayMs = 95 * titleTypewriterTimingScale;
+      const titleTypewriterHoldDelayMs = 900 * titleTypewriterTimingScale;
       let monitorRafId = 0;
 
       function startDocumentTitleTypewriter(finalTitle) {
@@ -320,16 +324,16 @@
             schedule(() => {
               index = 0;
               document.title = "";
-              schedule(writeNext, 180);
-            }, 900);
+              schedule(writeNext, titleTypewriterStartDelayMs);
+            }, titleTypewriterHoldDelayMs);
             return;
           }
           index += 1;
           document.title = chars.slice(0, index).join("");
-          schedule(writeNext, 95);
+          schedule(writeNext, titleTypewriterStepDelayMs);
         };
         document.title = "";
-        schedule(writeNext, 180);
+        schedule(writeNext, titleTypewriterStartDelayMs);
       }
 
       function setState(nextState) {
