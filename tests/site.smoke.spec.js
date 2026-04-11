@@ -685,6 +685,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopSpeakerRect.height).toBeGreaterThanOrEqual(40);
   const audioControl = page.locator("[data-site-audio-control]");
   await expect(audioControl).toBeVisible();
+  await expect(page.locator(".site-audio-volume-label")).toHaveCount(0);
   const initialAudioControlWidth = await audioControl.evaluate((node) => node.getBoundingClientRect().width);
   expect(initialAudioControlWidth).toBeLessThanOrEqual(46);
   await audioControl.hover();
@@ -762,6 +763,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true");
   await expect(page.locator(".steam-hero-name")).toHaveText("Josie");
+  await expect(page.locator(".steam-hero-name")).toHaveCSS("animation-name", /heroNameDrift/);
   await expect(page.locator(".steam-hero-ornament")).toHaveCount(1);
   const heroAvatarSrc = await page.locator(".steam-hero-avatar").first().getAttribute("src");
   expect(heroAvatarSrc).toBeTruthy();
@@ -943,14 +945,40 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(heroShellStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(heroShellStyles.boxShadow).not.toContain("120vmax");
-  await page.locator(".steam-sidebar-row--discord .steam-sidebar-link").click({ force: true });
+  await page.locator(".steam-sidebar-row--discord").click({ force: true });
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
-  await expect(page.locator("[data-profile-copy-toast]")).toHaveAttribute("data-profile-copy-toast-state", "visible");
-  await expect(page.locator("[data-profile-copy-toast]")).toContainText("Copied foundlifeless");
+  await expect(page.locator(".steam-sidebar-row--discord [data-profile-copy-control]")).toHaveAttribute("data-profile-copy-state", "copied");
+  await expect(page.locator(".steam-sidebar-row--discord [data-profile-copy-feedback]")).toContainText("Copied");
+  await expect(page.locator("[data-profile-copy-toast]")).toHaveCount(0);
+  const discordCopyPromptStyles = await page.evaluate(() => {
+    const feedback = document.querySelector(".steam-sidebar-row--discord [data-profile-copy-feedback]");
+    const label = document.querySelector(".steam-sidebar-row--discord .steam-sidebar-link");
+    if (!(feedback instanceof HTMLElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+    const styles = window.getComputedStyle(feedback);
+    const beforeStyles = window.getComputedStyle(feedback, "::before");
+    const feedbackRect = feedback.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    return {
+      borderTopWidth: styles.borderTopWidth,
+      backgroundColor: styles.backgroundColor,
+      opacity: styles.opacity,
+      beforeContent: beforeStyles.content,
+      feedbackLeft: feedbackRect.left,
+      labelRight: labelRect.right
+    };
+  });
+  expect(discordCopyPromptStyles).not.toBeNull();
+  expect(discordCopyPromptStyles.borderTopWidth).toBe("0px");
+  expect(discordCopyPromptStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(Number.parseFloat(discordCopyPromptStyles.opacity)).toBeLessThan(0.91);
+  expect(discordCopyPromptStyles.beforeContent).toContain("-");
+  expect(discordCopyPromptStyles.feedbackLeft).toBeGreaterThanOrEqual(discordCopyPromptStyles.labelRight - 3);
   const discordCopyState = await page.evaluate(() => ({
     clipboardWrites: window.__clipboardWrites || [],
-    discordHref: document.querySelector(".steam-sidebar-row--discord .steam-sidebar-link")?.getAttribute("href") || "",
-    discordCopyHandle: document.querySelector(".steam-sidebar-row--discord .steam-sidebar-link")?.getAttribute("data-profile-copy-handle") || ""
+    discordHref: document.querySelector(".steam-sidebar-row--discord [data-profile-copy-control]")?.getAttribute("href") || "",
+    discordCopyHandle: document.querySelector(".steam-sidebar-row--discord")?.getAttribute("data-profile-copy-handle") || ""
   }));
   expect(discordCopyState.clipboardWrites).toContain("foundlifeless");
   expect(discordCopyState.discordHref).toBe("");
@@ -1487,6 +1515,7 @@ test("josie night ambient reports frozen motion for reduced motion users", async
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-variant", "night");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-renderer", "legacy");
   await expect(page.locator("#os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+  await expect(page.locator(".steam-hero-name")).toHaveCSS("animation-name", "none");
 });
 
 test("josie night ambient renders on mobile without overflow", async ({ page }) => {
@@ -1968,8 +1997,9 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await discordMobileIconLink.click();
   await expect(discordMobileIconLink).toHaveClass(/is-mobile-selected/);
   await expect(discordMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
-  await expect(page.locator("[data-profile-copy-toast]")).toHaveAttribute("data-profile-copy-toast-state", "visible");
-  await expect(page.locator("[data-profile-copy-toast]")).toContainText("Copied foundlifeless");
+  await expect(discordMobileIconLink).toHaveAttribute("data-profile-copy-state", "copied");
+  await expect(discordMobileIconLink.locator("[data-profile-copy-feedback]")).toContainText("Copied");
+  await expect(page.locator("[data-profile-copy-toast]")).toHaveCount(0);
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
   await page.waitForTimeout(520);
   const mobileDiscordCopyState = await page.evaluate(() => ({

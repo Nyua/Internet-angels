@@ -1752,8 +1752,8 @@
     const SHUFFLE_MAX_CANVAS_DPR = 1;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
-    const SHUFFLE_ASCII_MIN_CELL_PX = 6;
-    const SHUFFLE_ASCII_MAX_CELL_PX = 12;
+    const SHUFFLE_ASCII_MIN_CELL_PX = 3;
+    const SHUFFLE_ASCII_MAX_CELL_PX = 6;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -2224,8 +2224,8 @@
       const originY = metrics.drawTop;
       const width = metrics.drawWidth;
       const height = metrics.drawHeight;
-      const asciiCellWidth = clamp2(Math.round(width / 104), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
-      const asciiCellHeight = Math.max(8, Math.round(asciiCellWidth * 1.42));
+      const asciiCellWidth = clamp2(Math.round(width / 208), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
+      const asciiCellHeight = Math.max(4, Math.round(asciiCellWidth * 1.42));
       const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
@@ -2363,7 +2363,7 @@
       );
       const baselineGlyph = impact > 0.38 ? "-" : ".";
       const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
-      const fontSize = Math.max(9, Math.round(asciiCellWidth * 1.24));
+      const fontSize = Math.max(5, Math.round(asciiCellWidth * 1.24));
       waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
       waveCtx.textBaseline = "top";
       waveCtx.textAlign = "center";
@@ -4443,7 +4443,7 @@
       if (compact) {
         const mobileSiteId = escapeHtml(site.id);
         const iconLinkMarkup = copyHandle
-          ? `<button class="steam-sidebar-link steam-sidebar-link--icon-only steam-sidebar-link--copy" type="button" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" data-mobile-selection-phase="idle" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}" title="Copy Discord handle">${iconMarkup}</button>`
+          ? `<button class="steam-sidebar-link steam-sidebar-link--icon-only steam-sidebar-link--copy" type="button" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" data-profile-copy-control="" data-profile-copy-state="idle" data-mobile-selection-phase="idle" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}" title="Copy Discord handle">${iconMarkup}<span class="steam-sidebar-copy-feedback steam-sidebar-copy-feedback--mobile" data-profile-copy-feedback aria-hidden="true">Copied</span></button>`
           : openUrl ? `<a class="steam-sidebar-link steam-sidebar-link--icon-only" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</a>` : `<span class="steam-sidebar-link steam-sidebar-link--icon-only is-disabled" data-mobile-site-id="${mobileSiteId}" data-profile-site-id="${mobileSiteId}" data-mobile-selection-phase="idle" aria-label="${siteLabel}" title="${siteLabel}">${iconMarkup}</span>`;
         return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${mobileSiteId}">
@@ -4452,9 +4452,24 @@
     `;
       }
       const profileSiteId = escapeHtml(site.id);
-      const linkMarkup = copyHandle
-        ? `<button class="steam-sidebar-link steam-sidebar-link--copy" type="button" data-profile-site-id="${profileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}">${siteLabel}</button>`
-        : openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-profile-site-id="${profileSiteId}">${siteLabel}</a>` : `<span class="steam-sidebar-link" data-profile-site-id="${profileSiteId}">${siteLabel}</span>`;
+      if (copyHandle) {
+        return `
+      <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${profileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}">
+        <div class="steam-sidebar-row-main">
+          <button class="steam-sidebar-link-shell steam-sidebar-link-shell--copy" type="button" data-profile-site-id="${profileSiteId}" data-profile-copy-handle="${escapeHtml(copyHandle)}" data-profile-copy-control="" data-profile-copy-state="idle" aria-label="Copy Discord handle ${escapeHtml(copyHandle)}">
+            <span class="steam-sidebar-link-shell-main">
+              ${iconMarkup}
+              <span class="steam-sidebar-copy-inline">
+                <span class="steam-sidebar-link">${siteLabel}</span>
+                <span class="steam-sidebar-copy-feedback" data-profile-copy-feedback aria-hidden="true">Copied</span>
+              </span>
+            </span>
+          </button>
+        </div>
+      </li>
+    `;
+      }
+      const linkMarkup = openUrl ? `<a class="steam-sidebar-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer" data-profile-site-id="${profileSiteId}">${siteLabel}</a>` : `<span class="steam-sidebar-link" data-profile-site-id="${profileSiteId}">${siteLabel}</span>`;
       return `
       <li class="steam-sidebar-row steam-sidebar-row--${escapeHtml(site.id)}" data-profile-site-id="${profileSiteId}"${openUrl && !copyHandle ? ` data-open-url="${escapeHtml(openUrl)}"` : ""}>
         <div class="steam-sidebar-row-main">
@@ -4556,9 +4571,9 @@
     let mobileLinkAnimationTimer = 0;
     let pendingMobileExternalLaunchTimer = 0;
     let pendingMobileExternalPopup = null;
-    let profileCopyToastTimer = 0;
     let desktopProfilePromptTimer = 0;
     let lastFmTrackPanelSceneSettleTimer = 0;
+    const profileCopyStateTimers = new WeakMap();
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     const audioControlShell = siteAudioControl instanceof HTMLElement ? siteAudioControl : null;
     const shuffleVolumeSlider = siteVolumeSlider instanceof HTMLInputElement ? siteVolumeSlider : null;
@@ -4601,39 +4616,31 @@
         return false;
       }
     }
-    function ensureProfileCopyToast() {
-      let toast = document.querySelector("[data-profile-copy-toast]");
-      if (toast instanceof HTMLElement) return toast;
-      toast = document.createElement("div");
-      toast.className = "profile-copy-toast";
-      toast.setAttribute("data-profile-copy-toast", "");
-      toast.setAttribute("data-profile-copy-toast-state", "idle");
-      toast.setAttribute("role", "status");
-      toast.setAttribute("aria-live", "polite");
-      toast.innerHTML = `
-        <span class="profile-copy-toast-icon" aria-hidden="true">${renderSidebarSiteIcon("discord")}</span>
-        <span class="profile-copy-toast-text" data-profile-copy-toast-text></span>
-      `;
-      document.body.appendChild(toast);
-      return toast;
+    function resolveProfileCopyControl(trigger) {
+      if (!(trigger instanceof HTMLElement)) return null;
+      if (trigger.hasAttribute("data-profile-copy-control")) return trigger;
+      const nestedControl = trigger.querySelector("[data-profile-copy-control]");
+      return nestedControl instanceof HTMLElement ? nestedControl : null;
     }
-    function showProfileCopyToast(message) {
-      const toast = ensureProfileCopyToast();
-      const textEl = toast.querySelector("[data-profile-copy-toast-text]");
-      if (textEl instanceof HTMLElement) {
-        textEl.textContent = firstNonEmpty(message, "Copied");
+    function flashProfileCopyState(trigger, copied) {
+      const control = resolveProfileCopyControl(trigger);
+      if (!(control instanceof HTMLElement)) return;
+      const existingTimer = profileCopyStateTimers.get(control);
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+        profileCopyStateTimers.delete(control);
       }
-      if (profileCopyToastTimer) {
-        window.clearTimeout(profileCopyToastTimer);
-        profileCopyToastTimer = 0;
-      }
-      toast.setAttribute("data-profile-copy-toast-state", "idle");
-      void toast.offsetWidth;
-      toast.setAttribute("data-profile-copy-toast-state", "visible");
-      profileCopyToastTimer = window.setTimeout(() => {
-        profileCopyToastTimer = 0;
-        toast.setAttribute("data-profile-copy-toast-state", "idle");
+      control.setAttribute("data-profile-copy-state", "idle");
+      if (!copied) return;
+      void control.offsetWidth;
+      control.setAttribute("data-profile-copy-state", "copied");
+      const hideTimer = window.setTimeout(() => {
+        if (profileCopyStateTimers.get(control) === hideTimer) {
+          profileCopyStateTimers.delete(control);
+        }
+        control.setAttribute("data-profile-copy-state", "idle");
       }, 1400);
+      profileCopyStateTimers.set(control, hideTimer);
     }
     async function handleProfileHandleCopy(trigger) {
       if (!(trigger instanceof HTMLElement)) return;
@@ -4646,7 +4653,7 @@
       primeInteractionSfx("profileHandleCopy");
       const copied = await copyTextToClipboard(handle);
       playInteractionSfx(copied ? "confirm_soft" : "cancel_soft", copied ? "profileHandleCopied" : "profileHandleCopyFailed");
-      showProfileCopyToast(copied ? `Copied ${handle}` : `Copy ${handle}`);
+      flashProfileCopyState(trigger, copied);
     }
     function setInteractionSfxExternalAudioActive(active) {
       interactionSfxController?.setExternalAudioActive?.(Boolean(active));
@@ -6936,11 +6943,6 @@
       clearMobileLinksRevealTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
-      if (profileCopyToastTimer) {
-        window.clearTimeout(profileCopyToastTimer);
-        profileCopyToastTimer = 0;
-      }
-      document.querySelector("[data-profile-copy-toast]")?.remove();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
       hideLastFmTrackDetails("silent");
@@ -7201,6 +7203,7 @@
     if (!(ambientCanvas instanceof HTMLCanvasElement)) return null;
     const ctx = ambientCanvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!ctx) return null;
+    ctx.imageSmoothingEnabled = false;
     let disposed = false;
     let rafId = 0;
     let cssWidth = 0;
@@ -7528,6 +7531,7 @@
     }
     function clearCanvas() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
     }
     function rebuildField() {
@@ -7554,78 +7558,151 @@
         ambientCanvas.width = renderWidth;
         ambientCanvas.height = renderHeight;
       }
+      ctx.imageSmoothingEnabled = false;
       rebuildField();
       drawStaticFrame(0);
     }
-    function drawBurstArms(x, y, radius, thickness, alpha, diagonalAlpha = 0) {
-      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-      ctx.fillRect(x - thickness / 2, y - radius, thickness, radius * 2);
-      ctx.fillRect(x - radius, y - thickness / 2, radius * 2, thickness);
-      if (diagonalAlpha > 0.002) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = `rgba(255,255,255,${diagonalAlpha})`;
-        ctx.fillRect(-thickness / 2, -radius * 0.82, thickness, radius * 1.64);
-        ctx.rotate(Math.PI / 2);
-        ctx.fillRect(-thickness / 2, -radius * 0.82, thickness, radius * 1.64);
-        ctx.restore();
+    function getAmbientPixelCell(scale = 1) {
+      return Math.max(1, Math.round(Math.max(1, dpr) * scale));
+    }
+    function fillPixelCell(gridX, gridY, cellSize, alpha, widthCells = 1, heightCells = 1) {
+      if (alpha <= 0.002) return;
+      const safeCellSize = Math.max(1, Math.round(cellSize));
+      const safeWidthCells = Math.max(1, Math.round(widthCells));
+      const safeHeightCells = Math.max(1, Math.round(heightCells));
+      ctx.fillStyle = `rgba(255,255,255,${clamp(alpha, 0, 1)})`;
+      ctx.fillRect(
+        Math.round(gridX * safeCellSize),
+        Math.round(gridY * safeCellSize),
+        safeWidthCells * safeCellSize,
+        safeHeightCells * safeCellSize
+      );
+    }
+    function drawPixelBurst(centerX, centerY, options = {}) {
+      const cellSize = Math.max(1, Math.round(options.cellSize || getAmbientPixelCell()));
+      const gridX = Math.round(centerX / cellSize);
+      const gridY = Math.round(centerY / cellSize);
+      const coreCells = Math.max(1, Math.round(options.coreCells || 1));
+      const armCells = Math.max(0, Math.round(options.armCells || 0));
+      const diagonalCells = Math.max(0, Math.round(options.diagonalCells || 0));
+      const alpha = clamp(options.alpha || 0, 0, 1);
+      const coreAlphaScale = clamp(options.coreAlphaScale ?? 1, 0, 1.5);
+      const armAlphaScale = clamp(options.armAlphaScale ?? 0.7, 0, 1.5);
+      const diagonalAlphaScale = clamp(options.diagonalAlphaScale ?? 0.4, 0, 1.5);
+      fillPixelCell(
+        gridX - Math.floor(coreCells / 2),
+        gridY - Math.floor(coreCells / 2),
+        cellSize,
+        alpha * coreAlphaScale,
+        coreCells,
+        coreCells
+      );
+      for (let step = 1; step <= armCells; step += 1) {
+        const falloff = 1 - (step - 1) / Math.max(1, armCells) * 0.72;
+        const armAlpha = alpha * armAlphaScale * falloff;
+        fillPixelCell(gridX + step, gridY, cellSize, armAlpha);
+        fillPixelCell(gridX - step, gridY, cellSize, armAlpha);
+        fillPixelCell(gridX, gridY + step, cellSize, armAlpha);
+        fillPixelCell(gridX, gridY - step, cellSize, armAlpha);
       }
+      for (let step = 1; step <= diagonalCells; step += 1) {
+        const falloff = 1 - (step - 1) / Math.max(1, diagonalCells) * 0.78;
+        const diagonalAlpha = alpha * diagonalAlphaScale * falloff;
+        fillPixelCell(gridX + step, gridY + step, cellSize, diagonalAlpha);
+        fillPixelCell(gridX - step, gridY + step, cellSize, diagonalAlpha);
+        fillPixelCell(gridX + step, gridY - step, cellSize, diagonalAlpha);
+        fillPixelCell(gridX - step, gridY - step, cellSize, diagonalAlpha);
+      }
+    }
+    function drawStar(starState) {
+      const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 0.96);
+      drawPixelBurst(starState.x, starState.y, {
+        cellSize: getAmbientPixelCell(starState.size > 1 ? 1 : 0.85),
+        alpha,
+        coreCells: 1,
+        armCells: starState.size,
+        diagonalCells: starState.size > 1 ? 1 : 0,
+        armAlphaScale: 0.72,
+        diagonalAlphaScale: 0.34
+      });
     }
     function drawGlint(glintState, timeSec) {
       const pulseBase = 0.5 + Math.sin(timeSec * glintState.pulseSpeed + glintState.pulsePhase) * 0.5;
       const pulse = Math.pow(pulseBase, 4.2);
       const interactionLift = 1 + glintState.pointerInfluence * 0.45;
       const haloAlpha = glintState.alpha * (0.34 + pulse * 0.88) * interactionLift;
-      const gradient = ctx.createRadialGradient(glintState.x, glintState.y, 0, glintState.x, glintState.y, glintState.radius * 1.08);
-      gradient.addColorStop(0, `rgba(255,255,255,${haloAlpha * 0.9})`);
-      gradient.addColorStop(0.18, `rgba(255,255,255,${haloAlpha * 0.28})`);
-      gradient.addColorStop(0.46, `rgba(255,255,255,${haloAlpha * 0.1})`);
-      gradient.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(glintState.x - glintState.radius * 1.08, glintState.y - glintState.radius * 1.08, glintState.radius * 2.16, glintState.radius * 2.16);
+      const cellSize = getAmbientPixelCell(1);
+      const outerArmCells = Math.max(2, Math.round(glintState.radius / Math.max(1, cellSize * 2.8)));
+      const diagonalCells = glintState.diagonalAlpha > 0.002 ? Math.max(1, Math.round(outerArmCells * 0.72)) : 0;
+      drawPixelBurst(glintState.x, glintState.y, {
+        cellSize,
+        alpha: haloAlpha * 0.24,
+        coreCells: glintState.coreSize > 1 ? 2 : 1,
+        armCells: outerArmCells + 1,
+        diagonalCells: diagonalCells ? diagonalCells + 1 : 0,
+        coreAlphaScale: 0.78,
+        armAlphaScale: 0.48,
+        diagonalAlphaScale: diagonalCells ? 0.24 : 0
+      });
       const armAlpha = (0.1 + pulse * 0.26) * interactionLift;
-      drawBurstArms(
-        glintState.x,
-        glintState.y,
-        glintState.radius * glintState.armScale,
-        1.5,
-        armAlpha,
-        glintState.diagonalAlpha * (0.7 + pulse * 0.4) * interactionLift
-      );
-      ctx.fillStyle = `rgba(255,255,255,${(0.52 + pulse * 0.4) * (1 + glintState.pointerInfluence * 0.22)})`;
-      ctx.fillRect(glintState.x - glintState.coreSize / 2, glintState.y - glintState.coreSize / 2, glintState.coreSize, glintState.coreSize);
+      drawPixelBurst(glintState.x, glintState.y, {
+        cellSize,
+        alpha: armAlpha,
+        coreCells: glintState.coreSize > 1 ? 2 : 1,
+        armCells: Math.max(1, Math.round(outerArmCells * glintState.armScale)),
+        diagonalCells,
+        coreAlphaScale: 1.04,
+        armAlphaScale: 0.76,
+        diagonalAlphaScale: diagonalCells ? clamp(glintState.diagonalAlpha * (0.7 + pulse * 0.4) * 3.8, 0.18, 0.62) : 0
+      });
+      drawPixelBurst(glintState.x, glintState.y, {
+        cellSize,
+        alpha: (0.44 + pulse * 0.36) * (1 + glintState.pointerInfluence * 0.22),
+        coreCells: glintState.coreSize > 1 ? 2 : 1,
+        armCells: 0,
+        diagonalCells: 0,
+        coreAlphaScale: 1.12
+      });
     }
     function drawFlare(flareState, timeSec) {
       const pulseBase = 0.5 + Math.sin(timeSec * flareState.pulseSpeed + flareState.pulsePhase) * 0.5;
       const pulse = 0.38 + Math.pow(pulseBase, 2.4) * 0.92;
       const interactionLift = 1 + flareState.pointerInfluence * 0.3;
-      const outerRadius = flareState.radius * (1.55 + pulse * 0.22);
-      const outerGradient = ctx.createRadialGradient(flareState.x, flareState.y, 0, flareState.x, flareState.y, outerRadius);
       const haloAlpha = flareState.alpha * (0.52 + pulse * 0.74) * interactionLift;
-      outerGradient.addColorStop(0, `rgba(255,255,255,${haloAlpha * 0.48})`);
-      outerGradient.addColorStop(0.18, `rgba(255,255,255,${haloAlpha * 0.18})`);
-      outerGradient.addColorStop(0.44, `rgba(255,255,255,${haloAlpha * 0.07})`);
-      outerGradient.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = outerGradient;
-      ctx.fillRect(flareState.x - outerRadius, flareState.y - outerRadius, outerRadius * 2, outerRadius * 2);
-      const innerRadius = flareState.radius * (0.96 + pulse * 0.16);
-      const innerGradient = ctx.createRadialGradient(flareState.x, flareState.y, 0, flareState.x, flareState.y, innerRadius);
-      innerGradient.addColorStop(0, `rgba(255,255,255,${haloAlpha * 0.9})`);
-      innerGradient.addColorStop(0.26, `rgba(255,255,255,${haloAlpha * 0.24})`);
-      innerGradient.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = innerGradient;
-      ctx.fillRect(flareState.x - innerRadius, flareState.y - innerRadius, innerRadius * 2, innerRadius * 2);
-      drawBurstArms(
-        flareState.x,
-        flareState.y,
-        flareState.radius * (0.86 + pulse * 0.18),
-        2.2,
-        (0.22 + pulse * 0.26) * interactionLift,
-        (0.16 + pulse * 0.2) * interactionLift
-      );
-      ctx.fillStyle = `rgba(255,255,255,${(0.76 + pulse * 0.24) * interactionLift})`;
-      ctx.fillRect(flareState.x - flareState.coreSize / 2, flareState.y - flareState.coreSize / 2, flareState.coreSize, flareState.coreSize);
+      const cellSize = getAmbientPixelCell(1.15);
+      const outerArmCells = Math.max(3, Math.round(flareState.radius / Math.max(1, cellSize * 2.4)));
+      const innerArmCells = Math.max(2, outerArmCells - 2);
+      const diagonalCells = Math.max(1, Math.round(outerArmCells * 0.82));
+      drawPixelBurst(flareState.x, flareState.y, {
+        cellSize,
+        alpha: haloAlpha * 0.18,
+        coreCells: Math.max(2, flareState.coreSize - 1),
+        armCells: outerArmCells + 2,
+        diagonalCells: diagonalCells + 1,
+        coreAlphaScale: 0.52,
+        armAlphaScale: 0.34,
+        diagonalAlphaScale: 0.18
+      });
+      drawPixelBurst(flareState.x, flareState.y, {
+        cellSize,
+        alpha: haloAlpha * 0.3,
+        coreCells: Math.max(2, flareState.coreSize - 1),
+        armCells: outerArmCells,
+        diagonalCells,
+        coreAlphaScale: 0.86,
+        armAlphaScale: 0.54,
+        diagonalAlphaScale: 0.28
+      });
+      drawPixelBurst(flareState.x, flareState.y, {
+        cellSize,
+        alpha: (0.76 + pulse * 0.24) * interactionLift,
+        coreCells: Math.max(2, Math.min(3, flareState.coreSize)),
+        armCells: innerArmCells,
+        diagonalCells: Math.max(0, diagonalCells - 1),
+        coreAlphaScale: 1.08,
+        armAlphaScale: 0.62,
+        diagonalAlphaScale: 0.34
+      });
     }
     function drawStaticFrame(timeMs) {
       clearCanvas();
@@ -7635,9 +7712,7 @@
       ctx.globalCompositeOperation = "source-over";
       for (const star of stars) {
         const starState = resolveStarState(star, prefersReducedMotion ? 0 : timeSec);
-        const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 0.96);
-        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-        ctx.fillRect(starState.x, starState.y, starState.size, starState.size);
+        drawStar(starState);
       }
       for (const glint of glints) {
         drawGlint(resolveGlintState(glint, prefersReducedMotion ? 0 : timeSec), prefersReducedMotion ? 0 : timeSec);
