@@ -60,27 +60,17 @@
 
     .intro-video {
       position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      left: 50%;
+      top: 50%;
+      width: auto;
+      height: auto;
+      max-width: none;
+      max-height: none;
+      object-fit: contain;
       background: #000;
       z-index: 3;
       opacity: 1;
-      transition: opacity var(--handoff-fade-duration) ease;
-    }
-
-    .intro-ascii-canvas {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-      z-index: 3;
-      opacity: 0;
-      pointer-events: none;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
+      transform: translate(-50%, -50%);
       transition: opacity var(--handoff-fade-duration) ease;
     }
 
@@ -100,9 +90,7 @@
       z-index: 4;
       opacity: 1;
       transition: opacity var(--handoff-fade-duration) ease;
-      background:
-        radial-gradient(circle at center, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.24)),
-        linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.28));
+      background: transparent;
     }
 
     .intro-start-wrap {
@@ -208,6 +196,13 @@
       .intro-start-button {
         padding: 24px;
       }
+
+      .intro-video {
+        width: 100vw;
+        height: auto;
+        max-width: 100vw;
+        max-height: 100dvh;
+      }
     }
 
     body.is-handoff-visible .handoff-frame-wrap,
@@ -225,24 +220,8 @@
       opacity: 0.16;
     }
 
-    body.is-intro-ascii-active .intro-video {
-      opacity: 0;
-    }
-
-    body.is-intro-ascii-active .intro-ascii-canvas {
-      opacity: 1;
-    }
-
-    body.is-handoff-visible.is-intro-ascii-active .intro-ascii-canvas {
-      opacity: 0.16;
-    }
-
     body.is-handoff-visible .intro-overlay {
       opacity: 0.22;
-    }
-
-    body.is-handoff-complete .intro-ascii-canvas {
-      opacity: 0;
     }
 
     body.is-handoff-complete .intro-overlay,
@@ -264,7 +243,6 @@
     ></iframe>
   </div>
   <video id="introVideo" class="intro-video" playsinline preload="auto"></video>
-  <canvas id="asciiCanvas" class="intro-ascii-canvas" aria-hidden="true" hidden></canvas>
   <div id="introOverlay" class="intro-overlay" aria-hidden="true"></div>
   <div id="introStartWrap" class="intro-start-wrap" aria-live="polite">
     <button
@@ -281,37 +259,14 @@
   <script src="/interaction-sfx.js?v=20260329-josie-102"></script>
   <script>
     (() => {
-      const mobileIntroBypassMaxWidthPx = 820;
-      const handoffLeadSeconds = 0;
-      const introAsciiLeadSeconds = 4;
+      const handoffLeadSeconds = 2;
       const introEndHandoffDelayMs = 180;
-      const introAsciiChars = ".:-=+*#%@";
-      const introAsciiBayer4 = [
-        [0, 8, 2, 10],
-        [12, 4, 14, 6],
-        [3, 11, 1, 9],
-        [15, 7, 13, 5]
-      ];
-      const introAsciiBaseCellSize = 7;
-      const introAsciiWideCellSize = 9;
-      const introAsciiUltraWideCellSize = 10;
-      const introAsciiReducedBaseCellSize = 10;
-      const introAsciiReducedWideCellSize = 12;
-      const introAsciiReducedUltraWideCellSize = 13;
-      const introAsciiGlyphScale = 1.08;
-      const introAsciiMaxDpr = 1;
-      const introAsciiMaxCols = 180;
-      const introAsciiMaxRows = 92;
-      const introAsciiReducedMaxFps = 12;
-      const introAsciiReducedMaxCols = 108;
-      const introAsciiReducedMaxRows = 56;
       const repeatVisitHandoffDelayMs = 160;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
-      const introVideoPath = "Timelapse/Egrets Orchard.mov";
+      const introVideoPath = "Timelapse/Wings.mp4";
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
       const introVideo = document.getElementById("introVideo");
-      const asciiCanvas = document.getElementById("asciiCanvas");
       const introOverlay = document.getElementById("introOverlay");
       const introStartWrap = document.getElementById("introStartWrap");
       const introStartButton = document.getElementById("introStartButton");
@@ -336,25 +291,6 @@
       let titleTypewriterTimer = 0;
       let titleTypewriterToken = 0;
       let monitorRafId = 0;
-      let introAsciiActive = false;
-      let introAsciiRafId = 0;
-      let introAsciiVideoFrameId = 0;
-      let introAsciiViewportW = 0;
-      let introAsciiViewportH = 0;
-      let introAsciiDpr = Math.max(1, window.devicePixelRatio || 1);
-      let introAsciiCols = 0;
-      let introAsciiRows = 0;
-      let introAsciiCellW = introAsciiBaseCellSize;
-      let introAsciiCellH = Math.round(introAsciiBaseCellSize * 1.32);
-      let introAsciiMode = "full";
-      let introAsciiLastRenderMs = 0;
-      let introAsciiFont = "";
-      let introAsciiLumBuffer = new Float32Array(0);
-      let introAsciiAlphaBuffer = new Uint8Array(0);
-      const introAsciiCtx = asciiCanvas instanceof HTMLCanvasElement ? asciiCanvas.getContext("2d", { alpha: true, desynchronized: true }) : null;
-      const introAsciiSampleCanvas = document.createElement("canvas");
-      const introAsciiSampleCtx = introAsciiSampleCanvas.getContext("2d", { willReadFrequently: true });
-      const introAsciiFillCache = new Map();
 
       function startDocumentTitleTypewriter(finalTitle) {
         const safeTitle = String(finalTitle || "").trim();
@@ -392,10 +328,7 @@
       }
 
       function shouldSkipIntro() {
-        if (typeof window === "undefined") return false;
-        const mobileMatch = window.matchMedia?.(`(max-width: ${mobileIntroBypassMaxWidthPx}px)`)?.matches;
-        const coarsePointerMatch = window.matchMedia?.("(pointer: coarse)")?.matches;
-        return Boolean(mobileMatch || coarsePointerMatch || window.innerWidth <= mobileIntroBypassMaxWidthPx);
+        return false;
       }
 
       function resolveJosieDisplayPath() {
@@ -452,276 +385,6 @@
         if (!introEndHandoffTimer) return;
         window.clearTimeout(introEndHandoffTimer);
         introEndHandoffTimer = 0;
-      }
-
-      function clamp01(value) {
-        if (value < 0) return 0;
-        if (value > 1) return 1;
-        return value;
-      }
-
-      function isDesktopPerformanceDegraded() {
-        return Boolean(window.__internetAngelPerformanceState?.isDegraded?.());
-      }
-
-      function resolveIntroAsciiMode() {
-        return isDesktopPerformanceDegraded() ? "reduced" : "full";
-      }
-
-      function applyIntroAsciiMode() {
-        const nextMode = resolveIntroAsciiMode();
-        if (asciiCanvas instanceof HTMLCanvasElement) {
-          asciiCanvas.dataset.introAsciiMode = nextMode;
-        }
-        return nextMode;
-      }
-
-      function getIntroViewportSize() {
-        if (window.visualViewport) {
-          return {
-            width: Math.max(1, Math.round(window.visualViewport.width)),
-            height: Math.max(1, Math.round(window.visualViewport.height))
-          };
-        }
-        return {
-          width: Math.max(1, window.innerWidth),
-          height: Math.max(1, window.innerHeight)
-        };
-      }
-
-      function getIntroAsciiFillStyle(r, g, b) {
-        const rq = r & 0xf8;
-        const gq = g & 0xf8;
-        const bq = b & 0xf8;
-        const key = (rq << 16) | (gq << 8) | bq;
-        let style = introAsciiFillCache.get(key);
-        if (!style) {
-          style = `rgb(${rq} ${gq} ${bq})`;
-          introAsciiFillCache.set(key, style);
-        }
-        return style;
-      }
-
-      function resolveIntroAsciiCellSize(viewportWidth, viewportHeight) {
-        const reducedMode = applyIntroAsciiMode() === "reduced";
-        let baseCellSize = reducedMode ? introAsciiReducedBaseCellSize : introAsciiBaseCellSize;
-        if (viewportWidth >= 1800) {
-          baseCellSize = reducedMode ? introAsciiReducedUltraWideCellSize : introAsciiUltraWideCellSize;
-        } else if (viewportWidth >= 1400) {
-          baseCellSize = reducedMode ? introAsciiReducedWideCellSize : introAsciiWideCellSize;
-        }
-        const maxCols = reducedMode ? introAsciiReducedMaxCols : introAsciiMaxCols;
-        const maxRows = reducedMode ? introAsciiReducedMaxRows : introAsciiMaxRows;
-        const widthBound = Math.ceil(viewportWidth / maxCols);
-        const heightBound = Math.ceil(viewportHeight / (maxRows * 1.32));
-        return Math.max(baseCellSize, widthBound, heightBound);
-      }
-
-      function configureIntroAsciiCanvas(force = false) {
-        if (!(asciiCanvas instanceof HTMLCanvasElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
-        const viewport = getIntroViewportSize();
-        const nextW = viewport.width;
-        const nextH = viewport.height;
-        const nextMode = applyIntroAsciiMode();
-        const nextDpr = nextMode === "reduced" ? 1 : Math.min(introAsciiMaxDpr, Math.max(1, window.devicePixelRatio || 1));
-        const nextCellW = resolveIntroAsciiCellSize(nextW, nextH);
-        const nextCellH = Math.round(nextCellW * 1.32);
-        const nextCols = Math.max(2, Math.floor(nextW / nextCellW));
-        const nextRows = Math.max(2, Math.floor(nextH / nextCellH));
-        if (
-          !force
-          && nextW === introAsciiViewportW
-          && nextH === introAsciiViewportH
-          && nextDpr === introAsciiDpr
-          && nextMode === introAsciiMode
-          && nextCellW === introAsciiCellW
-          && nextCellH === introAsciiCellH
-        ) {
-          return;
-        }
-        introAsciiViewportW = nextW;
-        introAsciiViewportH = nextH;
-        introAsciiDpr = nextDpr;
-        introAsciiMode = nextMode;
-        asciiCanvas.width = Math.max(1, Math.floor(introAsciiViewportW * introAsciiDpr));
-        asciiCanvas.height = Math.max(1, Math.floor(introAsciiViewportH * introAsciiDpr));
-        asciiCanvas.style.width = `${introAsciiViewportW}px`;
-        asciiCanvas.style.height = `${introAsciiViewportH}px`;
-        introAsciiCtx.setTransform(introAsciiDpr, 0, 0, introAsciiDpr, 0, 0);
-        introAsciiCtx.textBaseline = "top";
-        introAsciiCtx.textAlign = "left";
-        introAsciiCtx.imageSmoothingEnabled = false;
-        introAsciiCellW = nextCellW;
-        introAsciiCellH = nextCellH;
-        introAsciiCols = nextCols;
-        introAsciiRows = nextRows;
-        introAsciiFont = `700 ${Math.round(introAsciiCellW * introAsciiGlyphScale)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
-        introAsciiCtx.font = introAsciiFont;
-        const bufferSize = introAsciiCols * introAsciiRows;
-        if (introAsciiLumBuffer.length !== bufferSize) {
-          introAsciiLumBuffer = new Float32Array(bufferSize);
-          introAsciiAlphaBuffer = new Uint8Array(bufferSize);
-        }
-        introAsciiSampleCanvas.width = introAsciiCols;
-        introAsciiSampleCanvas.height = introAsciiRows;
-        introAsciiSampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-        introAsciiSampleCtx.imageSmoothingEnabled = false;
-      }
-
-      function renderIntroAsciiFrame() {
-        if (!(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
-        if (!introAsciiCols || !introAsciiRows) return;
-        introAsciiSampleCtx.drawImage(introVideo, 0, 0, introAsciiCols, introAsciiRows);
-        const frame = introAsciiSampleCtx.getImageData(0, 0, introAsciiCols, introAsciiRows);
-        const data = frame.data;
-        const size = introAsciiCols * introAsciiRows;
-        const lum = introAsciiLumBuffer;
-        const alpha = introAsciiAlphaBuffer;
-        for (let index = 0, pixelIndex = 0; index < size; index += 1, pixelIndex += 4) {
-          const r = data[pixelIndex];
-          const g = data[pixelIndex + 1];
-          const b = data[pixelIndex + 2];
-          const a = data[pixelIndex + 3];
-          alpha[index] = a;
-          let y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-          y = clamp01((y - 0.5) * 1.45 + 0.5);
-          y = Math.pow(y, 0.92);
-          lum[index] = y;
-        }
-        introAsciiCtx.clearRect(0, 0, introAsciiViewportW, introAsciiViewportH);
-        introAsciiCtx.globalAlpha = 1;
-        const densityMax = introAsciiChars.length - 1;
-        const edgeStrength = 0.46;
-        const ditherStrength = 0.08;
-        let lastFillStyle = "";
-        for (let y = 0; y < introAsciiRows; y += 1) {
-          const yBase = y * introAsciiCols;
-          const py = y * introAsciiCellH;
-          for (let x = 0; x < introAsciiCols; x += 1) {
-            const index = yBase + x;
-            if (alpha[index] < 8) continue;
-            const l = lum[index];
-            const left = x > 0 ? lum[index - 1] : l;
-            const right = x < introAsciiCols - 1 ? lum[index + 1] : l;
-            const up = y > 0 ? lum[index - introAsciiCols] : l;
-            const down = y < introAsciiRows - 1 ? lum[index + introAsciiCols] : l;
-            const edge = Math.abs(right - left) + Math.abs(down - up);
-            const dither = (introAsciiBayer4[y & 3][x & 3] / 15 - 0.5) * ditherStrength;
-            const signal = clamp01(l * 0.9 + edge * edgeStrength + 0.08 + dither);
-            const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
-            const ch = introAsciiChars[charIndex];
-            if (ch === " ") continue;
-            const pixelIndex = index * 4;
-            const alphaScale = alpha[index] / 255;
-            const fillStyle = getIntroAsciiFillStyle(
-              Math.round(data[pixelIndex] * alphaScale),
-              Math.round(data[pixelIndex + 1] * alphaScale),
-              Math.round(data[pixelIndex + 2] * alphaScale)
-            );
-            if (fillStyle !== lastFillStyle) {
-              introAsciiCtx.fillStyle = fillStyle;
-              lastFillStyle = fillStyle;
-            }
-            introAsciiCtx.fillText(ch, x * introAsciiCellW, py);
-          }
-        }
-      }
-
-      function shouldRenderIntroAsciiFrame(nowMs = performance.now()) {
-        if (applyIntroAsciiMode() !== "reduced") {
-          introAsciiLastRenderMs = nowMs;
-          return true;
-        }
-        const minFrameIntervalMs = 1000 / introAsciiReducedMaxFps;
-        if (nowMs - introAsciiLastRenderMs < minFrameIntervalMs) {
-          return false;
-        }
-        introAsciiLastRenderMs = nowMs;
-        return true;
-      }
-
-      function stopIntroAscii() {
-        introAsciiActive = false;
-        document.body.classList.remove("is-intro-ascii-active");
-        if (introAsciiRafId) {
-          window.cancelAnimationFrame(introAsciiRafId);
-          introAsciiRafId = 0;
-        }
-        if (introAsciiVideoFrameId && introVideo instanceof HTMLVideoElement && typeof introVideo.cancelVideoFrameCallback === "function") {
-          try {
-            introVideo.cancelVideoFrameCallback(introAsciiVideoFrameId);
-          } catch {
-          }
-          introAsciiVideoFrameId = 0;
-        }
-        if (introAsciiCtx) {
-          introAsciiCtx.clearRect(0, 0, introAsciiViewportW, introAsciiViewportH);
-        }
-        if (asciiCanvas instanceof HTMLCanvasElement) {
-          asciiCanvas.hidden = true;
-        }
-        introAsciiLastRenderMs = 0;
-      }
-
-      function queueIntroAsciiFrame() {
-        if (!introAsciiActive || !(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) {
-          return;
-        }
-        if (typeof introVideo.requestVideoFrameCallback === "function") {
-          introAsciiVideoFrameId = introVideo.requestVideoFrameCallback((nowMs) => {
-            introAsciiVideoFrameId = 0;
-            if (!introAsciiActive || document.hidden) {
-              queueIntroAsciiFrame();
-              return;
-            }
-            if (introVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && shouldRenderIntroAsciiFrame(nowMs)) {
-              configureIntroAsciiCanvas();
-              renderIntroAsciiFrame();
-            }
-            queueIntroAsciiFrame();
-          });
-          return;
-        }
-        introAsciiRafId = window.requestAnimationFrame(renderIntroAsciiLoop);
-      }
-
-      function renderIntroAsciiLoop(nowMs = performance.now()) {
-        introAsciiRafId = 0;
-        if (!introAsciiActive || !(introVideo instanceof HTMLVideoElement) || !introAsciiCtx || !introAsciiSampleCtx) {
-          return;
-        }
-        queueIntroAsciiFrame();
-        if (document.hidden) return;
-        if (introVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-        if (!shouldRenderIntroAsciiFrame(nowMs)) return;
-        configureIntroAsciiCanvas();
-        renderIntroAsciiFrame();
-      }
-
-      function startIntroAscii() {
-        if (introAsciiActive || !(asciiCanvas instanceof HTMLCanvasElement) || !introAsciiCtx || !introAsciiSampleCtx) return;
-        introAsciiActive = true;
-        asciiCanvas.hidden = false;
-        document.body.classList.add("is-intro-ascii-active");
-        introAsciiLastRenderMs = 0;
-        configureIntroAsciiCanvas(true);
-        renderIntroAsciiFrame();
-        queueIntroAsciiFrame();
-      }
-
-      function isIntroAsciiWindowOpen() {
-        if (skipMovieMode || !(introVideo instanceof HTMLVideoElement)) return false;
-        if (!Number.isFinite(introVideo.duration) || introVideo.duration <= 0) return false;
-        if (introVideo.ended) return false;
-        return introVideo.currentTime >= Math.max(0, introVideo.duration - introAsciiLeadSeconds);
-      }
-
-      function syncIntroAsciiState() {
-        if (isIntroAsciiWindowOpen()) {
-          startIntroAscii();
-          return;
-        }
-        stopIntroAscii();
       }
 
       function showStartButton() {
@@ -781,10 +444,6 @@
         handoffVisible = true;
         setState("handoff_visible");
         interactionSfx?.setPage?.("josie");
-        interactionSfx?.play?.({
-          soundId: "open_soft",
-          source: "introHandoffVisible"
-        });
         updateTopLevelUrlForJosie();
         document.body.classList.add("is-handoff-visible");
         handoffFrameWrap.removeAttribute("aria-hidden");
@@ -805,7 +464,6 @@
         clearMonitorLoop();
         clearRepeatVisitTimer();
         clearIntroEndHandoffTimer();
-        stopIntroAscii();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
         introVideo?.classList.add("is-hidden");
@@ -826,7 +484,6 @@
         clearMonitorLoop();
         clearRepeatVisitTimer();
         clearIntroEndHandoffTimer();
-        stopIntroAscii();
         window.location.replace(resolveJosieDocumentUrl().toString());
       }
 
@@ -847,11 +504,9 @@
       function evaluateHandoffWindow() {
         if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
         if (skipMovieMode) {
-          stopIntroAscii();
           beginRepeatVisitHandoff();
           return;
         }
-        syncIntroAsciiState();
         syncIframeReadyFromDocument();
         if (iframeReady && isTransitionWindowOpen()) {
           beginVisualHandoff();
@@ -877,7 +532,6 @@
         introStarted = true;
         if (skipMovieMode) {
           repeatVisitClickArmed = true;
-          stopIntroAscii();
           beginRepeatVisitHandoff();
           return true;
         }
@@ -901,14 +555,13 @@
       if (!(introVideo instanceof HTMLVideoElement)) return;
       startDocumentTitleTypewriter("BloomToDeath");
       setState("idle");
-      repeatVisitMode = hasSeenIntroBefore();
-      skipMovieMode = repeatVisitMode || shouldSkipIntro();
-      document.body.dataset.bloomToDeathRepeatVisit = repeatVisitMode ? "true" : "false";
-      document.body.dataset.bloomToDeathSkipMovie = skipMovieMode ? "true" : "false";
+      repeatVisitMode = false;
+      skipMovieMode = false;
+      document.body.dataset.bloomToDeathRepeatVisit = "false";
+      document.body.dataset.bloomToDeathSkipMovie = "false";
       if (skipMovieMode) {
         introVideo.classList.add("is-hidden");
         introVideo.setAttribute("aria-hidden", "true");
-        stopIntroAscii();
         preloadJosieFrame();
       }
 
@@ -934,18 +587,15 @@
         introVideo.src = introVideoPath;
         introVideo.load();
       }
-      applyIntroAsciiMode();
       showStartButton();
       window.__internetAngelPerformanceState?.markReady?.();
 
       introVideo.addEventListener("loadeddata", () => {
         introVideo.classList.add("is-ready");
-        configureIntroAsciiCanvas(true);
       }, { once: true });
 
       ["timeupdate", "seeked", "durationchange"].forEach((eventName) => {
         introVideo.addEventListener(eventName, () => {
-          syncIntroAsciiState();
           evaluateHandoffWindow();
         });
       });
@@ -960,43 +610,16 @@
           }, introEndHandoffDelayMs);
           return;
         }
-        stopIntroAscii();
         performFallbackNavigation();
       });
-      window.addEventListener("resize", () => {
-        configureIntroAsciiCanvas();
-      });
-      window.visualViewport?.addEventListener("resize", () => {
-        configureIntroAsciiCanvas();
-      });
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-          stopIntroAscii();
-        }
         if (!document.hidden && introStarted && introVideo.paused && !introVideo.ended) {
           void tryPlayIntro();
         }
-        if (!document.hidden && introStarted) {
-          syncIntroAsciiState();
-        }
-      });
-      window.addEventListener("internet-angel:performance-tier-change", () => {
-        applyIntroAsciiMode();
-        if (!introAsciiActive) {
-          configureIntroAsciiCanvas(true);
-          return;
-        }
-        introAsciiLastRenderMs = 0;
-        configureIntroAsciiCanvas(true);
-        renderIntroAsciiFrame();
       });
 
       introStartButton?.addEventListener("click", () => {
         void interactionSfx?.initFromGesture?.("introStartButton");
-        interactionSfx?.play?.({
-          soundId: "activate_soft",
-          source: "introStartButton"
-        });
         void tryPlayIntro();
       });
     })();

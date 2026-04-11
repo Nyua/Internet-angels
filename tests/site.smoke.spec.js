@@ -241,39 +241,41 @@ test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
 });
 
-test("root loads the Egrets Orchard intro page with the ASCII layer idle until the end window", async ({ page }) => {
+test("root loads the Wings intro page centered on black with no intro ASCII overlay", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introVideo")).toHaveCount(1);
   await expect(page.locator("#introStartButton")).toBeVisible();
   await expect(page.locator("#handoffFrame")).toHaveCount(1);
-  await expect(page.locator("#asciiCanvas")).toHaveCount(1);
+  await expect(page.locator("#asciiCanvas")).toHaveCount(0);
+  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
   const introState = await page.locator("#introVideo").evaluate((node) => ({
     src: node.currentSrc || node.src,
     muted: node.muted,
     hasControls: node.controls,
-    paused: node.paused
+    paused: node.paused,
+    rect: node.getBoundingClientRect().toJSON(),
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    bodyBackground: window.getComputedStyle(document.body).backgroundColor
   }));
-  expect(introState.src).toMatch(/Egrets(?:%20| )Orchard\.mov/);
+  expect(introState.src).toMatch(/Wings\.mp4/);
   expect(introState.muted).toBe(false);
   expect(introState.hasControls).toBe(false);
   expect(introState.paused).toBe(true);
-  const asciiState = await page.locator("#asciiCanvas").evaluate((node) => ({
-    hidden: node.hidden,
-    bodyActive: document.body.classList.contains("is-intro-ascii-active")
-  }));
-  expect(asciiState.hidden).toBe(true);
-  expect(asciiState.bodyActive).toBe(false);
+  expect(introState.bodyBackground).toBe("rgb(0, 0, 0)");
+  expect(Math.abs(introState.rect.left - (introState.viewportWidth - introState.rect.width) / 2)).toBeLessThan(2);
+  expect(Math.abs(introState.rect.top - (introState.viewportHeight - introState.rect.height) / 2)).toBeLessThan(2);
 });
 
-test("root skips the intro movie on repeat visits but keeps the fullscreen sound gate", async ({ page }) => {
+test("root still plays the intro movie even when the old repeat-visit flag exists", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     window.localStorage.setItem(storageKey, "1");
   }, "internetAngelBloomToDeathIntroSeen");
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introStartButton")).toBeVisible();
-  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
+  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
   const repeatVisitState = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
     return {
@@ -283,24 +285,27 @@ test("root skips the intro movie on repeat visits but keeps the fullscreen sound
       videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
     };
   });
-  expect(repeatVisitState.repeatVisit).toBe("true");
-  expect(repeatVisitState.state).toBe("preloading_josie");
-  expect(repeatVisitState.videoHidden).toBe(true);
-  expect(repeatVisitState.videoSrcAttr).toBeNull();
+  expect(repeatVisitState.repeatVisit).toBe("false");
+  expect(repeatVisitState.state).toBe("idle");
+  expect(repeatVisitState.videoHidden).toBe(false);
+  expect(repeatVisitState.videoSrcAttr).toBe("Timelapse/Wings.mp4");
 
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
-  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
-  await expect(page).toHaveURL(/\/josie(?:\.html)?$/);
-  await expect(page).toHaveTitle(/Josie/);
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    paused: node.paused,
+    muted: node.muted
+  }))).toEqual({ paused: false, muted: false });
+  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "playing_intro");
+  const repeatVisitSfxLog = await readInteractionSfxLog(page);
+  expect(repeatVisitSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
-test("root keeps BloomToDeath visible until the intro ends before handing off to josie", async ({ page }) => {
+test("root starts the Josie handoff about two seconds before the intro video ends", async ({ page }) => {
   await page.goto("/");
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
-  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
     paused: node.paused,
     muted: node.muted
@@ -313,7 +318,7 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
 
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
   await page.locator("#introVideo").evaluate((node) => {
-    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 3.8);
+    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 2.2);
     Object.defineProperty(node, "currentTime", {
       configurable: true,
       get() {
@@ -337,34 +342,20 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
     return video instanceof HTMLVideoElement
       && Number.isFinite(video.duration)
       && video.duration > 0
-      && video.currentTime >= Math.max(0, video.duration - 3.9);
-  });
-  await expect.poll(async () => page.locator("#asciiCanvas").evaluate((node) => ({
-    hidden: node.hidden,
-    active: document.body.classList.contains("is-intro-ascii-active")
-  }))).toEqual({ hidden: false, active: true });
-  await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = Math.max(0, node.duration - 0.4);
-    node.dispatchEvent(new Event("seeking"));
-    node.dispatchEvent(new Event("seeked"));
-    node.dispatchEvent(new Event("timeupdate"));
+      && video.currentTime >= Math.max(0, video.duration - 2.25);
   });
   await expect(page.locator("body")).not.toHaveAttribute("data-bloom-to-death-state", "handoff_visible");
-  await expect(page.locator("body")).not.toHaveClass(/is-handoff-visible/);
   await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = node.duration;
+    node.currentTime = Math.max(0, node.duration - 1.8);
     node.dispatchEvent(new Event("seeking"));
     node.dispatchEvent(new Event("seeked"));
     node.dispatchEvent(new Event("timeupdate"));
-    node.dispatchEvent(new Event("ended"));
   });
   const duringHandoffHandle = await page.waitForFunction(() => {
     const video = document.querySelector("#introVideo");
-    const ascii = document.querySelector("#asciiCanvas");
     const frameWrap = document.querySelector("#handoffFrameWrap");
     if (
       !(video instanceof HTMLVideoElement)
-      || !(ascii instanceof HTMLCanvasElement)
       || !(frameWrap instanceof HTMLElement)
       || document.body?.dataset?.bloomToDeathState !== "handoff_visible"
       || !document.body.classList.contains("is-handoff-visible")
@@ -376,8 +367,6 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
       title: document.title,
       state: document.body?.dataset?.bloomToDeathState || "",
       hiddenClass: video.classList.contains("is-hidden"),
-      asciiHidden: ascii.hidden,
-      asciiActive: document.body.classList.contains("is-intro-ascii-active"),
       pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
     };
   }, null, { timeout: 25_000, polling: 50 });
@@ -388,9 +377,14 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
   expect(duringHandoff.state).toBe("handoff_visible");
   expect(duringHandoff.hiddenClass).toBe(false);
   expect(duringHandoff.pointerEvents).toBe("none");
-  await waitForInteractionSfx(page, { soundId: "open_soft", source: "introHandoffVisible", ownerMode: "top" });
+  const bloomToDeathSfxLog = await readInteractionSfxLog(page);
+  expect(bloomToDeathSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 
   await page.locator("#introVideo").evaluate((node) => {
+    node.currentTime = node.duration;
+    node.dispatchEvent(new Event("seeking"));
+    node.dispatchEvent(new Event("seeked"));
+    node.dispatchEvent(new Event("timeupdate"));
     node.dispatchEvent(new Event("ended"));
   });
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
@@ -398,13 +392,10 @@ test("root keeps BloomToDeath visible until the intro ends before handing off to
   await expect(page).toHaveTitle("Josie");
   const completedHandoff = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
-    const ascii = document.querySelector("#asciiCanvas");
     const frameWrap = document.querySelector("#handoffFrameWrap");
-    if (!(video instanceof HTMLVideoElement) || !(ascii instanceof HTMLCanvasElement) || !(frameWrap instanceof HTMLElement)) return null;
+    if (!(video instanceof HTMLVideoElement) || !(frameWrap instanceof HTMLElement)) return null;
     return {
       hiddenClass: video.classList.contains("is-hidden"),
-      asciiHidden: ascii.hidden,
-      asciiActive: document.body.classList.contains("is-intro-ascii-active"),
       pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
     };
   });
@@ -433,11 +424,12 @@ test("root falls back to a hard josie navigation if the handoff iframe never bec
   await expect(page.locator("#introVideo")).toHaveCount(0);
 });
 
-test("mobile root skips the intro movie but still uses the fullscreen sound gate", async ({ page }) => {
+test("mobile root plays Wings centered in the viewport instead of skipping the intro", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introStartButton")).toBeVisible();
+  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
   const mobileState = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
     return {
@@ -448,26 +440,47 @@ test("mobile root skips the intro movie but still uses the fullscreen sound gate
       videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
     };
   });
-  expect(mobileState.skipMovie).toBe("true");
+  expect(mobileState.skipMovie).toBe("false");
   expect(mobileState.repeatVisit).toBe("false");
-  expect(mobileState.state).toBe("preloading_josie");
-  expect(mobileState.videoHidden).toBe(true);
-  expect(mobileState.videoSrcAttr).toBeNull();
+  expect(mobileState.state).toBe("idle");
+  expect(mobileState.videoHidden).toBe(false);
+  expect(mobileState.videoSrcAttr).toBe("Timelapse/Wings.mp4");
 
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
-  await waitForInteractionSfx(page, { soundId: "activate_soft", source: "introStartButton", ownerMode: "top" });
-  await expect(page).toHaveURL(/\/josie$/);
-  await expect(page).toHaveTitle(/Josie/);
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    paused: node.paused,
+    muted: node.muted
+  }))).toEqual({ paused: false, muted: false });
+  const mobileLayout = await page.locator("#introVideo").evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      bodyBackground: window.getComputedStyle(document.body).backgroundColor,
+      objectFit: window.getComputedStyle(node).objectFit
+    };
+  });
+  expect(mobileLayout.bodyBackground).toBe("rgb(0, 0, 0)");
+  expect(mobileLayout.objectFit).toBe("contain");
+  expect(mobileLayout.width).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+  expect(mobileLayout.height).toBeLessThanOrEqual(mobileLayout.viewportHeight + 1);
+  expect(Math.abs(mobileLayout.left - (mobileLayout.viewportWidth - mobileLayout.width) / 2)).toBeLessThan(2);
+  expect(Math.abs(mobileLayout.top - (mobileLayout.viewportHeight - mobileLayout.height) / 2)).toBeLessThan(2);
+  const mobileIntroSfxLog = await readInteractionSfxLog(page);
+  expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
-test("desktop degraded performance mode keeps BloomToDeath handoff behavior and reduces ASCII sampling", async ({ page }) => {
+test("desktop degraded performance mode keeps BloomToDeath handoff behavior without an intro ASCII overlay", async ({ page }) => {
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/");
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
-  await expect(page.locator("#asciiCanvas")).toHaveAttribute("data-intro-ascii-mode", "reduced");
+  await expect(page.locator("#asciiCanvas")).toHaveCount(0);
 
   await page.locator("#introStartButton").click();
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
@@ -475,8 +488,10 @@ test("desktop degraded performance mode keeps BloomToDeath handoff behavior and 
     paused: node.paused,
     muted: node.muted
   }))).toEqual({ paused: false, muted: false });
-  const degradedAsciiState = await page.locator("#introVideo").evaluate((node) => {
-    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 3.8);
+  const degradedHandoffFrame = page.frameLocator("#handoffFrame");
+  await degradedHandoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
+  const degradedHandoffState = await page.locator("#introVideo").evaluate((node) => {
+    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 1.8);
     Object.defineProperty(node, "currentTime", {
       configurable: true,
       get() {
@@ -494,14 +509,15 @@ test("desktop degraded performance mode keeps BloomToDeath handoff behavior and 
     node.dispatchEvent(new Event("seeking"));
     node.dispatchEvent(new Event("seeked"));
     node.dispatchEvent(new Event("timeupdate"));
-    const ascii = document.querySelector("#asciiCanvas");
     return {
-      mode: ascii instanceof HTMLCanvasElement ? ascii.dataset.introAsciiMode || "" : "",
-      hidden: ascii instanceof HTMLCanvasElement ? ascii.hidden : true,
-      active: document.body.classList.contains("is-intro-ascii-active")
+      state: document.body?.dataset?.bloomToDeathState || "",
+      handoffVisible: document.body.classList.contains("is-handoff-visible")
     };
   });
-  expect(degradedAsciiState).toEqual({ mode: "reduced", hidden: false, active: true });
+  expect(degradedHandoffState.state).toBe("handoff_visible");
+  expect(degradedHandoffState.handoffVisible).toBe(true);
+  const degradedIntroSfxLog = await readInteractionSfxLog(page);
+  expect(degradedIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
 test("next page redirects to josie", async ({ page }) => {
@@ -807,6 +823,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       backdropZ: styleOf(backdrop)?.zIndex || "",
       pointerEvents: styleOf(layer)?.pointerEvents || "",
       portalOpacity: styleOf(portal)?.opacity || "",
+      surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
+      canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
+      canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
       surfaceRect: initialSurfaceRect,
       canvasRect: initialCanvasRect,
       copyRect: rectOf(copy),
@@ -820,6 +839,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(visualizerLayout.pointerEvents).toBe("none");
   expect(visualizerLayout.portalOpacity).toBe("0.2");
+  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
+  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
+  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
   expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);

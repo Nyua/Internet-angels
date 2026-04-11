@@ -1734,6 +1734,9 @@
     const SHUFFLE_TRACE_OPACITY_SCALE = 1;
     const SHUFFLE_MAX_CANVAS_DPR = 1;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
+    const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
+    const SHUFFLE_ASCII_MIN_CELL_PX = 6;
+    const SHUFFLE_ASCII_MAX_CELL_PX = 12;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -2064,6 +2067,7 @@
         waveCanvas = document.createElement("canvas");
         waveCanvas.className = "josie-audio-player-wave";
         waveCanvas.setAttribute("aria-hidden", "true");
+        waveCanvas.setAttribute("data-shuffle-visual-style", "ascii");
         wavePortal.appendChild(waveCanvas);
       }
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
@@ -2203,7 +2207,9 @@
       const originY = metrics.drawTop;
       const width = metrics.drawWidth;
       const height = metrics.drawHeight;
-      const pointCount = Math.max(2, Math.min(width, SHUFFLE_TRACE_POINT_LIMIT));
+      const asciiCellWidth = clamp2(Math.round(width / 104), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
+      const asciiCellHeight = Math.max(8, Math.round(asciiCellWidth * 1.42));
+      const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
         traceValues = new Float32Array(pointCount);
@@ -2319,49 +2325,75 @@
       const amplitude = Math.min(desiredAmplitude * 2, maxAmplitude);
       baselineY = clamp2(baselineY, overscanPad + amplitude, height - overscanPad - amplitude);
       waveCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-      waveCtx.strokeStyle = `rgba(248, 253, 255, ${(0.08 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      waveCtx.lineWidth = 1;
-      waveCtx.beginPath();
-      waveCtx.moveTo(originX, baselineY + originY);
-      waveCtx.lineTo(originX + width, baselineY + originY);
-      waveCtx.stroke();
-      const tracePath = typeof Path2D === "function" ? new Path2D() : null;
-      if (tracePath) {
-        tracePath.moveTo(originX, baselineY + originY);
-      } else {
-        waveCtx.beginPath();
-        waveCtx.moveTo(originX, baselineY + originY);
+      const rowCount = Math.max(8, Math.floor(height / asciiCellHeight));
+      const verticalInset = Math.max(0, Math.round((height - rowCount * asciiCellHeight) / 2));
+      const baselineRow = clamp2(
+        Math.round(rowCount * (0.52 + loudnessBoost * 0.03 + structureHold * 0.01)),
+        2,
+        rowCount - 3
+      );
+      const amplitudeRows = clamp2(
+        Math.round(
+          rowCount * (
+            0.18 +
+            loudnessBoost * 0.12 +
+            peakSurge * (0.1 * structureDamping) +
+            absolutePeakSurge * (0.12 * structureDamping)
+          )
+        ),
+        2,
+        Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
+      );
+      const baselineGlyph = impact > 0.38 ? "-" : ".";
+      const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
+      const fontSize = Math.max(9, Math.round(asciiCellWidth * 1.24));
+      waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+      waveCtx.textBaseline = "top";
+      waveCtx.textAlign = "center";
+      const baselineYText = originY + verticalInset + baselineRow * asciiCellHeight;
+      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.18 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const x = originX + pointIndex * pointSpacing;
+        waveCtx.fillText(baselineGlyph, x, baselineYText);
       }
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
         const value = traceValues[pointIndex] || 0;
-        const x = originX + pointIndex * pointSpacing;
-        const y = originY + baselineY - value * amplitude;
-        if (tracePath) {
-          tracePath.lineTo(x, y);
-        } else {
-          waveCtx.lineTo(x, y);
+        const magnitude = Math.abs(value);
+        if (magnitude < 0.012) {
+          continue;
         }
-      }
-      if (tracePath) {
-        tracePath.lineTo(originX + width - 1, baselineY + originY);
-      } else {
-        waveCtx.lineTo(originX + width - 1, baselineY + originY);
-      }
-      waveCtx.lineWidth = 2.2 + impact * 1.5 + peakSurge * (0.42 * structureDamping) + absolutePeakSurge * (0.34 * structureDamping);
-      waveCtx.lineCap = "round";
-      waveCtx.lineJoin = "round";
-      waveCtx.strokeStyle = `rgba(229, 248, 255, ${(Math.min(0.18 + impact * 0.18 + peakSurge * 0.02 + absolutePeakSurge * 0.02, 0.36) * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      if (tracePath) {
-        waveCtx.stroke(tracePath);
-      } else {
-        waveCtx.stroke();
-      }
-      waveCtx.lineWidth = 1.12;
-      waveCtx.strokeStyle = `rgba(248, 253, 255, ${SHUFFLE_TRACE_OPACITY_SCALE.toFixed(3)})`;
-      if (tracePath) {
-        waveCtx.stroke(tracePath);
-      } else {
-        waveCtx.stroke();
+        const x = originX + pointIndex * pointSpacing;
+        const targetRow = clamp2(
+          baselineRow - Math.round(value * amplitudeRows),
+          0,
+          rowCount - 1
+        );
+        const startRow = Math.min(baselineRow, targetRow);
+        const endRow = Math.max(baselineRow, targetRow);
+        const travel = Math.max(1, endRow - startRow);
+        for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
+          const distanceRatio = Math.abs(rowIndex - baselineRow) / travel;
+          const intensity = clamp2(
+            magnitude * (0.74 + distanceRatio * 0.48) +
+            impact * 0.22 +
+            peakSurge * 0.12 +
+            absolutePeakSurge * 0.14,
+            0,
+            1
+          );
+          const glyphIndex = clamp2(Math.round(intensity * glyphMaxIndex), 0, glyphMaxIndex);
+          const glyph = SHUFFLE_ASCII_CHAR_RAMP[glyphIndex] || ".";
+          const alpha = clamp2(
+            0.22 +
+            intensity * 0.62 +
+            (rowIndex === targetRow ? 0.12 : 0) +
+            reactiveFlash * 0.06,
+            0.2,
+            0.96
+          );
+          waveCtx.fillStyle = `rgba(248, 253, 255, ${(alpha * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+          waveCtx.fillText(glyph, x, originY + verticalInset + rowIndex * asciiCellHeight);
+        }
       }
       const edgeMarkerHeight = Math.max(2, Math.round(Math.min(height * 0.22, amplitude * 0.32)));
       const edgeMarkerTop = Math.round(originY + baselineY - edgeMarkerHeight / 2);
@@ -2460,6 +2492,7 @@
       timeRemainingEl = root2.querySelector("[data-shuffle-time]");
       applyVisualizerCopyState();
       if (waveSurface instanceof HTMLElement) {
+        waveSurface.setAttribute("data-shuffle-visual-style", "ascii");
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
           if (!currentTrack) {
@@ -3190,7 +3223,7 @@
     const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
     return `
     <div class="${escapeHtml(playerClassName)}" data-shuffle-player>
-        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface aria-label="Audio visualizer">
+        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="ascii" aria-label="Audio visualizer">
           <div class="josie-audio-player-overlay">
           <div class="josie-audio-player-copy" data-shuffle-copy data-shuffle-copy-state="visible">
             <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>

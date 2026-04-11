@@ -136,14 +136,6 @@
         pointer-events: none;
       }
 
-      .slice-boot-ascii-screen {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-        z-index: 2;
-      }
     </style>
   </head>
   <body class="site-load-active site-load-playing" data-theme-resolved="night">
@@ -370,18 +362,9 @@
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
         const handoffMode = Boolean(window.__josieHandoffMode);
         const compactMobileBreakpointPx = 820;
-        const chars = ".:-=+*#%@";
-        const bayer4 = [
-          [0, 8, 2, 10],
-          [12, 4, 14, 6],
-          [3, 11, 1, 9],
-          [15, 7, 13, 5]
-        ];
         const targetFrameMs = 1000 / 24;
         const slicePlaybackSlowdown = 1;
-        const cellSize = 2;
         const defaultDurationMs = 2200;
-        const glyphScale = 1.08;
         const loadingIconReferenceBoxes = {
           profileLinks: { x: 463, y: 338, width: 263, height: 235 },
           loadingIcon: { x: 554, y: 417, width: 78, height: 71 }
@@ -431,75 +414,25 @@
 
         const decodedSliceCache = new Map();
         const activeLayers = [];
-        const sampleCanvas = document.createElement("canvas");
-        const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-        const glyphFillCache = new Map();
         let overlayRoot = null;
-        let asciiCanvas = null;
-        let asciiCtx = null;
         let loopHandle = 0;
-        let viewportW = 0;
-        let viewportH = 0;
-        let cols = 0;
-        let rows = 0;
-        let dpr = Math.max(1, window.devicePixelRatio || 1);
-        let cellW = cellSize;
-        let cellH = Math.round(cellSize * 1.32);
         window.__amesLoadingIconVariantPath = slicePaths.loadingIcon;
         window.__amesLoadingIconUsesVariant = useLoadingIconVariant;
 
-        if (!sampleCtx) return;
         if (handoffMode) {
           window.__amesSiteLoadPlaying = false;
           return;
-        }
-
-        function clamp01(value) {
-          if (value < 0) return 0;
-          if (value > 1) return 1;
-          return value;
-        }
-
-        function getGlyphFillStyle(r, g, b) {
-          const rq = r & 0xf8;
-          const gq = g & 0xf8;
-          const bq = b & 0xf8;
-          const key = (rq << 16) | (gq << 8) | bq;
-          let style = glyphFillCache.get(key);
-          if (!style) {
-            style = `rgb(${rq} ${gq} ${bq})`;
-            glyphFillCache.set(key, style);
-          }
-          return style;
         }
 
         function sleep(ms) {
           return new Promise((resolve) => window.setTimeout(resolve, ms));
         }
 
-        function getViewportSize() {
-          if (window.visualViewport) {
-            return {
-              width: Math.max(1, Math.round(window.visualViewport.width)),
-              height: Math.max(1, Math.round(window.visualViewport.height))
-            };
-          }
-          return {
-            width: Math.max(1, window.innerWidth),
-            height: Math.max(1, window.innerHeight)
-          };
-        }
-
         function ensureOverlayRoot() {
           if (overlayRoot && overlayRoot.isConnected) return overlayRoot;
           overlayRoot = document.createElement("div");
           overlayRoot.className = "slice-boot-root";
-          asciiCanvas = document.createElement("canvas");
-          asciiCanvas.className = "slice-boot-ascii-screen";
-          overlayRoot.append(asciiCanvas);
           document.body.append(overlayRoot);
-          asciiCtx = asciiCanvas.getContext("2d", { alpha: true });
-          configureAsciiCanvas(true);
           return overlayRoot;
         }
 
@@ -521,43 +454,6 @@
           if (!overlayRoot || !overlayRoot.isConnected) return;
           overlayRoot.remove();
           overlayRoot = null;
-          asciiCanvas = null;
-          asciiCtx = null;
-        }
-
-        function configureAsciiCanvas(force = false) {
-          if (!asciiCanvas || !asciiCtx) return;
-          const viewport = getViewportSize();
-          const nextW = viewport.width;
-          const nextH = viewport.height;
-          const nextDpr = Math.max(1, window.devicePixelRatio || 1);
-          if (!force && nextW === viewportW && nextH === viewportH && nextDpr === dpr) {
-            return;
-          }
-
-          viewportW = nextW;
-          viewportH = nextH;
-          dpr = nextDpr;
-
-          asciiCanvas.width = Math.max(1, Math.floor(viewportW * dpr));
-          asciiCanvas.height = Math.max(1, Math.floor(viewportH * dpr));
-          asciiCanvas.style.width = `${viewportW}px`;
-          asciiCanvas.style.height = `${viewportH}px`;
-
-          asciiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          asciiCtx.textBaseline = "top";
-          asciiCtx.textAlign = "left";
-          asciiCtx.imageSmoothingEnabled = false;
-
-          cellW = cellSize;
-          cellH = Math.round(cellSize * 1.32);
-          cols = Math.max(2, Math.floor(viewportW / cellW));
-          rows = Math.max(2, Math.floor(viewportH / cellH));
-
-          sampleCanvas.width = cols;
-          sampleCanvas.height = rows;
-          sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-          sampleCtx.imageSmoothingEnabled = false;
         }
 
         function skipSubBlocks(data, offset) {
@@ -712,7 +608,12 @@
           layer.className = "slice-boot-layer";
           layer.dataset.sliceBootKey = key;
           layer.dataset.sliceBootSource = sourcePath || "";
+          const surface = document.createElement("canvas");
+          surface.className = "slice-boot-source";
+          surface.setAttribute("aria-hidden", "true");
+          layer.append(surface);
           ensureOverlayRoot().append(layer);
+          const surfaceCtx = surface.getContext("2d", { alpha: true });
 
           const frames = decoded.frames;
           const delays = decoded.frameDelaysMs;
@@ -732,13 +633,15 @@
           let startedAt = 0;
           let cursor = 0;
           let done = frameCount === 0;
+          let surfaceWidth = 0;
+          let surfaceHeight = 0;
 
-          function renderInto(ts, targetCtx) {
+          function renderInto(ts) {
             if (done) return false;
             if (!currentHost || !currentHost.isConnected) {
               currentHost = document.querySelector(hostSelector);
             }
-            if (!currentHost) return false;
+            if (!currentHost || !(surfaceCtx instanceof CanvasRenderingContext2D)) return false;
 
             const hostRect = currentHost.getBoundingClientRect();
             const rect = rectResolver ? rectResolver(hostRect, currentHost) : hostRect;
@@ -768,11 +671,17 @@
             const frame = frames[frameIndex];
             if (!frame) return false;
 
-            const drawX = Math.round((Math.round(rect.left) / viewportW) * cols);
-            const drawY = Math.round((Math.round(rect.top) / viewportH) * rows);
-            const drawW = Math.max(1, Math.round((widthPx / viewportW) * cols));
-            const drawH = Math.max(1, Math.round((heightPx / viewportH) * rows));
-            targetCtx.drawImage(frame, drawX, drawY, drawW, drawH);
+            if (surfaceWidth !== widthPx || surfaceHeight !== heightPx) {
+              surfaceWidth = widthPx;
+              surfaceHeight = heightPx;
+              surface.width = widthPx;
+              surface.height = heightPx;
+            }
+
+            surfaceCtx.setTransform(1, 0, 0, 1, 0, 0);
+            surfaceCtx.clearRect(0, 0, widthPx, heightPx);
+            surfaceCtx.imageSmoothingEnabled = false;
+            surfaceCtx.drawImage(frame, 0, 0, widthPx, heightPx);
             return true;
           }
 
@@ -787,67 +696,6 @@
           return { renderInto, isDone, destroy };
         }
 
-        function renderAsciiFromSample() {
-          if (!asciiCtx) return;
-          const frame = sampleCtx.getImageData(0, 0, cols, rows);
-          const data = frame.data;
-          const size = cols * rows;
-          const lum = new Float32Array(size);
-          const alpha = new Uint8Array(size);
-          for (let i = 0, p = 0; i < size; i += 1, p += 4) {
-            const r = data[p];
-            const g = data[p + 1];
-            const b = data[p + 2];
-            const a = data[p + 3];
-            alpha[i] = a;
-            let y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-            y = clamp01((y - 0.5) * 1.45 + 0.5);
-            y = Math.pow(y, 0.92);
-            lum[i] = y;
-          }
-
-          asciiCtx.clearRect(0, 0, viewportW, viewportH);
-          asciiCtx.globalAlpha = 1;
-          asciiCtx.font = `700 ${Math.round(cellSize * glyphScale)}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
-
-          const densityMax = chars.length - 1;
-          const edgeStrength = 0.68;
-          const ditherStrength = 0.08;
-          let lastFillStyle = "";
-          for (let y = 0; y < rows; y += 1) {
-            const yBase = y * cols;
-            const py = y * cellH;
-            for (let x = 0; x < cols; x += 1) {
-              const idx = yBase + x;
-              if (alpha[idx] < 8) continue;
-              const l = lum[idx];
-              const left = x > 0 ? lum[idx - 1] : l;
-              const right = x < cols - 1 ? lum[idx + 1] : l;
-              const up = y > 0 ? lum[idx - cols] : l;
-              const down = y < rows - 1 ? lum[idx + cols] : l;
-              const edge = Math.hypot(right - left, down - up);
-              const dither = (bayer4[y & 3][x & 3] / 15 - 0.5) * ditherStrength;
-              const signal = clamp01(l * 0.9 + edge * edgeStrength + 0.08 + dither);
-              const charIndex = Math.min(densityMax, Math.max(0, Math.floor(signal * densityMax)));
-              const ch = chars[charIndex];
-              if (ch !== " ") {
-                const pixelIndex = idx * 4;
-                const alphaScale = alpha[idx] / 255;
-                const fillStyle = getGlyphFillStyle(
-                  Math.round(data[pixelIndex] * alphaScale),
-                  Math.round(data[pixelIndex + 1] * alphaScale),
-                  Math.round(data[pixelIndex + 2] * alphaScale)
-                );
-                if (fillStyle !== lastFillStyle) {
-                  asciiCtx.fillStyle = fillStyle;
-                  lastFillStyle = fillStyle;
-                }
-                asciiCtx.fillText(ch, x * cellW, py);
-              }
-            }
-          }
-        }
-
         function stopSequence() {
           if (loopHandle) {
             window.cancelAnimationFrame(loopHandle);
@@ -855,9 +703,6 @@
           }
           for (const layer of activeLayers.splice(0, activeLayers.length)) {
             layer.destroy();
-          }
-          if (asciiCtx) {
-            asciiCtx.clearRect(0, 0, viewportW, viewportH);
           }
           cleanupOverlayRoot();
           setSiteLoadPlaying(false);
@@ -871,20 +716,9 @@
 
           loopHandle = window.requestAnimationFrame(renderLoop);
           if (document.hidden) return;
-
-          configureAsciiCanvas();
-          if (!viewportW || !viewportH || !cols || !rows) return;
-
-          sampleCtx.clearRect(0, 0, cols, rows);
           let drewAny = false;
           for (const layer of activeLayers) {
-            drewAny = layer.renderInto(ts, sampleCtx) || drewAny;
-          }
-
-          if (drewAny) {
-            renderAsciiFromSample();
-          } else if (asciiCtx) {
-            asciiCtx.clearRect(0, 0, viewportW, viewportH);
+            drewAny = layer.renderInto(ts) || drewAny;
           }
 
           if (activeLayers.every((layer) => layer.isDone())) {
@@ -926,8 +760,6 @@
               })
             );
           }
-
-          configureAsciiCanvas(true);
           startRenderLoop();
         }
 
@@ -944,11 +776,6 @@
           void runSliceBootSequence().catch(() => {
             setSiteLoadPlaying(false);
           });
-        }
-
-        window.addEventListener("resize", () => configureAsciiCanvas());
-        if (window.visualViewport) {
-          window.visualViewport.addEventListener("resize", () => configureAsciiCanvas());
         }
 
         if (document.readyState === "complete") {

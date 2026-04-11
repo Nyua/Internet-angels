@@ -4345,6 +4345,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 @media (min-width: 821px) and (pointer: fine) and (hover: hover) {
