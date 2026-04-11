@@ -33,26 +33,43 @@
   var ambientBackdropController = null;
   var siteCursorController = null;
   var INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT = "internet-angel:performance-tier-change";
+  var josieTitleTypewriterTimer = 0;
+  var josieTitleTypewriterToken = 0;
   function startDocumentTitleTypewriter(finalTitle = "Josie") {
     const safeTitle = String(finalTitle || "").trim();
     if (!safeTitle) return;
+    const token = ++josieTitleTypewriterToken;
     const chars = Array.from(safeTitle);
     let index = 0;
-    let blink = true;
+    if (josieTitleTypewriterTimer) {
+      window.clearTimeout(josieTitleTypewriterTimer);
+      josieTitleTypewriterTimer = 0;
+    }
+    const schedule = (callback, delayMs) => {
+      josieTitleTypewriterTimer = window.setTimeout(() => {
+        if (token !== josieTitleTypewriterToken) return;
+        callback();
+      }, delayMs);
+    };
     const writeNext = () => {
+      if (token !== josieTitleTypewriterToken) return;
       if (index >= chars.length) {
         document.title = safeTitle;
         window.__internetAngelTitleTypewriterDone = true;
+        schedule(() => {
+          index = 0;
+          document.title = "";
+          schedule(writeNext, 180);
+        }, 900);
         return;
       }
       index += 1;
-      document.title = `${chars.slice(0, index).join("")}${blink ? "|" : ""}`;
-      blink = !blink;
-      window.setTimeout(writeNext, 95);
+      document.title = chars.slice(0, index).join("");
+      schedule(writeNext, 95);
     };
     window.__internetAngelTitleTypewriterDone = false;
-    document.title = "|";
-    window.setTimeout(writeNext, 180);
+    document.title = "";
+    schedule(writeNext, 180);
   }
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));

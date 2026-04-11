@@ -296,29 +296,69 @@
         const safeTitle = String(finalTitle || "").trim();
         if (!safeTitle) return;
         const token = ++titleTypewriterToken;
-        const chars = Array.from(safeTitle);
-        let index = 0;
-        let cursorVisible = true;
         if (titleTypewriterTimer) {
           window.clearTimeout(titleTypewriterTimer);
           titleTypewriterTimer = 0;
         }
         window.__internetAngelTitleTypewriterDone = false;
-        document.title = "|";
+        const schedule = (callback, delayMs) => {
+          titleTypewriterTimer = window.setTimeout(() => {
+            if (token !== titleTypewriterToken) return;
+            callback();
+          }, delayMs);
+        };
+        const runLoop = (steps, options = {}) => {
+          const stepDelayMs = Number.isFinite(options.stepDelayMs) ? options.stepDelayMs : 180;
+          const holdDelayMs = Number.isFinite(options.holdDelayMs) ? options.holdDelayMs : 720;
+          const resetDelayMs = Number.isFinite(options.resetDelayMs) ? options.resetDelayMs : 140;
+          let stepIndex = 0;
+          const advance = () => {
+            if (token !== titleTypewriterToken) return;
+            document.title = steps[stepIndex] || safeTitle;
+            if (stepIndex >= steps.length - 1) {
+              window.__internetAngelTitleTypewriterDone = true;
+              schedule(() => {
+                stepIndex = 0;
+                advance();
+              }, holdDelayMs + resetDelayMs);
+              return;
+            }
+            stepIndex += 1;
+            schedule(advance, stepDelayMs);
+          };
+          advance();
+        };
+        if (safeTitle === "BloomToDeath") {
+          document.title = "";
+          schedule(() => {
+            runLoop(["Bloom", "BloomTo", "BloomToDeath"], {
+              stepDelayMs: 220,
+              holdDelayMs: 940,
+              resetDelayMs: 180
+            });
+          }, 140);
+          return;
+        }
+        const chars = Array.from(safeTitle);
+        let index = 0;
         const writeNext = () => {
           if (token !== titleTypewriterToken) return;
           if (index >= chars.length) {
             document.title = safeTitle;
             window.__internetAngelTitleTypewriterDone = true;
-            titleTypewriterTimer = 0;
+            schedule(() => {
+              index = 0;
+              document.title = "";
+              schedule(writeNext, 180);
+            }, 900);
             return;
           }
           index += 1;
-          document.title = `${chars.slice(0, index).join("")}${cursorVisible ? "|" : ""}`;
-          cursorVisible = !cursorVisible;
-          titleTypewriterTimer = window.setTimeout(writeNext, 95);
+          document.title = chars.slice(0, index).join("");
+          schedule(writeNext, 95);
         };
-        titleTypewriterTimer = window.setTimeout(writeNext, 180);
+        document.title = "";
+        schedule(writeNext, 180);
       }
 
       function setState(nextState) {
