@@ -3836,18 +3836,39 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   const mobileShowcasePosition = await page.evaluate(() => {
     const iconRow = document.querySelector(".steam-sidebar-list--mobile-icons");
     const showcase = document.querySelector("#social-hub-showcases");
+    const stage = document.querySelector("#os-stage");
     if (!(iconRow instanceof HTMLElement) || !(showcase instanceof HTMLElement)) {
       return null;
     }
     const iconRowRect = iconRow.getBoundingClientRect();
     const showcaseRect = showcase.getBoundingClientRect();
     return {
-      gap: showcaseRect.top - iconRowRect.bottom
+      gap: showcaseRect.top - iconRowRect.bottom,
+      stageClientHeight: stage instanceof HTMLElement ? stage.clientHeight : 0,
+      stageScrollHeight: stage instanceof HTMLElement ? stage.scrollHeight : 0,
+      stageOverflowY: stage instanceof HTMLElement ? window.getComputedStyle(stage).overflowY : ""
     };
   });
   expect(mobileShowcasePosition).not.toBeNull();
   expect(mobileShowcasePosition.gap).toBeGreaterThanOrEqual(0);
   expect(mobileShowcasePosition.gap).toBeLessThanOrEqual(110);
+  expect(mobileShowcasePosition.stageScrollHeight).toBeGreaterThan(mobileShowcasePosition.stageClientHeight);
+  expect(["auto", "scroll"]).toContain(mobileShowcasePosition.stageOverflowY);
+
+  const stageScrollResult = await page.evaluate(() => {
+    const stage = document.querySelector("#os-stage");
+    if (!(stage instanceof HTMLElement)) {
+      return null;
+    }
+    const before = stage.scrollTop;
+    stage.scrollTop = Math.min(160, Math.max(0, stage.scrollHeight - stage.clientHeight));
+    return {
+      before,
+      after: stage.scrollTop
+    };
+  });
+  expect(stageScrollResult).not.toBeNull();
+  expect(stageScrollResult.after).toBeGreaterThan(stageScrollResult.before);
 
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);

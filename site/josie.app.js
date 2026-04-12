@@ -7330,11 +7330,8 @@
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
     const compactMobileLayout = isCompactMobileLayout();
     const coarsePointerLayout = Boolean(window.matchMedia?.("(pointer: coarse)")?.matches || window.matchMedia?.("(hover: none)")?.matches);
-    const enableMobileAudioStarPulse = compactMobileLayout || coarsePointerLayout;
     const enableAmbientPointerResponse = !coarsePointerLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
     let performanceDegraded = isDesktopPerformanceDegraded();
-    let mobileAudioPulseBeat = 0;
-    let mobileAudioPulseFlash = 0;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -7413,19 +7410,6 @@
       pointerCurrentX += (pointerTargetX - pointerCurrentX) * 0.16;
       pointerCurrentY += (pointerTargetY - pointerCurrentY) * 0.16;
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
-    }
-    function updateMobileAudioPulse() {
-      if (!enableMobileAudioStarPulse || prefersReducedMotion || performanceDegraded) {
-        mobileAudioPulseBeat *= 0.84;
-        mobileAudioPulseFlash *= 0.78;
-        return;
-      }
-      const pulse = getInternetAngelReactivePulse();
-      const attack = pulse.beat > mobileAudioPulseBeat ? 0.42 : 0.18;
-      mobileAudioPulseBeat = clamp(mobileAudioPulseBeat + (pulse.beat - mobileAudioPulseBeat) * attack, 0, 1);
-      mobileAudioPulseBeat *= pulse.sampled ? 0.992 : 0.95;
-      const flashTarget = pulse.flash;
-      mobileAudioPulseFlash = clamp(Math.max(flashTarget, mobileAudioPulseFlash * 0.84), 0, 1);
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
       if (!enableAmbientPointerResponse || performanceDegraded) {
@@ -7919,18 +7903,15 @@
       }
     }
     function drawStar(starState) {
-      const mobileBeatLift = enableMobileAudioStarPulse ? mobileAudioPulseBeat * 0.52 + mobileAudioPulseFlash * 0.38 : 0;
-      const mobileArmBoost = enableMobileAudioStarPulse ? Math.min(2, Math.round(mobileAudioPulseBeat * 2.1 + mobileAudioPulseFlash * 1.4)) : 0;
-      const mobileOrbit = enableMobileAudioStarPulse ? mobileAudioPulseBeat * 1.3 + mobileAudioPulseFlash * 2.2 : 0;
-      const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12 + mobileBeatLift), 0, 1);
-      drawPixelBurst(starState.x + Math.sin(starState.x * 0.02 + mobileAudioPulseFlash * 9) * mobileOrbit, starState.y + Math.cos(starState.y * 0.022 + mobileAudioPulseBeat * 7) * mobileOrbit, {
+      const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 1);
+      drawPixelBurst(starState.x, starState.y, {
         cellSize: getAmbientPixelCell(starState.size > 1 ? 1 : 0.85),
         alpha,
         coreCells: 1,
-        armCells: starState.size + mobileArmBoost,
-        diagonalCells: starState.size > 1 || mobileArmBoost > 0 ? 1 : 0,
-        armAlphaScale: 0.72 + mobileBeatLift * 0.18,
-        diagonalAlphaScale: 0.34 + mobileBeatLift * 0.14
+        armCells: starState.size,
+        diagonalCells: starState.size > 1 ? 1 : 0,
+        armAlphaScale: 0.72,
+        diagonalAlphaScale: 0.34
       });
     }
     function drawShootingStar(shootingStarState) {
@@ -8053,7 +8034,6 @@
       const timeSec = timeMs * 0.001;
       const allowShootingStars = timeMs > 0 && !prefersReducedMotion && !performanceDegraded;
       updatePointerState();
-      updateMobileAudioPulse();
       activeShootingStarFields = allowShootingStars
         ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
         : [];

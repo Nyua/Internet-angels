@@ -6340,7 +6340,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 @media (max-width: 820px) {
   .os-stage {
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .social-hub-scale-frame {
