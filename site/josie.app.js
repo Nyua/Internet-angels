@@ -215,15 +215,7 @@
         bootRefresh: true,
         autoRefresh: true,
         visibleOnly: true,
-<<<<<<< ours
-<<<<<<< ours
         intervalMs: compactMobile ? 30 * 60 * 1e3 : LASTFM_PROXY_REFRESH_INTERVAL_MS
-=======
-        intervalMs: LASTFM_PROXY_REFRESH_INTERVAL_MS
->>>>>>> theirs
-=======
-        intervalMs: LASTFM_PROXY_REFRESH_INTERVAL_MS
->>>>>>> theirs
       };
     }
     if (siteId === "twitter" || siteId === "spotify" || siteId === "soundcloud") {
@@ -3241,19 +3233,7 @@
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
     const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
-<<<<<<< ours
-<<<<<<< ours
     const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
-=======
-    const recentTracks = mobile ? recentTrackSource.slice(0, 4) : recentTrackSource;
-    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
-    const topArtists = mobile ? topArtistsSource.slice(0, 3) : topArtistsSource;
->>>>>>> theirs
-=======
-    const recentTracks = mobile ? recentTrackSource.slice(0, 4) : recentTrackSource;
-    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
-    const topArtists = mobile ? topArtistsSource.slice(0, 3) : topArtistsSource;
->>>>>>> theirs
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
     const showcaseVariant = mobile ? "lastfm-mobile" : "lastfm-sections";
     const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
@@ -3274,11 +3254,7 @@
             </section>
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Artists</h4>
-<<<<<<< ours
               ${renderLastFmMediaGrid(topArtistsSource, "artists", { maxItems: mobile ? 3 : 8 })}
-=======
-              ${renderLastFmMediaGrid(topArtists, "artists")}
->>>>>>> theirs
             </section>
             ${topAlbumsSection}
           </div>
@@ -3394,9 +3370,10 @@
     const label = firstNonEmpty(options.label, "Spotify preview");
     const unavailableTitle = firstNonEmpty(options.unavailableTitle, "Unavailable");
     const unavailableMeta = firstNonEmpty(options.unavailableMeta, "Spotify player unavailable for this track.");
+    const mobileClassName = options?.mobile ? " lastfm-track-panel-spotify-slot--mobile" : "";
     if (!canRenderSpotifyEmbedSlot(spotify)) {
       return `
-        <div class="lastfm-track-panel-spotify-slot is-disabled" data-spotify-track-embed-slot>
+        <div class="lastfm-track-panel-spotify-slot${mobileClassName} is-disabled" data-spotify-track-embed-slot>
           <div class="lastfm-track-panel-spotify-slot-head">
             <span class="lastfm-track-panel-spotify-slot-label">${escapeHtml(label)}</span>
           </div>
@@ -3407,7 +3384,7 @@
       `;
     }
     return `
-      <div class="lastfm-track-panel-spotify-slot" data-spotify-track-embed-slot>
+      <div class="lastfm-track-panel-spotify-slot${mobileClassName}" data-spotify-track-embed-slot>
         <div class="lastfm-track-panel-spotify-slot-head">
           <span class="lastfm-track-panel-spotify-slot-label">${escapeHtml(label)}</span>
         </div>
@@ -3415,6 +3392,52 @@
           <div class="lastfm-track-panel-spotify-embed-host" data-spotify-track-embed-target></div>
         </div>
       </div>
+    `;
+  }
+  function renderLastFmTrackPanelPreviewPlayer(track = {}, spotify = {}, options = {}) {
+    const previewUrl = sanitizeUrl(spotify?.previewUrl);
+    if (!previewUrl) return "";
+    const title = firstNonEmpty(options.title, spotify?.title, track?.title, "Spotify preview");
+    const metaParts = [
+      firstNonEmpty(spotify?.artist, track?.artist),
+      firstNonEmpty(spotify?.album, track?.album)
+    ].filter(Boolean);
+    const metaText = metaParts.length ? metaParts.join(" • ") : firstNonEmpty(options.metaText, "30 second preview");
+    return `
+      <section
+        class="lastfm-track-panel-preview"
+        data-track-preview-player
+        data-track-preview-url="${escapeHtml(previewUrl)}"
+        data-track-preview-state="paused"
+        data-track-preview-volume-value="0.20"
+      >
+        <div class="lastfm-track-panel-preview-head">
+          <button class="lastfm-track-panel-preview-toggle" type="button" data-track-preview-toggle aria-label="Play Spotify preview">
+            <span class="lastfm-track-panel-preview-toggle-icon" data-track-preview-toggle-icon>▶</span>
+          </button>
+          <div class="lastfm-track-panel-preview-copy">
+            <p class="lastfm-track-panel-preview-title">${escapeHtml(title)}</p>
+            <p class="lastfm-track-panel-preview-meta">${escapeHtml(metaText)}</p>
+          </div>
+          <p class="lastfm-track-panel-preview-time" data-track-preview-time>0:00 / 0:30</p>
+        </div>
+        <div class="lastfm-track-panel-preview-progress" aria-hidden="true">
+          <div class="lastfm-track-panel-preview-progress-fill" data-track-preview-progress></div>
+        </div>
+        <label class="lastfm-track-panel-preview-volume">
+          <span class="lastfm-track-panel-preview-volume-label">Volume</span>
+          <input
+            class="lastfm-track-panel-preview-volume-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.20"
+            data-track-preview-volume
+            aria-label="Spotify preview volume"
+          />
+        </label>
+      </section>
     `;
   }
   function renderLastFmPanelArtFlip(options = {}) {
@@ -3456,9 +3479,10 @@
     const stackClassName = firstNonEmpty(safeViewModel.stackClassName, "lastfm-track-panel-stack");
     const ambientAttrs = renderLastFmPanelAmbientAttributes(safeViewModel.ambientImageUrl);
     const titleText = firstNonEmpty(safeViewModel.title, "Last.fm details");
+    const mobileClassName = isCompactMobileLayout() ? " lastfm-track-panel-window--mobile" : "";
     if (safeViewModel.state === "error") {
       return `
-      <div class="lastfm-track-panel-window lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}">
+      <div class="lastfm-track-panel-window${mobileClassName} lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}">
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-error">
           <p class="lastfm-track-panel-kicker">${escapeHtml(firstNonEmpty(safeViewModel.kicker, "Details unavailable"))}</p>
@@ -3478,7 +3502,7 @@
     const stackMarkup = firstNonEmpty(safeViewModel.stackMarkup, "");
     const loadingClassName = safeViewModel.state === "loading" ? " is-loading" : "";
     return `
-      <div class="lastfm-track-panel-window${loadingClassName}" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}"${ambientAttrs}>
+      <div class="lastfm-track-panel-window${loadingClassName}${mobileClassName}" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}"${ambientAttrs}>
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-body">
           <div class="${escapeHtml(layoutClassName)}">
@@ -3542,6 +3566,7 @@
     const spotify = detail?.spotify || {};
     const scrobbles = detail?.scrobbles || {};
     const artistTopTracks = detail?.artistTopTracks || {};
+    const compactMobile = isCompactMobileLayout();
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
@@ -3561,7 +3586,9 @@
         ${track.topTags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}
       </div>
     ` : "";
-    const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
+    const previewMarkup = compactMobile ? renderLastFmTrackPanelPreviewPlayer(track, spotify) : "";
+    const spotifySlotMarkup = previewMarkup ? "" : renderLastFmTrackPanelSpotifySlot(spotify, {
+      mobile: compactMobile,
       unavailableMeta: "Spotify player unavailable for this track."
     });
     const artMarkup = renderLastFmPanelArtFlip({
@@ -3633,7 +3660,7 @@
       panelType: "track",
       panelLayoutKey: "top-heavy",
       ambientImageUrl: artworkUrl,
-      layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy",
+      layoutClassName: `lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy${compactMobile ? " lastfm-track-panel-layout--mobile" : ""}`,
       stackClassName: "lastfm-track-panel-stack lastfm-track-panel-stack--split",
       kicker: "Track details",
       title: track.title || "Unknown track",
@@ -3644,7 +3671,12 @@
       `,
       badgesMarkup: track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : "",
       primaryMarkup: artMarkup,
-      statsMarkup: `
+      statsMarkup: compactMobile ? `
+        <div class="lastfm-track-panel-stats lastfm-track-panel-stats--mobile">
+          ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
+        </div>
+        ${previewMarkup || spotifySlotMarkup}
+      ` : `
         <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
           ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
           ${spotifySlotMarkup}
@@ -5219,6 +5251,7 @@
         renderContent: renderLastFmTrackPanelContent,
         openSoundSource: "lastfmTrackPanelOpen",
         afterRender(detail, cacheKey) {
+          hydrateTrackPreview(detail);
           return mountSpotifyEmbedController(detail, cacheKey);
         }
       },
@@ -5610,6 +5643,8 @@
       embedTarget.closest(".lastfm-track-panel-spotify-slot")?.classList.remove("is-disabled");
       await destroySpotifyEmbedController({ resumeShuffle: true });
       const loadToken = ++lastFmSpotifyEmbedLoadToken;
+      const embedSlot = embedTarget.closest(".lastfm-track-panel-spotify-slot");
+      const embedHeight = embedSlot instanceof HTMLElement && embedSlot.classList.contains("lastfm-track-panel-spotify-slot--mobile") ? 152 : 80;
       try {
         const iframeApi = await ensureSpotifyIframeApi();
         if (disposed || lastFmTrackPanelActiveKey !== cacheKey || !(embedTarget instanceof HTMLElement) || !embedTarget.isConnected) {
@@ -5627,7 +5662,7 @@
             iframeApi.createController(embedTarget, {
               uri: spotifyUri,
               width: "100%",
-              height: 80
+              height: embedHeight
             }, (controller) => {
               if (settled) {
                 try {
@@ -5690,6 +5725,9 @@
       const panelWindow = getLastFmTrackPanelSceneLayerWindow(currentScene, "current");
       if (!(panelWindow instanceof HTMLElement)) return;
       delete panelWindow.dataset.panelDensity;
+      if (panelWindow.classList.contains("lastfm-track-panel-window--mobile")) {
+        return;
+      }
       panelWindow.getBoundingClientRect();
       const needsMoreRoom = () => panelWindow.scrollHeight - panelWindow.clientHeight > 2 || panelWindow.scrollWidth - panelWindow.clientWidth > 2;
       if (!needsMoreRoom()) return;

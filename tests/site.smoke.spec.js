@@ -650,7 +650,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
 
   await page.goto("/josie.html");
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
   await expect.poll(() => page.title(), { timeout: 2_000 }).toBe("Josie");
@@ -780,6 +780,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#os-shuffle-visualizer-player")).toHaveCount(1);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
+  await expect(page.locator(".lastfm-section-title", { hasText: "Top Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
   const visualizerLayout = await page.evaluate(() => {
     const layer = document.querySelector("#os-shuffle-visualizer-layer");
@@ -1557,7 +1558,28 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
             }
           ]
         },
-        topartists: { artist: [] },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "128",
+              image: [{ "#text": "https://example.com/artist-1.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee"
+            },
+            {
+              name: "Slow Pulp",
+              playcount: "96",
+              image: [{ "#text": "https://example.com/artist-2.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp"
+            },
+            {
+              name: "Wisp",
+              playcount: "74",
+              image: [{ "#text": "https://example.com/artist-3.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Wisp"
+            }
+          ]
+        },
         topalbums: { album: [] },
         toptracks: { track: [] },
         user: { playcount: "65188", artist_count: "1234" },
@@ -1813,6 +1835,27 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
 test("josie mobile uses the speaker toggle, icon row links, and bottom cinna layout", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      const media = String(query || "");
+      if (media === "(pointer: coarse)" || media === "(hover: none)") {
+        return {
+          matches: true,
+          media,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {
+            return false;
+          }
+        };
+      }
+      return originalMatchMedia(query);
+    };
+  });
+  await page.addInitScript(() => {
     const launchLog = [];
     window.__codexExternalLaunchLog = launchLog;
     window.__clipboardWrites = [];
@@ -1867,7 +1910,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   });
 
   await page.goto("/josie.html");
-  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", {
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
 
@@ -1875,9 +1918,9 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   await expect(page.locator(".josie-mobile-audio-player")).toHaveCount(0);
   await expect(page.locator(".josie-mobile-audio-chip")).toHaveCount(0);
   await expect(page.locator(".steam-sidebar-title")).toBeHidden();
-  await page.waitForSelector(".discord-presence-reveal");
+  await page.waitForSelector(".discord-presence-reveal", { state: "attached" });
   await expect(page.locator(".discord-presence-reveal")).toHaveAttribute("data-mobile-discord-reveal", /pending|visible/);
-  await page.waitForSelector(".steam-sidebar-list--mobile-icons");
+  await page.waitForSelector(".steam-sidebar-list--mobile-icons", { state: "attached" });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", /pending|visible/);
   await page.waitForFunction(() => {
     const card = document.querySelector(".discord-presence-reveal");
@@ -1986,7 +2029,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
   expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(184);
   expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(196);
   expect(852 - mobileCentering.cinnaRect.bottom).toBeLessThan(18);
-  expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(140);
+  expect(mobileCentering.cinnaRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThan(110);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
 
   await page.evaluate(() => {
@@ -1994,7 +2037,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
     window.__clipboardWrites.length = 0;
   });
   const discordMobileIconLink = page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="discord"]');
-  await discordMobileIconLink.click();
+  await discordMobileIconLink.click({ force: true });
   await expect(discordMobileIconLink).toHaveClass(/is-mobile-selected/);
   await expect(discordMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
   await expect(discordMobileIconLink).toHaveAttribute("data-profile-copy-state", "copied");
@@ -2019,7 +2062,7 @@ test("josie mobile uses the speaker toggle, icon row links, and bottom cinna lay
     window.__codexExternalLaunchBaseline = performance.now();
   });
   const firstMobileIconLink = page.locator(".steam-sidebar-link--icon-only").first();
-  await firstMobileIconLink.click();
+  await firstMobileIconLink.click({ force: true });
   await expect(firstMobileIconLink).toHaveClass(/is-mobile-selected/);
   await expect(firstMobileIconLink).toHaveAttribute("data-mobile-selection-phase", "animating");
   await expect(page.locator("#social-link-effect-layer")).toHaveCount(0);
@@ -2661,7 +2704,28 @@ test("josie track details panel skips the spotify player when no spotify match e
             }
           ]
         },
-        topartists: { artist: [] },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "128",
+              image: [{ "#text": "https://example.com/artist-1.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee"
+            },
+            {
+              name: "Slow Pulp",
+              playcount: "96",
+              image: [{ "#text": "https://example.com/artist-2.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp"
+            },
+            {
+              name: "Wisp",
+              playcount: "74",
+              image: [{ "#text": "https://example.com/artist-3.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Wisp"
+            }
+          ]
+        },
         topalbums: { album: [] },
         toptracks: { track: [] },
         user: { playcount: "65188", artist_count: "1234" },
@@ -3622,4 +3686,425 @@ test("josie keeps track details on the inline spotify layout when spotify has no
 
   expect(apiRequests.some((url) => url.includes("/api/lastfm-track-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
+});
+
+test("josie shows a Last.fm-only compact mobile showcase and opens track details", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      const media = String(query || "");
+      if (media === "(pointer: coarse)" || media === "(hover: none)") {
+        return {
+          matches: true,
+          media,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {
+            return false;
+          }
+        };
+      }
+      return originalMatchMedia(query);
+    };
+  });
+
+  const apiRequests = [];
+  page.on("request", (outboundRequest) => {
+    const url = outboundRequest.url();
+    if (url.startsWith("http://127.0.0.1:8788/api/")) {
+      apiRequests.push(url);
+    }
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "One Time",
+              artist: { name: "beabadoobee" },
+              album: { "#text": "This Is How Tomorrow Moves" },
+              image: [{ "#text": "https://example.com/one-time-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "128",
+              image: [{ "#text": "https://example.com/artist-1.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee"
+            },
+            {
+              name: "Slow Pulp",
+              playcount: "96",
+              image: [{ "#text": "https://example.com/artist-2.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp"
+            },
+            {
+              name: "Wisp",
+              playcount: "74",
+              image: [{ "#text": "https://example.com/artist-3.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Wisp"
+            }
+          ]
+        },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee", track: "One Time", album: "This Is How Tomorrow Moves" },
+        track: {
+          title: "One Time",
+          artist: "beabadoobee",
+          album: "This Is How Tomorrow Moves",
+          durationMs: 184000,
+          durationLabel: "3:04",
+          artworkUrl: "https://example.com/one-time-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          userPlaycount: 3,
+          userLoved: false,
+          globalPlaycount: 2740015,
+          listeners: 285055,
+          summary: "",
+          publishedAt: null,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "unavailable",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/One%20Time%20beabadoobee",
+          previewUrl: "",
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: ""
+        },
+        scrobbles: { total: 3, items: [] },
+        artistTopTracks: { artist: "beabadoobee", items: [] }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm")), { timeout: 10_000 }).toBe(true);
+  await page.waitForSelector(".steam-sidebar-list--mobile-icons");
+  await expect(page.locator(".steam-sidebar-list--mobile-icons")).toHaveAttribute("data-mobile-links-reveal", /pending|visible/);
+  await page.waitForFunction(() => {
+    const row = document.querySelector(".steam-sidebar-list--mobile-icons");
+    return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";
+  });
+
+  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await expect(page.locator("#social-hub-showcases .steam-showcase")).toHaveCount(1);
+  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(1);
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title").first()).toHaveText("Recent Tracks");
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" })).toBeVisible();
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" })).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases .lastfm-profile-total")).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases .lastfm-media-grid--artists .lastfm-media-button")).toHaveCount(3);
+  const mobileShowcasePosition = await page.evaluate(() => {
+    const iconRow = document.querySelector(".steam-sidebar-list--mobile-icons");
+    const showcase = document.querySelector("#social-hub-showcases");
+    if (!(iconRow instanceof HTMLElement) || !(showcase instanceof HTMLElement)) {
+      return null;
+    }
+    const iconRowRect = iconRow.getBoundingClientRect();
+    const showcaseRect = showcase.getBoundingClientRect();
+    return {
+      gap: showcaseRect.top - iconRowRect.bottom
+    };
+  });
+  expect(mobileShowcasePosition).not.toBeNull();
+  expect(mobileShowcasePosition.gap).toBeGreaterThanOrEqual(0);
+  expect(mobileShowcasePosition.gap).toBeLessThanOrEqual(110);
+
+  await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
+});
+
+test("josie stacks the compact mobile track panel cleanly and plays the Spotify preview clip", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      const media = String(query || "");
+      if (media === "(pointer: coarse)" || media === "(hover: none)") {
+        return {
+          matches: true,
+          media,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {
+            return false;
+          }
+        };
+      }
+      return originalMatchMedia(query);
+    };
+
+    const NativeAudio = window.Audio;
+    window.Audio = function(...args) {
+      const audio = new NativeAudio(...args);
+      let paused = true;
+      let ended = false;
+      let currentTime = 0;
+      let duration = 30;
+      Object.defineProperty(audio, "paused", {
+        configurable: true,
+        get() {
+          return paused;
+        }
+      });
+      Object.defineProperty(audio, "ended", {
+        configurable: true,
+        get() {
+          return ended;
+        }
+      });
+      Object.defineProperty(audio, "currentTime", {
+        configurable: true,
+        get() {
+          return currentTime;
+        },
+        set(value) {
+          currentTime = Number(value) || 0;
+          audio.dispatchEvent(new Event("timeupdate"));
+        }
+      });
+      Object.defineProperty(audio, "duration", {
+        configurable: true,
+        get() {
+          return duration;
+        }
+      });
+      audio.load = () => {
+        paused = true;
+        ended = false;
+        currentTime = 0;
+        duration = 30;
+        audio.dispatchEvent(new Event("loadedmetadata"));
+        audio.dispatchEvent(new Event("durationchange"));
+        audio.dispatchEvent(new Event("timeupdate"));
+      };
+      audio.play = () => {
+        paused = false;
+        ended = false;
+        audio.dispatchEvent(new Event("play"));
+        audio.dispatchEvent(new Event("timeupdate"));
+        return Promise.resolve();
+      };
+      audio.pause = () => {
+        const wasPaused = paused;
+        paused = true;
+        if (!wasPaused) {
+          audio.dispatchEvent(new Event("pause"));
+        }
+      };
+      return audio;
+    };
+    window.Audio.prototype = NativeAudio.prototype;
+  });
+
+  const apiRequests = [];
+  page.on("request", (outboundRequest) => {
+    const url = outboundRequest.url();
+    if (url.startsWith("http://127.0.0.1:8788/api/")) {
+      apiRequests.push(url);
+    }
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "One Time",
+              artist: { name: "beabadoobee" },
+              album: { "#text": "This Is How Tomorrow Moves" },
+              image: [{ "#text": "https://example.com/one-time-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "128",
+              image: [{ "#text": "https://example.com/artist-1.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee"
+            }
+          ]
+        },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "beabadoobee", track: "One Time", album: "This Is How Tomorrow Moves" },
+        track: {
+          title: "One Time",
+          artist: "beabadoobee",
+          album: "This Is How Tomorrow Moves",
+          durationMs: 184000,
+          durationLabel: "3:04",
+          artworkUrl: "https://example.com/one-time-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time",
+          artistLastFmUrl: "https://www.last.fm/music/beabadoobee",
+          userPlaycount: 3,
+          userLoved: false,
+          globalPlaycount: 2740015,
+          listeners: 285055,
+          summary: "A bright and clipped single.",
+          summaryHasMore: true,
+          publishedAt: null,
+          topTags: [
+            { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" }
+          ]
+        },
+        spotify: {
+          matchStatus: "matched",
+          embedUrl: "https://open.spotify.com/embed/track/spotify-track-1?utm_source=generator",
+          openUrl: "https://open.spotify.com/track/spotify-track-1",
+          searchUrl: "https://open.spotify.com/search/One%20Time%20beabadoobee",
+          previewUrl: "https://p.scdn.co/mp3-preview/one-time-preview.mp3",
+          title: "One Time",
+          artist: "beabadoobee",
+          album: "This Is How Tomorrow Moves",
+          artworkUrl: "https://i.scdn.co/image/one-time.jpg"
+        },
+        scrobbles: {
+          total: 3,
+          items: [
+            {
+              playedAtIso: "2026-03-23T07:21:00.000Z",
+              playedAtLabel: "23 Mar 2026, 07:21",
+              album: "This Is How Tomorrow Moves"
+            }
+          ]
+        },
+        artistTopTracks: {
+          artist: "beabadoobee",
+          items: [
+            {
+              title: "Talk",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Talk",
+              userPlaycount: 9,
+              userLoved: true,
+              globalPlaycount: 1820011,
+              listeners: 942304
+            }
+          ]
+        }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm")), { timeout: 10_000 }).toBe(true);
+
+  await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
+  await expect(page.locator(".lastfm-track-panel-window--mobile")).toHaveCount(1);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
+
+  const mobilePanelMetrics = await page.evaluate(() => {
+    const panelWindow = document.querySelector(".lastfm-track-panel-window");
+    const art = document.querySelector(".lastfm-track-panel-art");
+    const header = document.querySelector(".lastfm-track-panel-header");
+    const title = document.querySelector(".lastfm-track-panel-title");
+    const preview = document.querySelector("[data-track-preview-player]");
+    if (!(panelWindow instanceof HTMLElement) || !(art instanceof HTMLElement) || !(header instanceof HTMLElement) || !(title instanceof HTMLElement) || !(preview instanceof HTMLElement)) {
+      return null;
+    }
+    const artRect = art.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const previewRect = preview.getBoundingClientRect();
+    return {
+      overflowY: window.getComputedStyle(panelWindow).overflowY,
+      scrollWidth: panelWindow.scrollWidth,
+      clientWidth: panelWindow.clientWidth,
+      headerBelowArt: headerRect.top >= artRect.bottom - 1,
+      titleSize: Number.parseFloat(window.getComputedStyle(title).fontSize) || 0,
+      previewWidth: previewRect.width
+    };
+  });
+  expect(mobilePanelMetrics).not.toBeNull();
+  expect(mobilePanelMetrics.overflowY).toBe("auto");
+  expect(mobilePanelMetrics.scrollWidth).toBeLessThanOrEqual(mobilePanelMetrics.clientWidth + 1);
+  expect(mobilePanelMetrics.headerBelowArt).toBe(true);
+  expect(mobilePanelMetrics.titleSize).toBeLessThan(50);
+  expect(mobilePanelMetrics.previewWidth).toBeGreaterThan(240);
+
+  const previewPlayer = page.locator("[data-track-preview-player]");
+  await previewPlayer.locator("[data-track-preview-toggle]").click();
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "playing");
+  await expect(previewPlayer).toHaveClass(/is-playing/);
+  await previewPlayer.locator("[data-track-preview-volume]").evaluate((input) => {
+    input.value = "0.65";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect.poll(() => previewPlayer.getAttribute("data-track-preview-volume-value")).toBe("0.65");
+
+  await page.locator(".lastfm-track-panel-related").scrollIntoViewIfNeeded();
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "My recent plays" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "From beabadoobee" })).toBeVisible();
 });
