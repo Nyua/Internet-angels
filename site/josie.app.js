@@ -174,8 +174,7 @@
   function isCompactMobileLayout() {
     if (typeof window === "undefined") return false;
     const isNarrowViewport = Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
-    if (!isNarrowViewport) return false;
-    return hasCompactMobileInput();
+    return isNarrowViewport;
   }
   function shouldFetchSitePayload(siteId) {
     const normalizedSiteId = String(siteId || "").trim().toLowerCase();
@@ -215,7 +214,7 @@
         bootRefresh: true,
         autoRefresh: true,
         visibleOnly: true,
-        intervalMs: compactMobile ? 30 * 60 * 1e3 : LASTFM_PROXY_REFRESH_INTERVAL_MS
+        intervalMs: compactMobile ? 5 * 60 * 1e3 : LASTFM_PROXY_REFRESH_INTERVAL_MS
       };
     }
     if (siteId === "twitter" || siteId === "spotify" || siteId === "soundcloud") {
@@ -2979,6 +2978,11 @@
     const model = buildDiscordPresenceCardModel(payload);
     const compact = Boolean(options?.compact);
     const mobileRevealState = compact ? String(options?.mobileRevealState || "pending") : "";
+    const mobileOrnamentMarkup = compact ? `
+                    <div class="discord-presence-mobile-ornament steam-hero-ornament steam-hero-ornament--compact-mobile" aria-hidden="true">
+                      ${renderHeroOrnamentMarkup()}
+                    </div>
+    ` : "";
     return `
       <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
         <div class="discord-presence-shell">
@@ -3002,6 +3006,7 @@
                       ${model.customStatusEmojiUrl ? `<img class="discord-presence-custom-emoji" src="${escapeHtml(model.customStatusEmojiUrl)}" alt="${escapeHtml(model.customStatusEmojiAlt || "")}" loading="lazy" decoding="async" />` : ""}
                       <p class="discord-presence-headline">${escapeHtml(model.headline)}</p>
                     </div>
+                    ${mobileOrnamentMarkup}
                   </div>
                   ${model.showAlbumArt ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(model.albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
                 </div>
@@ -3022,16 +3027,21 @@
     const heroName = escapeHtml(hero?.profile?.name || "FoundLifeless");
     const heroOrnament = renderHeroOrnamentMarkup();
     const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
-    return `
-    <section class="steam-hero-shell${compact ? " steam-hero-shell--compact-mobile" : ""}" aria-label="Profile hero">
-      <div class="steam-hero-content${compact ? " steam-hero-content--compact-mobile" : ""}">
+    const heroNameMarkup = compact ? "" : `<h2 class="steam-hero-name${compact ? " steam-hero-name--compact-mobile" : ""}">${heroName}</h2>`;
+    const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
+    const avatarMarkup = compact ? "" : `
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
           ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
           ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" decoding="async" aria-hidden="true" />` : ""}
         </div>
+    `;
+    return `
+    <section class="steam-hero-shell${compact ? " steam-hero-shell--compact-mobile" : ""}" aria-label="Profile hero">
+      <div class="steam-hero-content${compact ? " steam-hero-content--compact-mobile" : ""}">
+        ${avatarMarkup}
         <div class="steam-hero-copy${compact ? " steam-hero-copy--compact-mobile" : ""}">
-          <h2 class="steam-hero-name${compact ? " steam-hero-name--compact-mobile" : ""}">${heroName}</h2>
-          <div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>
+          ${heroNameMarkup}
+          ${heroOrnamentMarkup}
           ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
@@ -3233,7 +3243,6 @@
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
     const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
-    const topArtistsSource = Array.isArray(sections.topArtists) ? sections.topArtists : [];
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
     const showcaseVariant = mobile ? "lastfm-mobile" : "lastfm-sections";
     const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
@@ -3243,6 +3252,12 @@
               ${renderLastFmMediaGrid(topAlbums, "albums")}
             </section>
     `;
+    const topArtistsSection = mobile ? "" : `
+            <section class="lastfm-section">
+              <h4 class="lastfm-section-title">Top Artists</h4>
+              ${renderLastFmMediaGrid(Array.isArray(sections.topArtists) ? sections.topArtists : [], "artists", { maxItems: 8 })}
+            </section>
+    `;
     return `
     <article class="steam-showcase steam-showcase--${escapeHtml(site.id)} steam-showcase--lastfm-chart steam-showcase--lastfm-minimal${mobileClass}" data-site-id="${escapeHtml(site.id)}" data-showcase-variant="${showcaseVariant}">
       <div class="steam-showcase-body steam-showcase-body--single steam-showcase-body--lastfm-minimal">
@@ -3250,12 +3265,9 @@
           <div class="lastfm-sections">
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Recent Tracks</h4>
-              ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 4 : 10 })}
+              ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 })}
             </section>
-            <section class="lastfm-section">
-              <h4 class="lastfm-section-title">Top Artists</h4>
-              ${renderLastFmMediaGrid(topArtistsSource, "artists", { maxItems: mobile ? 3 : 8 })}
-            </section>
+            ${topArtistsSection}
             ${topAlbumsSection}
           </div>
         </section>
