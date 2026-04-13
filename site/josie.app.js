@@ -6616,12 +6616,14 @@
         }
         const artToggle = target.closest("[data-lastfm-panel-art-toggle]");
         if (artToggle instanceof HTMLElement) {
+          if (isCompactMobileLayout()) return;
           event.preventDefault();
           setLastFmPanelArtFace(artToggle.closest(".lastfm-track-panel-art--flip"), "back", { focusTarget: true });
           return;
         }
         const artBack = target.closest("[data-lastfm-panel-art-back]");
         if (artBack instanceof HTMLElement && !target.closest(".lastfm-track-panel-cta")) {
+          if (isCompactMobileLayout()) return;
           event.preventDefault();
           setLastFmPanelArtFace(artBack.closest(".lastfm-track-panel-art--flip"), "front", { focusTarget: true });
           return;
