@@ -3266,6 +3266,7 @@
   }
   function renderLastFmShowcase(site, payload, options = {}) {
     const mobile = Boolean(options?.mobile);
+    const mobileRecentRevealState = mobile ? String(options?.mobileRecentRevealState || "pending") : "";
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
     const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
@@ -3291,7 +3292,9 @@
           <div class="lastfm-sections">
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Recent Tracks</h4>
-              ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 })}
+              <div class="lastfm-recent-reveal"${mobile ? ` data-mobile-lastfm-reveal="${escapeHtml(mobileRecentRevealState)}"` : ""}>
+                ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 })}
+              </div>
             </section>
             ${topArtistsSection}
             ${topAlbumsSection}
@@ -4669,6 +4672,8 @@
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
     let mobileLinksRevealTimer = 0;
+    let mobileLastFmRevealPlayed = false;
+    let mobileLastFmRevealTimer = 0;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
@@ -4835,6 +4840,11 @@
       window.clearTimeout(mobileLinksRevealTimer);
       mobileLinksRevealTimer = 0;
     }
+    function clearMobileLastFmRevealTimer() {
+      if (!mobileLastFmRevealTimer) return;
+      window.clearTimeout(mobileLastFmRevealTimer);
+      mobileLastFmRevealTimer = 0;
+    }
     function getMobileLinksRow() {
       if (!(sidebar instanceof HTMLElement)) return null;
       return sidebar.querySelector(".steam-sidebar-list--mobile-icons");
@@ -4849,6 +4859,7 @@
       if (!isCompactMobileLayout()) return;
       if (mobileLinksRevealPlayed) {
         setMobileLinksRevealState("visible");
+        scheduleMobileLastFmReveal();
         return;
       }
       setMobileLinksRevealState("pending");
@@ -4857,7 +4868,32 @@
         mobileLinksRevealTimer = 0;
         mobileLinksRevealPlayed = true;
         setMobileLinksRevealState("visible");
+        scheduleMobileLastFmReveal();
       }, 320);
+    }
+    function getMobileLastFmReveal() {
+      if (!(showcases instanceof HTMLElement)) return null;
+      return showcases.querySelector(".lastfm-recent-reveal");
+    }
+    function setMobileLastFmRevealState(nextState) {
+      const reveal = getMobileLastFmReveal();
+      if (!(reveal instanceof HTMLElement)) return;
+      reveal.dataset.mobileLastfmReveal = nextState;
+      reveal.classList.toggle("is-mobile-lastfm-visible", nextState === "visible");
+    }
+    function scheduleMobileLastFmReveal() {
+      if (!isCompactMobileLayout()) return;
+      if (mobileLastFmRevealPlayed) {
+        setMobileLastFmRevealState("visible");
+        return;
+      }
+      setMobileLastFmRevealState("pending");
+      clearMobileLastFmRevealTimer();
+      mobileLastFmRevealTimer = window.setTimeout(() => {
+        mobileLastFmRevealTimer = 0;
+        mobileLastFmRevealPlayed = true;
+        setMobileLastFmRevealState("visible");
+      }, 220);
     }
     function scheduleMobileDiscordReveal() {
       if (!isCompactMobileLayout()) return;
@@ -6978,6 +7014,7 @@
       } else {
         clearMobileDiscordRevealTimer();
         clearMobileLinksRevealTimer();
+        clearMobileLastFmRevealTimer();
         clearMobileLinkSelectedState();
         clearPendingMobileExternalLaunch();
       }
@@ -6998,7 +7035,13 @@
         if (lastFmSite) {
           showcases.hidden = false;
           showcases.classList.add("social-hub-showcases--mobile-lastfm");
-          showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), { mobile: true });
+          showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), {
+            mobile: true,
+            mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending"
+          });
+          if (mobileLastFmRevealPlayed) {
+            setMobileLastFmRevealState("visible");
+          }
         } else {
           showcases.innerHTML = "";
           showcases.hidden = true;
@@ -7084,6 +7127,7 @@
       externalPromptAcceptButton = null;
       clearMobileDiscordRevealTimer();
       clearMobileLinksRevealTimer();
+      clearMobileLastFmRevealTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
@@ -9832,6 +9876,7 @@
     if (root instanceof HTMLElement) {
       root.classList.add("state-os-ready");
     }
+    document.body?.classList.remove("site-load-active", "site-load-playing");
     osStage?.setAttribute("aria-hidden", "false");
   }
   function initializeSocialHubIfNeeded() {
