@@ -1227,6 +1227,28 @@
     if (normalized === "offline") return "Offline";
     return "Unknown";
   }
+  function formatElapsedCompact(ms) {
+    const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+    const minuteMs = 6e4;
+    const hourMs = 36e5;
+    const dayMs = 864e5;
+    if (safeMs < minuteMs) return "<1m";
+    if (safeMs < hourMs) return `${Math.floor(safeMs / minuteMs)}m`;
+    if (safeMs < dayMs) {
+      const hours = Math.floor(safeMs / hourMs);
+      const minutes = Math.floor(safeMs % hourMs / minuteMs);
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+    const days = Math.floor(safeMs / dayMs);
+    const hours = Math.floor(safeMs % dayMs / hourMs);
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  function buildDiscordStatusDisplay(statusKey, offlineSinceMs, nowMs = Date.now()) {
+    const baseLabel = formatDiscordStatus(statusKey);
+    if (statusKey !== "offline") return baseLabel;
+    if (!Number.isFinite(offlineSinceMs) || offlineSinceMs <= 0) return baseLabel;
+    return `Offline for ${formatElapsedCompact(Math.max(0, nowMs - offlineSinceMs))}`;
+  }
   function normalizeDiscordStatusKey(status) {
     const normalized = String(status || "").toLowerCase();
     if (normalized === "online") return "online";
@@ -1267,7 +1289,7 @@
       displayName: firstNonEmpty(safePresence.displayName, profile?.name, discordUser?.display_name, discordUser?.global_name, discordUser?.username, "foundlifeless"),
       username: firstNonEmpty(safePresence.username, discordUser?.username, discordUser?.global_name, discordUser?.display_name, "foundlifeless"),
       statusKey: firstNonEmpty(safePresence.statusKey, profile?.statusKey, "unknown"),
-      statusLabel: firstNonEmpty(safePresence.statusLabel, profile?.statusText, "Unknown"),
+      statusLabel: firstNonEmpty(profile?.statusText, safePresence.statusLabel, "Unknown"),
       avatarUrl: firstNonEmpty(
         safePresence.avatarUrl,
         buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
@@ -1366,8 +1388,11 @@
       const discordPayload = await fetchJsonWithTimeout(discordEndpoint, 8500, signal, { cacheMode: "default" });
       const discordUser = discordPayload?.data?.discord_user && typeof discordPayload.data.discord_user === "object" ? discordPayload.data.discord_user : null;
       const activities = Array.isArray(discordPayload?.data?.activities) ? discordPayload.data.activities : [];
-      const statusText = formatDiscordStatus(discordPayload?.data?.discord_status);
       const statusKey = normalizeDiscordStatusKey(discordPayload?.data?.discord_status);
+      const previousOfflineSince = Number.isFinite(previous?.profile?.offlineSince) ? previous.profile.offlineSince : 0;
+      const wasOffline = normalizeDiscordStatusKey(previous?.profile?.statusKey) === "offline";
+      const offlineSince = statusKey === "offline" ? wasOffline && previousOfflineSince > 0 ? previousOfflineSince : now : 0;
+      const statusText = buildDiscordStatusDisplay(statusKey, offlineSince, now);
       const sourceStatus = String(discordPayload?.sourceStatus || "").trim() || (discordPayload?.stale ? "PARTIAL" : "OK");
       const presenceSource = resolveProxyFreshnessLabel(discordPayload?.stale);
       const displayName = firstNonEmpty(
@@ -1391,6 +1416,7 @@
         ),
         statusText: firstNonEmpty(statusText, previous.profile.statusText, "Unknown"),
         statusKey,
+        offlineSince,
         bannerUrl: firstNonEmpty(
           overrideBannerUrl,
           buildDiscordBannerUrl(discordUser?.id || userId, discordUser?.banner),
