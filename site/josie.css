@@ -6589,6 +6589,14 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     margin-top: 10px;
   }
 
+  .discord-presence-mobile-ornament {
+    display: flex;
+    margin-top: 4px;
+    justify-content: flex-start;
+    letter-spacing: 0.05em;
+    opacity: 0.9;
+  }
+
   .steam-sidebar-panel {
     gap: 0;
     align-items: stretch;
@@ -6985,8 +6993,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     color: rgba(248, 249, 252, 0.94);
     opacity: 1;
     filter:
-      drop-shadow(0 0 6px rgba(255, 255, 255, 0.28))
-      drop-shadow(0 0 14px rgba(255, 255, 255, 0.15));
+      drop-shadow(0 0 6px rgba(255, 255, 255, 0.31))
+      drop-shadow(0 0 14px rgba(255, 255, 255, 0.17));
   }
 
   .steam-sidebar-list--mobile-icons .steam-sidebar-site-icon svg [fill]:not([fill="none"]) {
@@ -7103,8 +7111,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .steam-sidebar-link--icon-only.is-mobile-selected .steam-sidebar-site-icon {
     color: rgba(var(--mobile-link-aura-secondary-rgb), 0.98);
     filter:
-      drop-shadow(0 0 8px rgba(var(--mobile-link-aura-rgb), 0.44))
-      drop-shadow(0 0 18px rgba(var(--mobile-link-aura-rgb), 0.22));
+      drop-shadow(0 0 8px rgba(var(--mobile-link-aura-rgb), 0.48))
+      drop-shadow(0 0 18px rgba(var(--mobile-link-aura-rgb), 0.24));
     transform: scale(1.03);
   }
 
@@ -7804,6 +7812,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-width: 0;
   white-space: nowrap;
   font-family: var(--discord-font);
+}
+
+.discord-presence-mobile-ornament {
+  display: none;
 }
 
 .discord-presence-custom-emoji {
