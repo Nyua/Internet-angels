@@ -740,7 +740,7 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 }
 
 .os-ambient-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   overflow: clip;
   pointer-events: none;

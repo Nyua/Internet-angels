@@ -7927,13 +7927,14 @@
       });
     }
     function drawShootingStar(shootingStarState) {
-      const cellSize = getAmbientPixelCell(shootingStarState.coreCells > 1 ? 1.15 : 1);
+      const shootingStarScale = 2;
+      const cellSize = getAmbientPixelCell((shootingStarState.coreCells > 1 ? 1.15 : 1) * shootingStarScale);
       drawPixelTrail(
         shootingStarState.headX,
         shootingStarState.headY,
         shootingStarState.dirX,
         shootingStarState.dirY,
-        shootingStarState.trailLength,
+        shootingStarState.trailLength * shootingStarScale,
         {
           cellSize,
           alpha: shootingStarState.alpha * 0.92
