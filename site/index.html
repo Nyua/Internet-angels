@@ -100,10 +100,10 @@
       align-items: center;
       justify-content: center;
       background:
-        radial-gradient(circle at 50% 48%, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.44) 72%),
-        rgba(8, 8, 10, 0.28);
-      backdrop-filter: blur(20px) saturate(115%);
-      -webkit-backdrop-filter: blur(20px) saturate(115%);
+        radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01) 72%),
+        rgba(8, 8, 10, 0.08);
+      backdrop-filter: blur(14px) saturate(120%);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
       z-index: 5;
     }
 
@@ -120,13 +120,14 @@
       border-radius: 0;
       padding: 24px;
       background:
-        radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.025), transparent 26%),
-        linear-gradient(180deg, rgba(18, 18, 22, 0.34), rgba(4, 4, 6, 0.54)),
-        var(--intro-card-bg);
+        radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.08), transparent 32%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015));
       color: var(--intro-fg);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+        0 10px 40px rgba(0, 0, 0, 0.14);
+      backdrop-filter: blur(16px) saturate(130%);
+      -webkit-backdrop-filter: blur(16px) saturate(130%);
       cursor: pointer;
       overflow: hidden;
       isolation: isolate;
@@ -148,28 +149,29 @@
     }
 
     .intro-start-button::before {
-      inset: -8% -4%;
+      inset: -4% -2%;
       background:
-        radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.4), transparent 22%),
-        radial-gradient(circle at 33% 58%, rgba(255, 255, 255, 0.065), transparent 22%),
-        radial-gradient(circle at 66% 44%, rgba(255, 255, 255, 0.05), transparent 20%),
-        radial-gradient(circle at 52% 70%, rgba(255, 255, 255, 0.04), transparent 18%);
-      filter: blur(48px);
-      opacity: 1;
+        radial-gradient(circle at 33% 58%, rgba(255, 255, 255, 0.11), transparent 24%),
+        radial-gradient(circle at 66% 44%, rgba(255, 255, 255, 0.09), transparent 22%),
+        radial-gradient(circle at 52% 70%, rgba(255, 255, 255, 0.07), transparent 20%);
+      filter: blur(40px);
+      opacity: 0.92;
     }
 
     .intro-start-button::after {
       inset: 0;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
-        radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.028), transparent 30%);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 18%, rgba(255, 255, 255, 0)),
+        radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.16), transparent 40%);
       opacity: 1;
     }
 
     .intro-start-button:hover,
     .intro-start-button:focus-visible {
       transform: scale(1.002);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+        0 12px 48px rgba(0, 0, 0, 0.18);
       outline: none;
     }
 
