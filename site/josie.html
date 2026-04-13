@@ -555,24 +555,35 @@
             const buffer = await response.arrayBuffer();
             const timing = parseGifTiming(new Uint8Array(buffer));
             const frames = [];
+            let nativePlayback = false;
 
             if (typeof ImageDecoder !== "undefined") {
-              const decoder = new ImageDecoder({ data: buffer, type: "image/gif" });
-              await decoder.tracks.ready;
-              const frameCount = decoder.tracks.selectedTrack?.frameCount || timing.frameDelaysMs.length || 1;
-              for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-                const decoded = await decoder.decode({ frameIndex, completeFramesOnly: true });
-                const bitmap = await createImageBitmap(decoded.image);
-                decoded.image.close();
-                frames.push(bitmap);
+              try {
+                const decoder = new ImageDecoder({ data: buffer, type: "image/gif" });
+                await decoder.tracks.ready;
+                const frameCount = decoder.tracks.selectedTrack?.frameCount || timing.frameDelaysMs.length || 1;
+                for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+                  const decoded = await decoder.decode({ frameIndex, completeFramesOnly: true });
+                  const bitmap = await createImageBitmap(decoded.image);
+                  decoded.image.close();
+                  frames.push(bitmap);
+                }
+                decoder.close();
+              } catch {
+                nativePlayback = true;
               }
-              decoder.close();
+            } else {
+              nativePlayback = true;
             }
 
             if (!frames.length) {
-              const blob = new Blob([buffer], { type: "image/gif" });
-              const bitmap = await createImageBitmap(blob);
-              frames.push(bitmap);
+              nativePlayback = true;
+              return {
+                frames: [],
+                frameDelaysMs: [],
+                totalDurationMs: Math.max(240, Math.round((timing.totalDurationMs || defaultDurationMs) * slicePlaybackSlowdown)),
+                nativePlayback
+              };
             }
 
             const frameDelaysMs = frames.map((_, index) => {
@@ -584,7 +595,8 @@
             return {
               frames,
               frameDelaysMs,
-              totalDurationMs: frameDelaysMs.reduce((sum, delay) => sum + delay, 0)
+              totalDurationMs: frameDelaysMs.reduce((sum, delay) => sum + delay, 0),
+              nativePlayback
             };
           })();
 
@@ -623,31 +635,50 @@
           layer.className = "slice-boot-layer";
           layer.dataset.sliceBootKey = key;
           layer.dataset.sliceBootSource = sourcePath || "";
-          const surface = document.createElement("canvas");
+          const nativePlayback = Boolean(decoded?.nativePlayback);
+          const surface = nativePlayback ? document.createElement("img") : document.createElement("canvas");
           surface.className = "slice-boot-source";
           surface.setAttribute("aria-hidden", "true");
+          if (surface instanceof HTMLImageElement) {
+            surface.alt = "";
+            surface.decoding = "sync";
+            surface.loading = "eager";
+            if (sourcePath) {
+              const cacheBust = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+              const separator = sourcePath.includes("?") ? "&" : "?";
+              surface.src = `${sourcePath}${separator}boot=${cacheBust}`;
+            }
+          }
           layer.append(surface);
           ensureOverlayRoot().append(layer);
-          const surfaceCtx = surface.getContext("2d", { alpha: true });
+          const surfaceCtx = surface instanceof HTMLCanvasElement
+            ? surface.getContext("2d", { alpha: true }) || surface.getContext("2d")
+            : null;
 
-          const frames = decoded.frames;
-          const delays = decoded.frameDelaysMs;
+          const frames = Array.isArray(decoded?.frames) ? decoded.frames : [];
+          const delays = Array.isArray(decoded?.frameDelaysMs) ? decoded.frameDelaysMs : [];
           const frameCount = frames.length;
           const baseIndices = Array.from({ length: frameCount }, (_, index) => index);
           const sequenceIndices = baseIndices.slice();
           const sequenceDurations = delays.slice();
 
           const cumulativeMs = [];
-          let totalSequenceMs = 0;
-          for (const duration of sequenceDurations) {
-            totalSequenceMs += Math.max(16, duration || targetFrameMs);
-            cumulativeMs.push(totalSequenceMs);
+          let totalSequenceMs = Math.max(240, Number(decoded?.totalDurationMs) || defaultDurationMs);
+          if (!nativePlayback) {
+            totalSequenceMs = 0;
+            for (const duration of sequenceDurations) {
+              totalSequenceMs += Math.max(16, duration || targetFrameMs);
+              cumulativeMs.push(totalSequenceMs);
+            }
+            if (!(totalSequenceMs > 0)) {
+              totalSequenceMs = Math.max(240, Number(decoded?.totalDurationMs) || defaultDurationMs);
+            }
           }
 
           let currentHost = null;
           let startedAt = 0;
           let cursor = 0;
-          let done = frameCount === 0;
+          let done = !nativePlayback && frameCount === 0;
           let surfaceWidth = 0;
           let surfaceHeight = 0;
 
@@ -656,7 +687,7 @@
             if (!currentHost || !currentHost.isConnected) {
               currentHost = document.querySelector(hostSelector);
             }
-            if (!currentHost || !(surfaceCtx instanceof CanvasRenderingContext2D)) return false;
+            if (!currentHost) return false;
 
             const hostRect = currentHost.getBoundingClientRect();
             const rect = rectResolver ? rectResolver(hostRect, currentHost) : hostRect;
@@ -675,6 +706,14 @@
             if (elapsed >= totalSequenceMs) {
               done = true;
               layer.style.display = "none";
+              return false;
+            }
+
+            if (nativePlayback) {
+              return true;
+            }
+
+            if (!(surfaceCtx instanceof CanvasRenderingContext2D)) {
               return false;
             }
 

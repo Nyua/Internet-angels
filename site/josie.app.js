@@ -75,6 +75,26 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
+  function getCanvas2DContext(canvas, options = null) {
+    if (!(canvas instanceof HTMLCanvasElement)) return null;
+    if (options && typeof options === "object") {
+      try {
+        const next = canvas.getContext("2d", options);
+        if (next) return next;
+      } catch {
+      }
+    }
+    try {
+      const alphaFallback = canvas.getContext("2d", { alpha: true });
+      if (alphaFallback) return alphaFallback;
+    } catch {
+    }
+    try {
+      return canvas.getContext("2d");
+    } catch {
+      return null;
+    }
+  }
   function getInternetAngelPerformanceState() {
     return window.__internetAngelPerformanceState || null;
   }
@@ -2141,7 +2161,7 @@
         wavePortal.appendChild(waveCanvas);
       }
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
-        waveCtx = waveCanvas.getContext("2d");
+        waveCtx = getCanvas2DContext(waveCanvas);
       }
       return wavePortal;
     }
@@ -4504,7 +4524,7 @@
         canvas.width = asset.width || asset.frames[0].width || 1;
         canvas.height = asset.height || asset.frames[0].height || 1;
         canvas.style.aspectRatio = `${canvas.width} / ${canvas.height}`;
-        ctx = canvas.getContext("2d", { alpha: true });
+        ctx = getCanvas2DContext(canvas, { alpha: true });
         if (!ctx) {
           canvas.remove();
           canvas = null;
@@ -7388,7 +7408,7 @@
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
     const ambientCanvas = osAmbientCanvas instanceof HTMLCanvasElement ? osAmbientCanvas : osAmbientCanvasBase instanceof HTMLCanvasElement ? osAmbientCanvasBase : null;
     if (!(ambientCanvas instanceof HTMLCanvasElement)) return null;
-    const ctx = ambientCanvas.getContext("2d", { alpha: true, desynchronized: true });
+    const ctx = getCanvas2DContext(ambientCanvas, { alpha: true, desynchronized: true });
     if (!ctx) return null;
     ctx.imageSmoothingEnabled = false;
     let disposed = false;
@@ -7416,6 +7436,9 @@
     const coarsePointerLayout = Boolean(window.matchMedia?.("(pointer: coarse)")?.matches || window.matchMedia?.("(hover: none)")?.matches);
     const enableAmbientPointerResponse = !coarsePointerLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
     let performanceDegraded = isDesktopPerformanceDegraded();
+    let scrollTargetOffsetY = 0;
+    let scrollCurrentOffsetY = 0;
+    const ambientScrollParallaxFactor = compactMobileLayout ? 0.26 : 0.38;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -7431,6 +7454,28 @@
     }
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
+    }
+    function wrapCoordinate(value, range) {
+      if (!(range > 0)) return value;
+      let wrapped = value % range;
+      if (wrapped < 0) wrapped += range;
+      return wrapped;
+    }
+    function readAmbientScrollOffset() {
+      const stageScrollTop = osStage instanceof HTMLElement ? osStage.scrollTop : 0;
+      const viewportScrollTop = Number(window.visualViewport?.pageTop) || 0;
+      const windowScrollTop = Number(window.scrollY) || Number(document.documentElement?.scrollTop) || 0;
+      return Math.max(0, stageScrollTop, viewportScrollTop, windowScrollTop);
+    }
+    function updateAmbientScrollState(force = false) {
+      scrollTargetOffsetY = readAmbientScrollOffset() * dpr * ambientScrollParallaxFactor;
+      if (force) {
+        scrollCurrentOffsetY = scrollTargetOffsetY;
+      }
+    }
+    function stepAmbientScrollState() {
+      const ease = prefersReducedMotion ? 1 : 0.14;
+      scrollCurrentOffsetY += (scrollTargetOffsetY - scrollCurrentOffsetY) * ease;
     }
     function smoothstep(value) {
       const clamped = clamp(value, 0, 1);
@@ -7904,6 +7949,7 @@
         ambientCanvas.width = renderWidth;
         ambientCanvas.height = renderHeight;
       }
+      updateAmbientScrollState(true);
       ctx.imageSmoothingEnabled = false;
       rebuildField();
       drawStaticFrame(0);
@@ -7989,7 +8035,9 @@
     }
     function drawStar(starState) {
       const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 1);
-      drawPixelBurst(starState.x, starState.y, {
+      const drawX = wrapCoordinate(starState.x, renderWidth);
+      const drawY = wrapCoordinate(starState.y + scrollCurrentOffsetY, renderHeight);
+      drawPixelBurst(drawX, drawY, {
         cellSize: getAmbientPixelCell(starState.size > 1 ? 1 : 0.85),
         alpha,
         coreCells: 1,
@@ -8002,9 +8050,11 @@
     function drawShootingStar(shootingStarState) {
       const shootingStarScale = 2;
       const cellSize = getAmbientPixelCell((shootingStarState.coreCells > 1 ? 1.15 : 1) * shootingStarScale);
+      const headX = wrapCoordinate(shootingStarState.headX, renderWidth);
+      const headY = wrapCoordinate(shootingStarState.headY + scrollCurrentOffsetY * 0.78, renderHeight);
       drawPixelTrail(
-        shootingStarState.headX,
-        shootingStarState.headY,
+        headX,
+        headY,
         shootingStarState.dirX,
         shootingStarState.dirY,
         shootingStarState.trailLength * shootingStarScale,
@@ -8013,7 +8063,7 @@
           alpha: shootingStarState.alpha * 0.92
         }
       );
-      drawPixelBurst(shootingStarState.headX, shootingStarState.headY, {
+      drawPixelBurst(headX, headY, {
         cellSize,
         alpha: shootingStarState.alpha,
         coreCells: shootingStarState.coreCells,
@@ -8024,8 +8074,8 @@
         diagonalAlphaScale: 0.4
       });
       drawPixelBurst(
-        shootingStarState.headX + shootingStarState.dirX * cellSize,
-        shootingStarState.headY + shootingStarState.dirY * cellSize,
+        wrapCoordinate(headX + shootingStarState.dirX * cellSize, renderWidth),
+        wrapCoordinate(headY + shootingStarState.dirY * cellSize, renderHeight),
         {
           cellSize,
           alpha: shootingStarState.alpha * 0.28,
@@ -8038,6 +8088,8 @@
       );
     }
     function drawGlint(glintState, timeSec) {
+      const drawX = wrapCoordinate(glintState.x, renderWidth);
+      const drawY = wrapCoordinate(glintState.y + scrollCurrentOffsetY, renderHeight);
       const pulseBase = 0.5 + Math.sin(timeSec * glintState.pulseSpeed + glintState.pulsePhase) * 0.5;
       const pulse = Math.pow(pulseBase, 4.2);
       const interactionLift = 1 + glintState.pointerInfluence * 0.45;
@@ -8045,7 +8097,7 @@
       const cellSize = getAmbientPixelCell(1);
       const outerArmCells = Math.max(2, Math.round(glintState.radius / Math.max(1, cellSize * 2.8)));
       const diagonalCells = glintState.diagonalAlpha > 0.002 ? Math.max(1, Math.round(outerArmCells * 0.72)) : 0;
-      drawPixelBurst(glintState.x, glintState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: haloAlpha * 0.24,
         coreCells: glintState.coreSize > 1 ? 2 : 1,
@@ -8056,7 +8108,7 @@
         diagonalAlphaScale: diagonalCells ? 0.24 : 0
       });
       const armAlpha = (0.1 + pulse * 0.26) * interactionLift;
-      drawPixelBurst(glintState.x, glintState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: armAlpha,
         coreCells: glintState.coreSize > 1 ? 2 : 1,
@@ -8066,7 +8118,7 @@
         armAlphaScale: 0.76,
         diagonalAlphaScale: diagonalCells ? clamp(glintState.diagonalAlpha * (0.7 + pulse * 0.4) * 3.8, 0.18, 0.62) : 0
       });
-      drawPixelBurst(glintState.x, glintState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: (0.44 + pulse * 0.36) * (1 + glintState.pointerInfluence * 0.22),
         coreCells: glintState.coreSize > 1 ? 2 : 1,
@@ -8076,6 +8128,8 @@
       });
     }
     function drawFlare(flareState, timeSec) {
+      const drawX = wrapCoordinate(flareState.x, renderWidth);
+      const drawY = wrapCoordinate(flareState.y + scrollCurrentOffsetY, renderHeight);
       const pulseBase = 0.5 + Math.sin(timeSec * flareState.pulseSpeed + flareState.pulsePhase) * 0.5;
       const pulse = 0.38 + Math.pow(pulseBase, 2.4) * 0.92;
       const interactionLift = 1 + flareState.pointerInfluence * 0.3;
@@ -8084,7 +8138,7 @@
       const outerArmCells = Math.max(3, Math.round(flareState.radius / Math.max(1, cellSize * 2.4)));
       const innerArmCells = Math.max(2, outerArmCells - 2);
       const diagonalCells = Math.max(1, Math.round(outerArmCells * 0.82));
-      drawPixelBurst(flareState.x, flareState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: haloAlpha * 0.18,
         coreCells: Math.max(2, flareState.coreSize - 1),
@@ -8094,7 +8148,7 @@
         armAlphaScale: 0.34,
         diagonalAlphaScale: 0.18
       });
-      drawPixelBurst(flareState.x, flareState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: haloAlpha * 0.3,
         coreCells: Math.max(2, flareState.coreSize - 1),
@@ -8104,7 +8158,7 @@
         armAlphaScale: 0.54,
         diagonalAlphaScale: 0.28
       });
-      drawPixelBurst(flareState.x, flareState.y, {
+      drawPixelBurst(drawX, drawY, {
         cellSize,
         alpha: (0.76 + pulse * 0.24) * interactionLift,
         coreCells: Math.max(2, Math.min(3, flareState.coreSize)),
@@ -8119,6 +8173,8 @@
       clearCanvas();
       const timeSec = timeMs * 0.001;
       const allowShootingStars = timeMs > 0 && !prefersReducedMotion && !performanceDegraded;
+      updateAmbientScrollState();
+      stepAmbientScrollState();
       updatePointerState();
       activeShootingStarFields = allowShootingStars
         ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
@@ -8166,6 +8222,16 @@
     }
     function handleWindowBlur() {
       pointerTargetStrength = 0;
+    }
+    function handleAmbientScroll() {
+      if (disposed) return;
+      updateAmbientScrollState();
+      if (!rafId && !document.hidden && !document.body.classList.contains("site-load-playing")) {
+        drawStaticFrame(performance.now());
+      }
+      if (!rafId && shouldAnimate()) {
+        start();
+      }
     }
     function renderFrame(timeMs) {
       rafId = 0;
@@ -8218,6 +8284,11 @@
       window.visualViewport.addEventListener("resize", resize);
     }
     document.addEventListener("visibilitychange", sync);
+    window.addEventListener("scroll", handleAmbientScroll, { passive: true, capture: true });
+    osStage?.addEventListener("scroll", handleAmbientScroll, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("scroll", handleAmbientScroll, { passive: true });
+    }
     if (enableAmbientPointerResponse) {
       window.addEventListener("pointermove", handlePointerMove, { passive: true });
       window.addEventListener("pointerout", handlePointerOut, { passive: true });
@@ -8243,6 +8314,11 @@
           window.visualViewport.removeEventListener("resize", resize);
         }
         document.removeEventListener("visibilitychange", sync);
+        window.removeEventListener("scroll", handleAmbientScroll, true);
+        osStage?.removeEventListener("scroll", handleAmbientScroll);
+        if (window.visualViewport) {
+          window.visualViewport.removeEventListener("scroll", handleAmbientScroll);
+        }
         if (enableAmbientPointerResponse) {
           window.removeEventListener("pointermove", handlePointerMove);
           window.removeEventListener("pointerout", handlePointerOut);
@@ -8271,9 +8347,9 @@
     if (!(osAmbientBackdrop instanceof HTMLElement)) return null;
     if (!(osAmbientCanvasBase instanceof HTMLCanvasElement)) return null;
     const baseCanvas = osAmbientCanvasBase;
-    const baseCtx = baseCanvas.getContext("2d", { alpha: true, desynchronized: true });
+    const baseCtx = getCanvas2DContext(baseCanvas, { alpha: true, desynchronized: true });
     const glowCanvas = osAmbientCanvasGlow instanceof HTMLCanvasElement ? osAmbientCanvasGlow : null;
-    const glowCtx = glowCanvas?.getContext("2d", { alpha: true, desynchronized: true }) || null;
+    const glowCtx = glowCanvas ? getCanvas2DContext(glowCanvas, { alpha: true, desynchronized: true }) : null;
     if (!baseCtx) return null;
     let disposed = false;
     let rafId = 0;
@@ -8517,7 +8593,7 @@
       frontOverlay.remove();
       return createDayWispFallbackController();
     }
-    const glow2d = glowCanvas?.getContext("2d", { alpha: true, desynchronized: true }) || null;
+    const glow2d = glowCanvas ? getCanvas2DContext(glowCanvas, { alpha: true, desynchronized: true }) : null;
     let disposed = false;
     let rafId = 0;
     let cssWidth = 0;
@@ -9348,7 +9424,7 @@
     cursorEl.dataset.cursorMorph = "orb";
     cursorEl.dataset.cursorContrast = "light";
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
-    const trailContext = trailCanvas instanceof HTMLCanvasElement ? trailCanvas.getContext("2d") : null;
+    const trailContext = trailCanvas instanceof HTMLCanvasElement ? getCanvas2DContext(trailCanvas) : null;
     if (!(trailCanvas instanceof HTMLCanvasElement) || !trailContext) {
       document.body.classList.remove("has-custom-cursor");
       cursorEl.remove();
