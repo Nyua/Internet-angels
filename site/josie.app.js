@@ -7824,24 +7824,25 @@
       rebuildField();
       drawStaticFrame(0);
     }
+    const AMBIENT_PIXEL_CELL_SCALE = 1 / 16;
     function getAmbientPixelCell(scale = 1) {
-      return Math.max(1, Math.round(Math.max(1, dpr) * scale));
+      return Math.max(AMBIENT_PIXEL_CELL_SCALE, Math.max(1, dpr) * scale * AMBIENT_PIXEL_CELL_SCALE);
     }
     function fillPixelCell(gridX, gridY, cellSize, alpha, widthCells = 1, heightCells = 1) {
       if (alpha <= 0.002) return;
-      const safeCellSize = Math.max(1, Math.round(cellSize));
+      const safeCellSize = Math.max(AMBIENT_PIXEL_CELL_SCALE, cellSize);
       const safeWidthCells = Math.max(1, Math.round(widthCells));
       const safeHeightCells = Math.max(1, Math.round(heightCells));
       ctx.fillStyle = `rgba(255,255,255,${clamp(alpha, 0, 1)})`;
       ctx.fillRect(
-        Math.round(gridX * safeCellSize),
-        Math.round(gridY * safeCellSize),
+        gridX * safeCellSize,
+        gridY * safeCellSize,
         safeWidthCells * safeCellSize,
         safeHeightCells * safeCellSize
       );
     }
     function drawPixelBurst(centerX, centerY, options = {}) {
-      const cellSize = Math.max(1, Math.round(options.cellSize || getAmbientPixelCell()));
+      const cellSize = Math.max(AMBIENT_PIXEL_CELL_SCALE, options.cellSize || getAmbientPixelCell());
       const gridX = Math.round(centerX / cellSize);
       const gridY = Math.round(centerY / cellSize);
       const coreCells = Math.max(1, Math.round(options.coreCells || 1));
@@ -7877,7 +7878,7 @@
       }
     }
     function drawPixelTrail(headX, headY, dirX, dirY, lengthPx, options = {}) {
-      const cellSize = Math.max(1, Math.round(options.cellSize || getAmbientPixelCell()));
+      const cellSize = Math.max(AMBIENT_PIXEL_CELL_SCALE, options.cellSize || getAmbientPixelCell());
       const baseAlpha = clamp(options.alpha || 0, 0, 1);
       if (baseAlpha <= 0.002) return;
       const directionLength = Math.max(1e-4, Math.hypot(dirX, dirY));
