@@ -1885,13 +1885,32 @@
         target.style.setProperty("--shuffle-sparkle", theme.sparkle);
       });
     }
+    function getShuffleDisplayCopy() {
+      return {
+        title: currentTrack?.title || (loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle..."),
+        artist: currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist")
+      };
+    }
     function buildPublicState() {
+      const displayCopy = getShuffleDisplayCopy();
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const currentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
       return {
         muted: Boolean(audioEl.muted),
         volumeRatio: SHUFFLE_MAX_VOLUME > 0 ? clamp2(audioEl.volume / SHUFFLE_MAX_VOLUME, 0, 1) : 0,
         playing: Boolean(currentTrack) && !audioEl.paused,
         blocked: loadState === "blocked",
-        hasTrack: Boolean(currentTrack)
+        hasTrack: Boolean(currentTrack),
+        title: displayCopy.title,
+        artist: displayCopy.artist,
+        currentTime,
+        duration,
+        progress,
+        currentTimeLabel: formatAudioTime(currentTime),
+        durationLabel: duration > 0 ? formatAudioTime(duration) : "--:--",
+        timeRemainingLabel: formatAudioTimeLeft(currentTime, duration),
+        theme: resolveShuffleTheme(currentTrack || displayCopy)
       };
     }
     function clearVisualizerCopyTimers() {
@@ -1960,8 +1979,7 @@
         gainNode.gain.value = nextValue;
       }
     }
-    function notifyStateSubscribers() {
-      const state = buildPublicState();
+    function notifyStateSubscribers(state = buildPublicState()) {
       stateSubscribers.forEach((listener) => {
         try {
           listener(state);
@@ -2046,35 +2064,33 @@
     }
     function syncUi() {
       syncVisualizerPerformanceMode();
+      const state = buildPublicState();
       if (titleEl instanceof HTMLElement) {
-        titleEl.textContent = currentTrack?.title || (loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle...");
+        titleEl.textContent = state.title;
       }
       if (artistEl instanceof HTMLElement) {
-        artistEl.textContent = currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist");
+        artistEl.textContent = state.artist;
       }
       syncVisualizerCopyCycle();
       applyShuffleTheme(currentTrack);
-      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
-      const currentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
-      const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
       if (progressFillEl instanceof HTMLElement) {
-        progressFillEl.style.transform = `scaleX(${progress.toFixed(4)})`;
+        progressFillEl.style.transform = `scaleX(${state.progress.toFixed(4)})`;
       }
       if (timeRemainingEl instanceof HTMLElement) {
-        timeRemainingEl.textContent = formatAudioTimeLeft(currentTime, duration);
+        timeRemainingEl.textContent = state.timeRemainingLabel;
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.classList.toggle("is-compact", compactPlayerMode);
         playerRoot.classList.toggle("is-loading", loadState === "loading");
         playerRoot.classList.toggle("is-error", loadState === "error");
         playerRoot.classList.toggle("is-blocked", loadState === "blocked");
-        playerRoot.classList.toggle("is-playing", Boolean(currentTrack) && !audioEl.paused);
+        playerRoot.classList.toggle("is-playing", state.playing);
       }
       if (waveSurface instanceof HTMLElement) {
         waveSurface.classList.toggle("is-blocked", loadState === "blocked");
-        waveSurface.classList.toggle("is-playing", Boolean(currentTrack) && !audioEl.paused);
+        waveSurface.classList.toggle("is-playing", state.playing);
       }
-      notifyStateSubscribers();
+      notifyStateSubscribers(state);
     }
     function isSiteLoadPending() {
       return Boolean(document.body?.classList.contains("site-load-playing") || window.__josieHandoffPending);
@@ -3242,16 +3258,19 @@
     </ul>
   `;
   }
-  function renderMobileLastFmRecentDropdown(contentMarkup, options = {}) {
+  function renderMobileLastFmDropdown(contentMarkup, options = {}) {
+    const title = firstNonEmpty(options?.title, "Recent Tracks");
+    const summary = firstNonEmpty(options?.summary, "Tap to browse recent plays");
+    const dropdownKey = firstNonEmpty(options?.dropdownKey, "recent-tracks");
     const revealState = firstNonEmpty(options?.revealState, "pending");
     const open = Boolean(options?.open);
     return `
             <section class="lastfm-section lastfm-section--mobile-dropdown">
-              <details class="lastfm-mobile-dropdown lastfm-recent-reveal" data-mobile-lastfm-reveal="${escapeHtml(revealState)}" data-mobile-lastfm-dropdown data-mobile-lastfm-dropdown-open="${open ? "true" : "false"}"${open ? " open" : ""}>
-                <summary class="lastfm-mobile-dropdown-summary" data-mobile-lastfm-dropdown-summary aria-label="Toggle Recent Tracks">
+              <details class="lastfm-mobile-dropdown lastfm-mobile-reveal" data-mobile-lastfm-reveal="${escapeHtml(revealState)}" data-mobile-lastfm-dropdown data-mobile-lastfm-dropdown-key="${escapeHtml(dropdownKey)}" data-mobile-lastfm-dropdown-open="${open ? "true" : "false"}"${open ? " open" : ""}>
+                <summary class="lastfm-mobile-dropdown-summary" data-mobile-lastfm-dropdown-summary data-mobile-lastfm-dropdown-key="${escapeHtml(dropdownKey)}" aria-label="Toggle ${escapeHtml(title)}">
                   <span class="lastfm-mobile-dropdown-summary-copy">
-                    <span class="lastfm-section-title">Recent Tracks</span>
-                    <span class="lastfm-mobile-dropdown-summary-meta">Tap to browse recent plays</span>
+                    <span class="lastfm-section-title">${escapeHtml(title)}</span>
+                    <span class="lastfm-mobile-dropdown-summary-meta">${escapeHtml(summary)}</span>
                   </span>
                   <span class="lastfm-mobile-dropdown-summary-chevron" aria-hidden="true"></span>
                 </summary>
@@ -3319,14 +3338,19 @@
     const mobile = Boolean(options?.mobile);
     const mobileRecentRevealState = mobile ? String(options?.mobileRecentRevealState || "pending") : "";
     const mobileRecentDropdownOpen = mobile ? Boolean(options?.mobileRecentDropdownOpen) : false;
+    const mobileTopArtistsDropdownOpen = mobile ? Boolean(options?.mobileTopArtistsDropdownOpen) : false;
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
     const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
     const recentTracksMarkup = renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 });
+    const topArtistsMarkup = renderLastFmMediaGrid(Array.isArray(sections.topArtists) ? sections.topArtists : [], "artists", { maxItems: 8 });
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
     const showcaseVariant = mobile ? "lastfm-mobile" : "lastfm-sections";
     const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
-    const recentTracksSection = mobile ? renderMobileLastFmRecentDropdown(recentTracksMarkup, {
+    const recentTracksSection = mobile ? renderMobileLastFmDropdown(recentTracksMarkup, {
+      title: "Recent Tracks",
+      summary: "Tap to browse recent plays",
+      dropdownKey: "recent-tracks",
       revealState: mobileRecentRevealState,
       open: mobileRecentDropdownOpen
     }) : `
@@ -3343,10 +3367,16 @@
               ${renderLastFmMediaGrid(topAlbums, "albums")}
             </section>
     `;
-    const topArtistsSection = `
+    const topArtistsSection = mobile ? renderMobileLastFmDropdown(topArtistsMarkup, {
+      title: "Top Artists",
+      summary: "Tap to browse chart leaders",
+      dropdownKey: "top-artists",
+      revealState: mobileRecentRevealState,
+      open: mobileTopArtistsDropdownOpen
+    }) : `
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Artists</h4>
-              ${renderLastFmMediaGrid(Array.isArray(sections.topArtists) ? sections.topArtists : [], "artists", { maxItems: 8 })}
+              ${topArtistsMarkup}
             </section>
     `;
     return `
@@ -3387,6 +3417,36 @@
       })}
     </div>
   `;
+  }
+  function renderSidebarCurrentlyPlayingPanel(state) {
+    const title = firstNonEmpty(state?.title, "Loading Shuffle...");
+    const artist = firstNonEmpty(state?.artist, "Unknown Artist");
+    const progress = clamp2(Number(state?.progress) || 0, 0, 1);
+    const currentTimeLabel = firstNonEmpty(state?.currentTimeLabel, "0:00");
+    const durationLabel = firstNonEmpty(state?.durationLabel, "--:--");
+    const playbackState = !state?.hasTrack ? "loading" : state?.blocked ? "blocked" : state?.playing ? "playing" : "paused";
+    const playbackLabel = playbackState === "loading" ? "Loading" : playbackState === "blocked" ? "Click to start" : playbackState === "playing" ? "Shuffle live" : "Paused";
+    return `
+      <section class="steam-sidebar-currently-playing-panel${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}">
+        <div class="steam-sidebar-currently-playing-head">
+          <span class="steam-sidebar-currently-playing-label">Currently playing</span>
+          <span class="steam-sidebar-currently-playing-status" data-sidebar-shuffle-status>${escapeHtml(playbackLabel)}</span>
+        </div>
+        <div class="steam-sidebar-currently-playing-copy">
+          <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
+          <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
+        </div>
+        <div class="steam-sidebar-currently-playing-progress">
+          <div class="steam-sidebar-currently-playing-progress-track">
+            <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
+          </div>
+          <div class="steam-sidebar-currently-playing-time">
+            <span class="steam-sidebar-currently-playing-time-elapsed" data-sidebar-shuffle-current-time>${escapeHtml(currentTimeLabel)}</span>
+            <span class="steam-sidebar-currently-playing-time-duration" data-sidebar-shuffle-duration>${escapeHtml(durationLabel)}</span>
+          </div>
+        </div>
+      </section>
+    `;
   }
   function renderLastFmTrackPanelStat(label, value, options = {}) {
     const valueClass = options?.valueClass ? ` ${escapeHtml(options.valueClass)}` : "";
@@ -4618,6 +4678,7 @@
   function renderSidebar(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const mobileLinksRevealState = compact ? String(options?.mobileLinksRevealState || "pending") : "";
+    const shuffleState = compact ? null : options?.shuffleState || null;
     const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
     const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
@@ -4678,6 +4739,7 @@
       <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}"${compact ? ` data-mobile-links-reveal="${escapeHtml(mobileLinksRevealState)}"` : ""}>
         ${rows}
       </ul>
+      ${compact ? "" : renderSidebarCurrentlyPlayingPanel(shuffleState)}
     </section>
   `;
   }
@@ -4721,7 +4783,7 @@
     let spotifyIframeApiPromise = null;
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
-    let mobileSpeakerToggleUnsubscribe = null;
+    let shuffleUiUnsubscribe = null;
     let mobileDiscordRevealPlayed = false;
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
@@ -4729,6 +4791,7 @@
     let mobileLastFmRevealPlayed = false;
     let mobileLastFmRevealTimer = 0;
     let mobileLastFmDropdownOpen = false;
+    let mobileTopArtistsDropdownOpen = false;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
@@ -4926,19 +4989,23 @@
         scheduleMobileLastFmReveal();
       }, 320);
     }
-    function getMobileLastFmReveal() {
-      if (!(showcases instanceof HTMLElement)) return null;
-      return showcases.querySelector(".lastfm-recent-reveal");
+    function getMobileLastFmRevealTargets() {
+      if (!(showcases instanceof HTMLElement)) return [];
+      return Array.from(showcases.querySelectorAll(".lastfm-mobile-reveal"));
     }
-    function getMobileLastFmDropdown() {
+    function getMobileLastFmDropdown(key = "") {
       if (!(showcases instanceof HTMLElement)) return null;
+      if (key) {
+        return showcases.querySelector(`[data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="${key}"]`);
+      }
       return showcases.querySelector("[data-mobile-lastfm-dropdown]");
     }
     function setMobileLastFmRevealState(nextState) {
-      const reveal = getMobileLastFmReveal();
-      if (!(reveal instanceof HTMLElement)) return;
-      reveal.dataset.mobileLastfmReveal = nextState;
-      reveal.classList.toggle("is-mobile-lastfm-visible", nextState === "visible");
+      getMobileLastFmRevealTargets().forEach((reveal) => {
+        if (!(reveal instanceof HTMLElement)) return;
+        reveal.dataset.mobileLastfmReveal = nextState;
+        reveal.classList.toggle("is-mobile-lastfm-visible", nextState === "visible");
+      });
     }
     function scheduleMobileLastFmReveal() {
       if (!isCompactMobileLayout()) return;
@@ -5187,6 +5254,51 @@
         const volumePercent = Math.round(clamp2(Number(state.volumeRatio) || 0, 0, 1) * 100);
         shuffleVolumeSlider.value = String(volumePercent);
         shuffleVolumeSlider.setAttribute("aria-valuetext", `${volumePercent}%`);
+      }
+    }
+    function syncSidebarCurrentlyPlaying(state = shufflePlayerController.getState()) {
+      if (!(sidebar instanceof HTMLElement)) return;
+      const panel = sidebar.querySelector("[data-sidebar-shuffle-panel]");
+      if (!(panel instanceof HTMLElement)) return;
+      const safeState = state && typeof state === "object" ? state : shufflePlayerController.getState();
+      const playbackState = !safeState?.hasTrack ? "loading" : safeState?.blocked ? "blocked" : safeState?.playing ? "playing" : "paused";
+      const playbackLabel = playbackState === "loading" ? "Loading" : playbackState === "blocked" ? "Click to start" : playbackState === "playing" ? "Shuffle live" : "Paused";
+      const progress = clamp2(Number(safeState?.progress) || 0, 0, 1);
+      const title = firstNonEmpty(safeState?.title, "Loading Shuffle...");
+      const artist = firstNonEmpty(safeState?.artist, "Unknown Artist");
+      const currentTimeLabel = firstNonEmpty(safeState?.currentTimeLabel, "0:00");
+      const durationLabel = firstNonEmpty(safeState?.durationLabel, "--:--");
+      const theme = safeState?.theme || {};
+      panel.classList.toggle("is-playing", playbackState === "playing");
+      panel.classList.toggle("is-blocked", playbackState === "blocked");
+      panel.setAttribute("data-sidebar-shuffle-state", playbackState);
+      panel.style.setProperty("--shuffle-accent", firstNonEmpty(theme.accent, "326 90% 72%"));
+      panel.style.setProperty("--shuffle-accent-strong", firstNonEmpty(theme.accentStrong, "338 96% 80%"));
+      panel.style.setProperty("--shuffle-secondary", firstNonEmpty(theme.secondary, "195 88% 76%"));
+      panel.style.setProperty("--shuffle-sparkle", firstNonEmpty(theme.sparkle, "0 0% 100%"));
+      const titleEl = panel.querySelector("[data-sidebar-shuffle-title]");
+      if (titleEl instanceof HTMLElement) {
+        titleEl.textContent = title;
+      }
+      const artistEl = panel.querySelector("[data-sidebar-shuffle-artist]");
+      if (artistEl instanceof HTMLElement) {
+        artistEl.textContent = artist;
+      }
+      const statusEl = panel.querySelector("[data-sidebar-shuffle-status]");
+      if (statusEl instanceof HTMLElement) {
+        statusEl.textContent = playbackLabel;
+      }
+      const fillEl = panel.querySelector("[data-sidebar-shuffle-progress-fill]");
+      if (fillEl instanceof HTMLElement) {
+        fillEl.style.transform = `scaleX(${progress.toFixed(4)})`;
+      }
+      const currentTimeEl = panel.querySelector("[data-sidebar-shuffle-current-time]");
+      if (currentTimeEl instanceof HTMLElement) {
+        currentTimeEl.textContent = currentTimeLabel;
+      }
+      const durationEl = panel.querySelector("[data-sidebar-shuffle-duration]");
+      if (durationEl instanceof HTMLElement) {
+        durationEl.textContent = durationLabel;
       }
     }
     async function onMobileSpeakerToggleClick(event) {
@@ -7059,7 +7171,13 @@
       const target = event.target;
       if (!(target instanceof HTMLDetailsElement)) return;
       if (!target.matches("[data-mobile-lastfm-dropdown]")) return;
-      mobileLastFmDropdownOpen = target.open;
+      const dropdownKey = String(target.getAttribute("data-mobile-lastfm-dropdown-key") || "").trim();
+      if (dropdownKey === "recent-tracks") {
+        mobileLastFmDropdownOpen = target.open;
+      }
+      if (dropdownKey === "top-artists") {
+        mobileTopArtistsDropdownOpen = target.open;
+      }
       target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
     }
     function onRefreshClick() {
@@ -7105,15 +7223,18 @@
           showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), {
             mobile: true,
             mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending",
-            mobileRecentDropdownOpen: mobileLastFmDropdownOpen
+            mobileRecentDropdownOpen: mobileLastFmDropdownOpen,
+            mobileTopArtistsDropdownOpen
           });
           if (mobileLastFmRevealPlayed) {
             setMobileLastFmRevealState("visible");
           }
-          const mobileLastFmDropdown = getMobileLastFmDropdown();
-          if (mobileLastFmDropdown instanceof HTMLDetailsElement) {
-            mobileLastFmDropdown.dataset.mobileLastfmDropdownOpen = mobileLastFmDropdown.open ? "true" : "false";
-          }
+          ["recent-tracks", "top-artists"].forEach((dropdownKey) => {
+            const mobileLastFmDropdown = getMobileLastFmDropdown(dropdownKey);
+            if (mobileLastFmDropdown instanceof HTMLDetailsElement) {
+              mobileLastFmDropdown.dataset.mobileLastfmDropdownOpen = mobileLastFmDropdown.open ? "true" : "false";
+            }
+          });
         } else {
           showcases.innerHTML = "";
           showcases.hidden = true;
@@ -7129,9 +7250,11 @@
       }
       const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
       shufflePlayerController?.attach(shuffleRoot);
+      const shuffleState = shufflePlayerController.getState();
       sidebar.innerHTML = renderSidebar(payloadById, sites, {
         compact: compactMobile,
-        mobileLinksRevealState: compactMobile ? mobileLinksRevealPlayed ? "visible" : "pending" : ""
+        mobileLinksRevealState: compactMobile ? mobileLinksRevealPlayed ? "visible" : "pending" : "",
+        shuffleState
       });
       if (compactMobile) {
         syncMobileLinkSelectedState();
@@ -7139,6 +7262,7 @@
       }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);
+      syncSidebarCurrentlyPlaying(shuffleState);
       if (lastRefreshLabel instanceof HTMLElement) {
         lastRefreshLabel.textContent = "";
         lastRefreshLabel.hidden = true;
@@ -7154,10 +7278,11 @@
     }
     if (mobileSpeakerButton instanceof HTMLButtonElement) {
       mobileSpeakerButton.addEventListener("click", onMobileSpeakerToggleClick);
-      mobileSpeakerToggleUnsubscribe = shufflePlayerController.subscribe(() => {
-        syncMobileSpeakerToggle(true);
-      });
     }
+    shuffleUiUnsubscribe = shufflePlayerController.subscribe((state) => {
+      syncMobileSpeakerToggle(true);
+      syncSidebarCurrentlyPlaying(state);
+    });
     if (shuffleVolumeSlider instanceof HTMLInputElement) {
       shuffleVolumeSlider.addEventListener("input", onShuffleVolumeInput);
     }
@@ -7182,8 +7307,8 @@
       hideExternalPrompt("silent");
       mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
       shuffleVolumeSlider?.removeEventListener("input", onShuffleVolumeInput);
-      mobileSpeakerToggleUnsubscribe?.();
-      mobileSpeakerToggleUnsubscribe = null;
+      shuffleUiUnsubscribe?.();
+      shuffleUiUnsubscribe = null;
       if (window.__internetAngelShuffleDebug === shuffleDebugController) {
         delete window.__internetAngelShuffleDebug;
       }

@@ -727,6 +727,23 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("Backdoor");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("Ericdoa");
+  await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("Backdoor");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("Ericdoa");
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel]");
+    const fill = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-progress-fill]");
+    const elapsed = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-current-time]");
+    const duration = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-duration]");
+    if (!(panel instanceof HTMLElement) || !(fill instanceof HTMLElement) || !(elapsed instanceof HTMLElement) || !(duration instanceof HTMLElement)) {
+      return false;
+    }
+    const transformMatch = (fill.style.transform || "").match(/scaleX\(([^)]+)\)/);
+    const progress = transformMatch ? Number.parseFloat(transformMatch[1]) : 0;
+    return panel.dataset.sidebarShuffleState === "playing"
+      && duration.textContent.trim() !== "--:--"
+      && (progress > 0 || elapsed.textContent.trim() !== "0:00");
+  });
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
     if (!(copy instanceof HTMLElement)) return false;
@@ -749,6 +766,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && copy.dataset.shuffleCopyState === "visible"
       && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
   }, firstVisualizerTrackTitle);
+  await page.waitForFunction(() => {
+    const visualizerTitle = document.querySelector("#os-shuffle-visualizer-title");
+    const visualizerArtist = document.querySelector("#os-shuffle-visualizer-artist");
+    const sidebarTitle = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-title]");
+    const sidebarArtist = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-artist]");
+    return visualizerTitle instanceof HTMLElement
+      && visualizerArtist instanceof HTMLElement
+      && sidebarTitle instanceof HTMLElement
+      && sidebarArtist instanceof HTMLElement
+      && visualizerTitle.textContent.trim() === sidebarTitle.textContent.trim()
+      && visualizerArtist.textContent.trim() === sidebarArtist.textContent.trim();
+  });
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -1996,6 +2025,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     const presenceCard = document.querySelector(".discord-presence-card--foundlifeless");
     const presenceAvatar = document.querySelector(".discord-presence-avatar-wrap");
     const iconLinks = Array.from(document.querySelectorAll(".steam-sidebar-link--icon-only"));
+    const cinnaWrap = document.querySelector(".cinna-mobile-gif-wrap");
     const cinna = document.querySelector(".cinna-mobile-gif--canvas");
     const speakerButton = document.querySelector("[data-mobile-speaker-toggle]");
     const iconCenters = iconLinks.map((node) => {
@@ -2029,6 +2059,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
       presenceCardWidth: presenceCard instanceof HTMLElement ? Math.round(presenceCard.getBoundingClientRect().width) : null,
       presenceAvatarWidth: presenceAvatar instanceof HTMLElement ? Math.round(presenceAvatar.getBoundingClientRect().width) : null,
       speakerRect: rectSnapshot(speakerButton),
+      cinnaWrapRect: rectSnapshot(cinnaWrap),
       cinnaRect: rectSnapshot(cinna),
       iconRowRect: rectSnapshot(document.querySelector(".steam-sidebar-list--mobile-icons")),
       minGap: gaps.length ? Math.min(...gaps) : null,
@@ -2046,14 +2077,15 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileCentering.speakerRect).not.toBeNull();
   expect(mobileCentering.speakerRect.left).toBeLessThan(24);
   expect(mobileCentering.speakerRect.top).toBeLessThan(32);
+  expect(mobileCentering.cinnaWrapRect).not.toBeNull();
   expect(mobileCentering.cinnaRect).not.toBeNull();
   expect(mobileCentering.iconRowRect).not.toBeNull();
   expect(Math.abs(mobileCentering.maxGap - mobileCentering.minGap)).toBeLessThan(12);
   expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(184);
   expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(196);
-  expect(mobileCentering.cinnaRect.top).toBeGreaterThanOrEqual(8);
+  expect(Math.abs(mobileCentering.cinnaWrapRect.top - mobileCentering.presencePanelRect.top)).toBeLessThanOrEqual(3);
   expect(mobileCentering.cinnaRect.bottom).toBeGreaterThan(mobileCentering.presenceCardRect.top + 6);
-  expect(mobileCentering.cinnaRect.bottom).toBeLessThan(mobileCentering.presenceCardRect.top + 120);
+  expect(mobileCentering.cinnaRect.bottom).toBeLessThan(mobileCentering.presenceCardRect.top + 88);
   expect(mobileCentering.iconRowRect.top - mobileCentering.presencePanelRect.bottom).toBeGreaterThanOrEqual(8);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
 
@@ -3858,13 +3890,44 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
   await expect(page.locator("#social-hub-showcases .steam-showcase")).toHaveCount(1);
   await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(1);
-  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
-  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown-summary]")).toBeVisible();
+  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveCount(2);
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toBeVisible();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="top-artists"]')).toBeVisible();
   await expect(page.locator("#social-hub-showcases .lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" })).toBeVisible();
   await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" })).toHaveCount(0);
   await expect(page.locator("#social-hub-showcases .lastfm-profile-total")).toHaveCount(0);
   await expect(page.locator("#social-hub-showcases .lastfm-media-grid--artists .lastfm-media-button")).toHaveCount(3);
+  const mobileDropdownStyles = await page.evaluate(() => {
+    const recentDropdown = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+    const topArtistsDropdown = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]');
+    const discordCard = document.querySelector(".discord-presence-card--foundlifeless");
+    const readStyles = (node) => {
+      if (!(node instanceof HTMLElement)) return null;
+      const styles = window.getComputedStyle(node);
+      return {
+        borderRadius: styles.borderRadius,
+        backgroundColor: styles.backgroundColor,
+        borderTopWidth: styles.borderTopWidth
+      };
+    };
+    return {
+      recent: readStyles(recentDropdown),
+      topArtists: readStyles(topArtistsDropdown),
+      discord: readStyles(discordCard)
+    };
+  });
+  expect(mobileDropdownStyles.recent).not.toBeNull();
+  expect(mobileDropdownStyles.topArtists).not.toBeNull();
+  expect(mobileDropdownStyles.discord).not.toBeNull();
+  expect(mobileDropdownStyles.recent.borderRadius).toBe(mobileDropdownStyles.discord.borderRadius);
+  expect(mobileDropdownStyles.topArtists.borderRadius).toBe(mobileDropdownStyles.discord.borderRadius);
+  expect(mobileDropdownStyles.recent.backgroundColor).toBe(mobileDropdownStyles.discord.backgroundColor);
+  expect(mobileDropdownStyles.topArtists.backgroundColor).toBe(mobileDropdownStyles.discord.backgroundColor);
+  expect(mobileDropdownStyles.recent.borderTopWidth).toBe(mobileDropdownStyles.discord.borderTopWidth);
+  expect(mobileDropdownStyles.topArtists.borderTopWidth).toBe(mobileDropdownStyles.discord.borderTopWidth);
   const mobileShowcasePosition = await page.evaluate(() => {
     const iconRow = document.querySelector(".steam-sidebar-list--mobile-icons");
     const showcase = document.querySelector("#social-hub-showcases");
@@ -3902,8 +3965,10 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   expect(stageScrollResult).not.toBeNull();
   expect(stageScrollResult.after).toBeGreaterThan(stageScrollResult.before);
 
-  await page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown-summary]").click();
-  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="top-artists"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
