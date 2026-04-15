@@ -4544,7 +4544,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   display: block;
   overflow: hidden;
   pointer-events: none;
-  opacity: 0.2;
+  opacity: 0.4;
   contain: layout paint size;
   will-change: transform, opacity;
   transform: translateZ(0);
@@ -6447,6 +6447,85 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     pointer-events: auto;
   }
 
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-section--mobile-dropdown {
+    padding-bottom: 10px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown {
+    margin: 0 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(20, 20, 28, 0.92), rgba(10, 10, 16, 0.88)),
+      radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 58%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 14px 28px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown[open] {
+    background:
+      linear-gradient(180deg, rgba(24, 24, 34, 0.96), rgba(10, 10, 16, 0.92)),
+      radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 58%);
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0.9rem 1rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary::marker {
+    content: "";
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary .lastfm-section-title {
+    padding-left: 0;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary-meta {
+    font-size: 10px;
+    line-height: 1.1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 227, 234, 0.68);
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-summary-chevron {
+    flex: 0 0 auto;
+    width: 11px;
+    height: 11px;
+    border-right: 1.5px solid rgba(255, 238, 243, 0.82);
+    border-bottom: 1.5px solid rgba(255, 238, 243, 0.82);
+    transform: translateY(-1px) rotate(45deg);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown[open] .lastfm-mobile-dropdown-summary-chevron {
+    transform: translateY(1px) rotate(-135deg);
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-panel {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.01);
+  }
+
   .social-hub-showcases {
     display: none;
     width: 100%;
@@ -6495,8 +6574,16 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     letter-spacing: 0.06em;
   }
 
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-mobile-dropdown-summary .lastfm-section-title {
+    padding-left: 0;
+  }
+
   .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-list {
     border-top-width: 1px;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-mobile-dropdown-panel .lastfm-recent-list {
+    border-top-width: 0;
   }
 
   .social-hub-showcases.social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-minimal .lastfm-recent-item {
@@ -6643,6 +6730,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .social-hub-profile-tagline {
     margin-top: 10px;
+    padding-top: clamp(20px, 5vw, 30px);
   }
 
   .discord-presence-mobile-ornament {
@@ -7495,16 +7583,14 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .cinna-mobile-gif-wrap {
     display: flex;
-    width: auto;
+    width: min(100%, 320px);
     justify-content: center;
-    align-items: center;
-    position: fixed;
-    left: 50%;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 1px);
-    transform: translateX(-50%);
+    align-items: flex-end;
+    position: relative;
+    margin: 0 auto -34px;
     padding: 0;
     pointer-events: none;
-    z-index: 3;
+    z-index: 4;
   }
 
   .cinna-mobile-gif {
@@ -7526,6 +7612,17 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     max-width: min(176px, 44vw);
     max-height: min(192px, 22svh);
     height: auto;
+  }
+
+  .discord-presence-reveal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .discord-presence-card--foundlifeless {
+    position: relative;
+    z-index: 2;
   }
 
 }

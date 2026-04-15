@@ -3020,6 +3020,15 @@
       customStatusEmojiAlt: customEmoji.url ? customEmoji.alt : ""
     };
   }
+  function renderCinnaMobileGifMarkup() {
+    const cinnaGifs = ["cinna_sleep.gif", "cinna_wink.gif"];
+    const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
+    return `
+      <div class="cinna-mobile-gif-wrap" aria-hidden="true">
+        <img class="cinna-mobile-gif" src="/${randomCinna}" data-cinna-gif-src="/${randomCinna}" alt="" loading="eager" decoding="async" />
+      </div>
+    `;
+  }
   function renderDiscordPresencePanel(payload, options = {}) {
     const model = buildDiscordPresenceCardModel(payload);
     const compact = Boolean(options?.compact);
@@ -3029,10 +3038,12 @@
                       ${renderHeroOrnamentMarkup()}
                     </div>
     ` : "";
+    const mobileCinnaMarkup = compact ? renderCinnaMobileGifMarkup() : "";
     return `
       <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
         <div class="discord-presence-shell">
           <div class="discord-presence-reveal"${compact ? ` data-mobile-discord-reveal="${escapeHtml(mobileRevealState)}"` : ""}>
+            ${mobileCinnaMarkup}
             <article class="discord-presence-card discord-presence-card--foundlifeless" data-spotify-active="${model.showAlbumArt ? "true" : "false"}">
               <div class="discord-presence-body">
                 <div class="discord-presence-avatar-stack">
@@ -3231,6 +3242,26 @@
     </ul>
   `;
   }
+  function renderMobileLastFmRecentDropdown(contentMarkup, options = {}) {
+    const revealState = firstNonEmpty(options?.revealState, "pending");
+    const open = Boolean(options?.open);
+    return `
+            <section class="lastfm-section lastfm-section--mobile-dropdown">
+              <details class="lastfm-mobile-dropdown lastfm-recent-reveal" data-mobile-lastfm-reveal="${escapeHtml(revealState)}" data-mobile-lastfm-dropdown data-mobile-lastfm-dropdown-open="${open ? "true" : "false"}"${open ? " open" : ""}>
+                <summary class="lastfm-mobile-dropdown-summary" data-mobile-lastfm-dropdown-summary aria-label="Toggle Recent Tracks">
+                  <span class="lastfm-mobile-dropdown-summary-copy">
+                    <span class="lastfm-section-title">Recent Tracks</span>
+                    <span class="lastfm-mobile-dropdown-summary-meta">Tap to browse recent plays</span>
+                  </span>
+                  <span class="lastfm-mobile-dropdown-summary-chevron" aria-hidden="true"></span>
+                </summary>
+                <div class="lastfm-mobile-dropdown-panel">
+                  ${contentMarkup}
+                </div>
+              </details>
+            </section>
+  `;
+  }
   function renderLastFmProfileTotals(totals) {
     const safeTotals = totals && typeof totals === "object" ? totals : {};
     const entries = [
@@ -3287,19 +3318,32 @@
   function renderLastFmShowcase(site, payload, options = {}) {
     const mobile = Boolean(options?.mobile);
     const mobileRecentRevealState = mobile ? String(options?.mobileRecentRevealState || "pending") : "";
+    const mobileRecentDropdownOpen = mobile ? Boolean(options?.mobileRecentDropdownOpen) : false;
     const sections = payload.sections && typeof payload.sections === "object" ? payload.sections : {};
     const currentlyListening = sections.currentlyListening && typeof sections.currentlyListening === "object" ? sections.currentlyListening : null;
     const recentTrackSource = Array.isArray(sections.recentTracks) && sections.recentTracks.length ? sections.recentTracks : payload.items;
+    const recentTracksMarkup = renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 });
     const topAlbums = Array.isArray(sections.topAlbums) ? sections.topAlbums : [];
     const showcaseVariant = mobile ? "lastfm-mobile" : "lastfm-sections";
     const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
+    const recentTracksSection = mobile ? renderMobileLastFmRecentDropdown(recentTracksMarkup, {
+      revealState: mobileRecentRevealState,
+      open: mobileRecentDropdownOpen
+    }) : `
+            <section class="lastfm-section">
+              <h4 class="lastfm-section-title">Recent Tracks</h4>
+              <div class="lastfm-recent-reveal">
+                ${recentTracksMarkup}
+              </div>
+            </section>
+    `;
     const topAlbumsSection = mobile ? "" : `
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Albums</h4>
               ${renderLastFmMediaGrid(topAlbums, "albums")}
             </section>
     `;
-    const topArtistsSection = mobile ? "" : `
+    const topArtistsSection = `
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Artists</h4>
               ${renderLastFmMediaGrid(Array.isArray(sections.topArtists) ? sections.topArtists : [], "artists", { maxItems: 8 })}
@@ -3310,12 +3354,7 @@
       <div class="steam-showcase-body steam-showcase-body--single steam-showcase-body--lastfm-minimal">
         <section class="steam-showcase-content steam-showcase-content--full steam-showcase-content--lastfm-minimal">
           <div class="lastfm-sections">
-            <section class="lastfm-section">
-              <h4 class="lastfm-section-title">Recent Tracks</h4>
-              <div class="lastfm-recent-reveal"${mobile ? ` data-mobile-lastfm-reveal="${escapeHtml(mobileRecentRevealState)}"` : ""}>
-                ${renderLastFmRecentTracks(recentTrackSource, currentlyListening, { maxVisibleRows: mobile ? 10 : 10 })}
-              </div>
-            </section>
+            ${recentTracksSection}
             ${topArtistsSection}
             ${topAlbumsSection}
           </div>
@@ -4633,17 +4672,12 @@
       </li>
     `;
     }).join("");
-    const cinnaGifs = ['cinna_sleep.gif', 'cinna_wink.gif'];
-    const randomCinna = cinnaGifs[Math.floor(Math.random() * cinnaGifs.length)];
     return `
     <section class="steam-sidebar-panel${compact ? " steam-sidebar-panel--mobile-home" : ""}">
       ${compact ? "" : '<h3 class="steam-sidebar-title">Profile Links:</h3>'}
       <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}"${compact ? ` data-mobile-links-reveal="${escapeHtml(mobileLinksRevealState)}"` : ""}>
         ${rows}
       </ul>
-      <div class="cinna-mobile-gif-wrap" aria-hidden="true">
-        <img class="cinna-mobile-gif" src="/${randomCinna}" data-cinna-gif-src="/${randomCinna}" alt="" loading="eager" decoding="async" />
-      </div>
     </section>
   `;
   }
@@ -4694,6 +4728,7 @@
     let mobileLinksRevealTimer = 0;
     let mobileLastFmRevealPlayed = false;
     let mobileLastFmRevealTimer = 0;
+    let mobileLastFmDropdownOpen = false;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
@@ -4894,6 +4929,10 @@
     function getMobileLastFmReveal() {
       if (!(showcases instanceof HTMLElement)) return null;
       return showcases.querySelector(".lastfm-recent-reveal");
+    }
+    function getMobileLastFmDropdown() {
+      if (!(showcases instanceof HTMLElement)) return null;
+      return showcases.querySelector("[data-mobile-lastfm-dropdown]");
     }
     function setMobileLastFmRevealState(nextState) {
       const reveal = getMobileLastFmReveal();
@@ -5119,8 +5158,8 @@
     function syncCinnaMobileGif(enabled) {
       cinnaMobileGifController?.dispose?.();
       cinnaMobileGifController = null;
-      if (!enabled || !(sidebar instanceof HTMLElement)) return;
-      cinnaMobileGifController = createCinnaMobileGifController(sidebar);
+      if (!enabled || !(profileTagline instanceof HTMLElement)) return;
+      cinnaMobileGifController = createCinnaMobileGifController(profileTagline);
     }
     function syncMobileSpeakerToggle(enabled) {
       if (!(mobileSpeakerButton instanceof HTMLButtonElement)) return;
@@ -7015,6 +7054,14 @@
         showExternalPrompt(itemButton.getAttribute("data-item-url") || "", itemButton);
       }
     }
+    function onRootToggle(event) {
+      if (disposed) return;
+      const target = event.target;
+      if (!(target instanceof HTMLDetailsElement)) return;
+      if (!target.matches("[data-mobile-lastfm-dropdown]")) return;
+      mobileLastFmDropdownOpen = target.open;
+      target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
+    }
     function onRefreshClick() {
       if (typeof onRefreshRequested !== "function") return;
       playInteractionSfx("activate_soft", "refreshButton");
@@ -7057,10 +7104,15 @@
           showcases.classList.add("social-hub-showcases--mobile-lastfm");
           showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), {
             mobile: true,
-            mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending"
+            mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending",
+            mobileRecentDropdownOpen: mobileLastFmDropdownOpen
           });
           if (mobileLastFmRevealPlayed) {
             setMobileLastFmRevealState("visible");
+          }
+          const mobileLastFmDropdown = getMobileLastFmDropdown();
+          if (mobileLastFmDropdown instanceof HTMLDetailsElement) {
+            mobileLastFmDropdown.dataset.mobileLastfmDropdownOpen = mobileLastFmDropdown.open ? "true" : "false";
           }
         } else {
           showcases.innerHTML = "";
@@ -7120,6 +7172,7 @@
     document.addEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
     window.addEventListener("pagehide", handleMobileSelectionPageHide);
     root2?.addEventListener("click", onRootClick);
+    root2?.addEventListener("toggle", onRootToggle, true);
     refreshButton?.addEventListener("click", onRefreshClick);
     function dispose() {
       if (disposed) return;
@@ -7152,6 +7205,7 @@
       clearPendingMobileExternalLaunch();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
+      root2?.removeEventListener("toggle", onRootToggle, true);
       hideLastFmTrackDetails("silent");
       lastFmTrackPanelRoot?.remove();
       lastFmTrackPanelRoot = null;
@@ -7438,7 +7492,7 @@
     let performanceDegraded = isDesktopPerformanceDegraded();
     let scrollTargetOffsetY = 0;
     let scrollCurrentOffsetY = 0;
-    const ambientScrollParallaxFactor = compactMobileLayout ? 0.26 : 0.38;
+    const ambientScrollParallaxFactor = 0.26;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
