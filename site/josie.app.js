@@ -3055,11 +3055,7 @@
                     </div>
     ` : "";
     const mobileCinnaMarkup = compact ? renderCinnaMobileGifMarkup() : "";
-    return `
-      <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
-        <div class="discord-presence-shell">
-          <div class="discord-presence-reveal"${compact ? ` data-mobile-discord-reveal="${escapeHtml(mobileRevealState)}"` : ""}>
-            ${mobileCinnaMarkup}
+    const presenceCardMarkup = `
             <article class="discord-presence-card discord-presence-card--foundlifeless" data-spotify-active="${model.showAlbumArt ? "true" : "false"}">
               <div class="discord-presence-body">
                 <div class="discord-presence-avatar-stack">
@@ -3085,6 +3081,17 @@
                 </div>
               </div>
             </article>
+    `;
+    return `
+      <section class="steam-sidebar-panel discord-presence-panel" aria-label="Discord presence">
+        <div class="discord-presence-shell">
+          <div class="discord-presence-reveal"${compact ? ` data-mobile-discord-reveal="${escapeHtml(mobileRevealState)}"` : ""}>
+            ${compact ? `
+            <div class="discord-presence-card-stack">
+              ${mobileCinnaMarkup}
+              ${presenceCardMarkup}
+            </div>
+            ` : presenceCardMarkup}
           </div>
         </div>
       </section>
@@ -3418,7 +3425,9 @@
     </div>
   `;
   }
-  function renderSidebarCurrentlyPlayingPanel(state) {
+  function renderSidebarCurrentlyPlayingPanel(state, options = {}) {
+    const compact = Boolean(options?.compact);
+    const mobileRevealState = compact ? String(options?.mobileRevealState || "pending") : "";
     const title = firstNonEmpty(state?.title, "Loading Shuffle...");
     const artist = firstNonEmpty(state?.artist, "Unknown Artist");
     const progress = clamp2(Number(state?.progress) || 0, 0, 1);
@@ -3426,6 +3435,24 @@
     const durationLabel = firstNonEmpty(state?.durationLabel, "--:--");
     const playbackState = !state?.hasTrack ? "loading" : state?.blocked ? "blocked" : state?.playing ? "playing" : "paused";
     const playbackLabel = playbackState === "loading" ? "Loading" : playbackState === "blocked" ? "Click to start" : playbackState === "playing" ? "Shuffle live" : "Paused";
+    if (compact) {
+      return `
+      <section class="steam-sidebar-currently-playing-panel steam-sidebar-currently-playing-panel--minimal${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}">
+        <p class="steam-sidebar-currently-playing-label">Currently playing</p>
+        <div class="steam-sidebar-currently-playing-copy">
+          <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
+          <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
+        </div>
+        <div class="steam-sidebar-currently-playing-progress-track">
+          <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
+        </div>
+        <div class="steam-sidebar-currently-playing-time">
+          <span class="steam-sidebar-currently-playing-time-elapsed" data-sidebar-shuffle-current-time>${escapeHtml(currentTimeLabel)}</span>
+          <span class="steam-sidebar-currently-playing-time-duration" data-sidebar-shuffle-duration>${escapeHtml(durationLabel)}</span>
+        </div>
+      </section>
+    `;
+    }
     return `
       <section class="steam-sidebar-currently-playing-panel${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}">
         <div class="steam-sidebar-currently-playing-head">
@@ -4678,7 +4705,7 @@
   function renderSidebar(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const mobileLinksRevealState = compact ? String(options?.mobileLinksRevealState || "pending") : "";
-    const shuffleState = compact ? null : options?.shuffleState || null;
+    const shuffleState = options?.shuffleState || null;
     const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
     const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
@@ -4739,7 +4766,10 @@
       <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}"${compact ? ` data-mobile-links-reveal="${escapeHtml(mobileLinksRevealState)}"` : ""}>
         ${rows}
       </ul>
-      ${compact ? "" : renderSidebarCurrentlyPlayingPanel(shuffleState)}
+      ${renderSidebarCurrentlyPlayingPanel(shuffleState, {
+        compact,
+        mobileRevealState: compact ? mobileLinksRevealState : ""
+      })}
     </section>
   `;
   }

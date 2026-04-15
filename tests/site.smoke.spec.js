@@ -2006,6 +2006,23 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     const button = document.querySelector("[data-mobile-speaker-toggle]");
     return button instanceof HTMLElement && button.dataset.audioHasTrack === "true" && button.dataset.audioPlaying === "true";
   });
+  await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
+  await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("Backdoor");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("Ericdoa");
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
+    const fill = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-progress-fill]");
+    const duration = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-duration]");
+    if (!(panel instanceof HTMLElement) || !(fill instanceof HTMLElement) || !(duration instanceof HTMLElement)) {
+      return false;
+    }
+    const transformMatch = (fill.style.transform || "").match(/scaleX\(([^)]+)\)/);
+    const progress = transformMatch ? Number.parseFloat(transformMatch[1]) : 0;
+    return panel.dataset.sidebarShuffleState === "playing"
+      && duration.textContent.trim() !== "--:--"
+      && progress >= 0;
+  });
   const firstMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -2022,12 +2039,14 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     const viewportCenter = window.innerWidth / 2;
     const heroShell = document.querySelector(".steam-hero-shell--compact-mobile");
     const presencePanel = document.querySelector(".discord-presence-panel");
+    const presenceCardStack = document.querySelector(".discord-presence-card-stack");
     const presenceCard = document.querySelector(".discord-presence-card--foundlifeless");
     const presenceAvatar = document.querySelector(".discord-presence-avatar-wrap");
     const iconLinks = Array.from(document.querySelectorAll(".steam-sidebar-link--icon-only"));
     const cinnaWrap = document.querySelector(".cinna-mobile-gif-wrap");
     const cinna = document.querySelector(".cinna-mobile-gif--canvas");
     const speakerButton = document.querySelector("[data-mobile-speaker-toggle]");
+    const mobileCurrentlyPlaying = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const iconCenters = iconLinks.map((node) => {
       if (!(node instanceof HTMLElement)) return null;
       const rect = node.getBoundingClientRect();
@@ -2055,6 +2074,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
       heroOffset: centerOffset(heroShell),
       presenceOffset: centerOffset(presencePanel),
       presencePanelRect: rectSnapshot(presencePanel),
+      presenceCardStackRect: rectSnapshot(presenceCardStack),
       presenceCardRect: rectSnapshot(presenceCard),
       presenceCardWidth: presenceCard instanceof HTMLElement ? Math.round(presenceCard.getBoundingClientRect().width) : null,
       presenceAvatarWidth: presenceAvatar instanceof HTMLElement ? Math.round(presenceAvatar.getBoundingClientRect().width) : null,
@@ -2062,6 +2082,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
       cinnaWrapRect: rectSnapshot(cinnaWrap),
       cinnaRect: rectSnapshot(cinna),
       iconRowRect: rectSnapshot(document.querySelector(".steam-sidebar-list--mobile-icons")),
+      mobileCurrentlyPlayingRect: rectSnapshot(mobileCurrentlyPlaying),
       minGap: gaps.length ? Math.min(...gaps) : null,
       maxGap: gaps.length ? Math.max(...gaps) : null
     };
@@ -2071,6 +2092,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileCentering.heroOffset).toBeLessThan(4);
   expect(mobileCentering.presenceOffset).toBeLessThan(4);
   expect(mobileCentering.presencePanelRect).not.toBeNull();
+  expect(mobileCentering.presenceCardStackRect).not.toBeNull();
   expect(mobileCentering.presenceCardRect).not.toBeNull();
   expect(mobileCentering.presenceCardWidth).toBeLessThanOrEqual(320);
   expect(mobileCentering.presenceAvatarWidth).toBe(56);
@@ -2080,13 +2102,15 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileCentering.cinnaWrapRect).not.toBeNull();
   expect(mobileCentering.cinnaRect).not.toBeNull();
   expect(mobileCentering.iconRowRect).not.toBeNull();
+  expect(mobileCentering.mobileCurrentlyPlayingRect).not.toBeNull();
   expect(Math.abs(mobileCentering.maxGap - mobileCentering.minGap)).toBeLessThan(12);
   expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(184);
   expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(196);
-  expect(Math.abs(mobileCentering.cinnaWrapRect.top - mobileCentering.presencePanelRect.top)).toBeLessThanOrEqual(3);
+  expect(Math.abs(mobileCentering.cinnaWrapRect.top - mobileCentering.presenceCardStackRect.top)).toBeLessThanOrEqual(3);
   expect(mobileCentering.cinnaRect.bottom).toBeGreaterThan(mobileCentering.presenceCardRect.top + 6);
   expect(mobileCentering.cinnaRect.bottom).toBeLessThan(mobileCentering.presenceCardRect.top + 88);
   expect(mobileCentering.iconRowRect.top - mobileCentering.presencePanelRect.bottom).toBeGreaterThanOrEqual(8);
+  expect(mobileCentering.mobileCurrentlyPlayingRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThanOrEqual(0);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
 
   await page.evaluate(() => {
@@ -3930,15 +3954,19 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   expect(mobileDropdownStyles.topArtists.borderTopWidth).toBe(mobileDropdownStyles.discord.borderTopWidth);
   const mobileShowcasePosition = await page.evaluate(() => {
     const iconRow = document.querySelector(".steam-sidebar-list--mobile-icons");
+    const currentPlaying = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const showcase = document.querySelector("#social-hub-showcases");
     const stage = document.querySelector("#os-stage");
     if (!(iconRow instanceof HTMLElement) || !(showcase instanceof HTMLElement)) {
       return null;
     }
     const iconRowRect = iconRow.getBoundingClientRect();
+    const currentPlayingRect = currentPlaying instanceof HTMLElement ? currentPlaying.getBoundingClientRect() : null;
     const showcaseRect = showcase.getBoundingClientRect();
+    const anchorBottom = currentPlayingRect ? currentPlayingRect.bottom : iconRowRect.bottom;
     return {
-      gap: showcaseRect.top - iconRowRect.bottom,
+      gap: showcaseRect.top - anchorBottom,
+      iconGap: currentPlayingRect ? currentPlayingRect.top - iconRowRect.bottom : showcaseRect.top - iconRowRect.bottom,
       stageClientHeight: stage instanceof HTMLElement ? stage.clientHeight : 0,
       stageScrollHeight: stage instanceof HTMLElement ? stage.scrollHeight : 0,
       stageOverflowY: stage instanceof HTMLElement ? window.getComputedStyle(stage).overflowY : ""
@@ -3947,6 +3975,7 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   expect(mobileShowcasePosition).not.toBeNull();
   expect(mobileShowcasePosition.gap).toBeGreaterThanOrEqual(0);
   expect(mobileShowcasePosition.gap).toBeLessThanOrEqual(110);
+  expect(mobileShowcasePosition.iconGap).toBeGreaterThanOrEqual(0);
   expect(mobileShowcasePosition.stageScrollHeight).toBeGreaterThan(mobileShowcasePosition.stageClientHeight);
   expect(["auto", "scroll"]).toContain(mobileShowcasePosition.stageOverflowY);
 

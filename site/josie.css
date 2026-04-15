@@ -6915,6 +6915,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     align-items: center;
     flex-grow: 0;
     margin-top: 12px;
+    gap: 10px;
   }
 
   body.site-load-active #social-hub-sidebar .steam-sidebar-panel,
@@ -7324,6 +7325,90 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .steam-sidebar-list--mobile-icons .steam-link-status-dot--online::before {
     background: #42b36b;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal {
+    width: min(100%, 334px);
+    margin: 0 auto;
+    padding: 0 6px 2px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: visible;
+    transform-origin: top center;
+    transition:
+      opacity 320ms cubic-bezier(0.2, 0.85, 0.18, 1),
+      transform 320ms cubic-bezier(0.2, 0.85, 0.18, 1),
+      filter 320ms cubic-bezier(0.2, 0.85, 0.18, 1);
+    will-change: opacity, transform, filter;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal::before {
+    display: none;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal[data-mobile-currently-playing-reveal="pending"] {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.58);
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal[data-mobile-currently-playing-reveal="visible"] {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    filter: blur(0);
+    pointer-events: auto;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-label {
+    margin: 0 0 8px;
+    padding-inline: 2px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(244, 246, 251, 0.6);
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-copy {
+    margin-top: 0;
+    gap: 3px;
+    padding-inline: 2px;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-title {
+    font-size: 12px;
+    line-height: 1.12;
+    color: rgba(248, 249, 252, 0.96);
+    text-shadow: none;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-artist {
+    font-size: 10px;
+    line-height: 1.2;
+    color: rgba(214, 220, 232, 0.68);
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-progress-track {
+    margin-top: 8px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-progress-fill {
+    background: linear-gradient(90deg, hsl(var(--shuffle-secondary) / 0.92), hsl(var(--shuffle-accent-strong) / 0.92));
+    box-shadow: none;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-time {
+    margin-top: 6px;
+    padding-inline: 1px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: rgba(214, 220, 232, 0.62);
   }
 
   .steam-sidebar-link--icon-only::before {
@@ -7745,13 +7830,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .cinna-mobile-gif-wrap {
     display: flex;
-    width: min(100%, 320px);
+    width: 100%;
     justify-content: center;
     align-items: flex-end;
     position: absolute;
     top: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     margin: 0;
     padding: 0;
     pointer-events: none;
@@ -7784,12 +7868,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding-top: 0;
+  }
+
+  .discord-presence-card-stack {
+    position: relative;
+    width: min(100%, 320px);
     padding-top: clamp(76px, 19vw, 104px);
   }
 
   .discord-presence-card--foundlifeless {
     position: relative;
     z-index: 2;
+    width: 100%;
   }
 
 }
