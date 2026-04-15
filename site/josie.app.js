@@ -1824,8 +1824,8 @@
     const SHUFFLE_MAX_CANVAS_DPR = 1;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
-    const SHUFFLE_ASCII_MIN_CELL_PX = 3;
-    const SHUFFLE_ASCII_MAX_CELL_PX = 6;
+    const SHUFFLE_ASCII_MIN_CELL_PX = 1;
+    const SHUFFLE_ASCII_MAX_CELL_PX = 2;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -2298,7 +2298,7 @@
       const width = metrics.drawWidth;
       const height = metrics.drawHeight;
       const asciiCellWidth = clamp2(Math.round(width / 208), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
-      const asciiCellHeight = Math.max(4, Math.round(asciiCellWidth * 1.42));
+      const asciiCellHeight = Math.max(2, Math.round(asciiCellWidth * 1.42));
       const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
@@ -2436,7 +2436,7 @@
       );
       const baselineGlyph = impact > 0.38 ? "-" : ".";
       const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
-      const fontSize = Math.max(5, Math.round(asciiCellWidth * 1.24));
+      const fontSize = Math.max(3, Math.round(asciiCellWidth * 1.36));
       waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
       waveCtx.textBaseline = "top";
       waveCtx.textAlign = "center";
@@ -8091,11 +8091,11 @@
       const drawX = wrapCoordinate(starState.x, renderWidth);
       const drawY = wrapCoordinate(starState.y + scrollCurrentOffsetY, renderHeight);
       drawPixelBurst(drawX, drawY, {
-        cellSize: getAmbientPixelCell(starState.size > 1 ? 1 : 0.85),
+        cellSize: getAmbientPixelCell(starState.size > 1 ? 1.7 : 1.35),
         alpha,
-        coreCells: 1,
-        armCells: starState.size,
-        diagonalCells: starState.size > 1 ? 1 : 0,
+        coreCells: starState.size > 1 ? 2 : 1,
+        armCells: starState.size + 1,
+        diagonalCells: starState.size > 1 ? 2 : 1,
         armAlphaScale: 0.72,
         diagonalAlphaScale: 0.34
       });
