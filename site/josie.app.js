@@ -3427,16 +3427,15 @@
   }
   function renderSidebarCurrentlyPlayingPanel(state, options = {}) {
     const compact = Boolean(options?.compact);
-    const mobileRevealState = compact ? String(options?.mobileRevealState || "pending") : "";
+    if (!compact) return "";
+    const mobileRevealState = String(options?.mobileRevealState || "pending");
     const title = firstNonEmpty(state?.title, "Loading Shuffle...");
     const artist = firstNonEmpty(state?.artist, "Unknown Artist");
     const progress = clamp2(Number(state?.progress) || 0, 0, 1);
     const currentTimeLabel = firstNonEmpty(state?.currentTimeLabel, "0:00");
     const durationLabel = firstNonEmpty(state?.durationLabel, "--:--");
     const playbackState = !state?.hasTrack ? "loading" : state?.blocked ? "blocked" : state?.playing ? "playing" : "paused";
-    const playbackLabel = playbackState === "loading" ? "Loading" : playbackState === "blocked" ? "Click to start" : playbackState === "playing" ? "Shuffle live" : "Paused";
-    if (compact) {
-      return `
+    return `
       <section class="steam-sidebar-currently-playing-panel steam-sidebar-currently-playing-panel--minimal${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}">
         <p class="steam-sidebar-currently-playing-label">Currently playing</p>
         <div class="steam-sidebar-currently-playing-copy">
@@ -3449,28 +3448,6 @@
         <div class="steam-sidebar-currently-playing-time">
           <span class="steam-sidebar-currently-playing-time-elapsed" data-sidebar-shuffle-current-time>${escapeHtml(currentTimeLabel)}</span>
           <span class="steam-sidebar-currently-playing-time-duration" data-sidebar-shuffle-duration>${escapeHtml(durationLabel)}</span>
-        </div>
-      </section>
-    `;
-    }
-    return `
-      <section class="steam-sidebar-currently-playing-panel${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}">
-        <div class="steam-sidebar-currently-playing-head">
-          <span class="steam-sidebar-currently-playing-label">Currently playing</span>
-          <span class="steam-sidebar-currently-playing-status" data-sidebar-shuffle-status>${escapeHtml(playbackLabel)}</span>
-        </div>
-        <div class="steam-sidebar-currently-playing-copy">
-          <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
-          <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
-        </div>
-        <div class="steam-sidebar-currently-playing-progress">
-          <div class="steam-sidebar-currently-playing-progress-track">
-            <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
-          </div>
-          <div class="steam-sidebar-currently-playing-time">
-            <span class="steam-sidebar-currently-playing-time-elapsed" data-sidebar-shuffle-current-time>${escapeHtml(currentTimeLabel)}</span>
-            <span class="steam-sidebar-currently-playing-time-duration" data-sidebar-shuffle-duration>${escapeHtml(durationLabel)}</span>
-          </div>
         </div>
       </section>
     `;
@@ -5292,20 +5269,14 @@
       if (!(panel instanceof HTMLElement)) return;
       const safeState = state && typeof state === "object" ? state : shufflePlayerController.getState();
       const playbackState = !safeState?.hasTrack ? "loading" : safeState?.blocked ? "blocked" : safeState?.playing ? "playing" : "paused";
-      const playbackLabel = playbackState === "loading" ? "Loading" : playbackState === "blocked" ? "Click to start" : playbackState === "playing" ? "Shuffle live" : "Paused";
       const progress = clamp2(Number(safeState?.progress) || 0, 0, 1);
       const title = firstNonEmpty(safeState?.title, "Loading Shuffle...");
       const artist = firstNonEmpty(safeState?.artist, "Unknown Artist");
       const currentTimeLabel = firstNonEmpty(safeState?.currentTimeLabel, "0:00");
       const durationLabel = firstNonEmpty(safeState?.durationLabel, "--:--");
-      const theme = safeState?.theme || {};
       panel.classList.toggle("is-playing", playbackState === "playing");
       panel.classList.toggle("is-blocked", playbackState === "blocked");
       panel.setAttribute("data-sidebar-shuffle-state", playbackState);
-      panel.style.setProperty("--shuffle-accent", firstNonEmpty(theme.accent, "326 90% 72%"));
-      panel.style.setProperty("--shuffle-accent-strong", firstNonEmpty(theme.accentStrong, "338 96% 80%"));
-      panel.style.setProperty("--shuffle-secondary", firstNonEmpty(theme.secondary, "195 88% 76%"));
-      panel.style.setProperty("--shuffle-sparkle", firstNonEmpty(theme.sparkle, "0 0% 100%"));
       const titleEl = panel.querySelector("[data-sidebar-shuffle-title]");
       if (titleEl instanceof HTMLElement) {
         titleEl.textContent = title;
@@ -5313,10 +5284,6 @@
       const artistEl = panel.querySelector("[data-sidebar-shuffle-artist]");
       if (artistEl instanceof HTMLElement) {
         artistEl.textContent = artist;
-      }
-      const statusEl = panel.querySelector("[data-sidebar-shuffle-status]");
-      if (statusEl instanceof HTMLElement) {
-        statusEl.textContent = playbackLabel;
       }
       const fillEl = panel.querySelector("[data-sidebar-shuffle-progress-fill]");
       if (fillEl instanceof HTMLElement) {

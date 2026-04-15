@@ -3645,56 +3645,20 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-sidebar-currently-playing-panel {
-  --shuffle-accent: 326 90% 72%;
-  --shuffle-accent-strong: 338 96% 80%;
-  --shuffle-secondary: 195 88% 76%;
-  --shuffle-sparkle: 0 0% 100%;
   position: relative;
-  margin: 18px 10px 0;
-  padding: 14px 14px 12px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    radial-gradient(circle at 12% 18%, hsl(var(--shuffle-accent) / 0.18), transparent 38%),
-    radial-gradient(circle at 86% 88%, hsl(var(--shuffle-secondary) / 0.16), transparent 42%),
-    linear-gradient(160deg, rgba(24, 28, 39, 0.88), rgba(10, 11, 18, 0.94));
-  box-shadow:
-    0 18px 38px rgba(3, 4, 10, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.steam-sidebar-currently-playing-panel::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02) 26%, rgba(255, 255, 255, 0.06) 58%, rgba(255, 255, 255, 0) 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
-  mix-blend-mode: screen;
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.steam-sidebar-currently-playing-panel>* {
-  position: relative;
-  z-index: 1;
-}
-
-.steam-sidebar-currently-playing-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: grid;
+  gap: 0;
 }
 
 .steam-sidebar-currently-playing-label,
-.steam-sidebar-currently-playing-status,
 .steam-sidebar-currently-playing-time {
   font-family: var(--discord-font);
 }
@@ -3707,23 +3671,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   color: rgba(255, 231, 243, 0.72);
 }
 
-.steam-sidebar-currently-playing-status {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 9px;
-  line-height: 1;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(255, 239, 246, 0.76);
-}
-
 .steam-sidebar-currently-playing-copy {
-  margin-top: 10px;
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .steam-sidebar-currently-playing-title,
@@ -3737,38 +3687,27 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-currently-playing-title {
   font-family: var(--hub-font);
-  font-size: 15px;
+  font-size: 12px;
   line-height: 1.08;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: #ffe3f0;
-  text-shadow:
-    1px 0 0 rgba(111, 55, 156, 0.84),
-    0 0 14px rgba(255, 191, 221, 0.14);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(248, 249, 252, 0.96);
 }
 
 .steam-sidebar-currently-playing-artist {
   font-family: var(--discord-font);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
-  color: rgba(255, 236, 245, 0.68);
-}
-
-.steam-sidebar-currently-playing-progress {
-  margin-top: 12px;
-  display: grid;
-  gap: 8px;
+  color: rgba(214, 220, 232, 0.68);
 }
 
 .steam-sidebar-currently-playing-progress-track {
   position: relative;
-  height: 4px;
+  height: 2px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 .steam-sidebar-currently-playing-progress-fill {
@@ -3777,10 +3716,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   transform-origin: left center;
   transform: scaleX(0);
   border-radius: inherit;
-  background: linear-gradient(90deg, hsl(var(--shuffle-secondary) / 0.94), hsl(var(--shuffle-accent-strong) / 0.98));
-  box-shadow:
-    0 0 18px hsl(var(--shuffle-accent) / 0.28),
-    0 0 28px hsl(var(--shuffle-secondary) / 0.16);
+  background: linear-gradient(90deg, rgba(248, 249, 252, 0.95), rgba(209, 225, 255, 0.88));
+  box-shadow: none;
 }
 
 .steam-sidebar-currently-playing-time {
@@ -3788,25 +3725,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
   letter-spacing: 0.08em;
-  color: rgba(255, 236, 245, 0.76);
-}
-
-.steam-sidebar-currently-playing-panel.is-playing .steam-sidebar-currently-playing-status {
-  color: hsl(var(--shuffle-sparkle) / 0.96);
-  background: linear-gradient(90deg, hsl(var(--shuffle-secondary) / 0.14), hsl(var(--shuffle-accent) / 0.18));
-  border-color: hsl(var(--shuffle-secondary) / 0.26);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 14px hsl(var(--shuffle-accent) / 0.12);
-}
-
-.steam-sidebar-currently-playing-panel.is-blocked .steam-sidebar-currently-playing-status {
-  color: rgba(255, 232, 190, 0.92);
-  background: rgba(255, 204, 128, 0.1);
-  border-color: rgba(255, 204, 128, 0.18);
+  color: rgba(214, 220, 232, 0.62);
 }
 
 .steam-sidebar-row {
@@ -7874,7 +7796,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .discord-presence-card-stack {
     position: relative;
     width: min(100%, 320px);
-    padding-top: clamp(76px, 19vw, 104px);
+    padding-top: clamp(160px, 42vw, 178px);
   }
 
   .discord-presence-card--foundlifeless {

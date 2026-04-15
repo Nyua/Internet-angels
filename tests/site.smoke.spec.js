@@ -727,23 +727,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("Backdoor");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("Ericdoa");
-  await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("Backdoor");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("Ericdoa");
-  await page.waitForFunction(() => {
-    const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel]");
-    const fill = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-progress-fill]");
-    const elapsed = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-current-time]");
-    const duration = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-duration]");
-    if (!(panel instanceof HTMLElement) || !(fill instanceof HTMLElement) || !(elapsed instanceof HTMLElement) || !(duration instanceof HTMLElement)) {
-      return false;
-    }
-    const transformMatch = (fill.style.transform || "").match(/scaleX\(([^)]+)\)/);
-    const progress = transformMatch ? Number.parseFloat(transformMatch[1]) : 0;
-    return panel.dataset.sidebarShuffleState === "playing"
-      && duration.textContent.trim() !== "--:--"
-      && (progress > 0 || elapsed.textContent.trim() !== "0:00");
-  });
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
     if (!(copy instanceof HTMLElement)) return false;
@@ -766,18 +750,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && copy.dataset.shuffleCopyState === "visible"
       && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
   }, firstVisualizerTrackTitle);
-  await page.waitForFunction(() => {
-    const visualizerTitle = document.querySelector("#os-shuffle-visualizer-title");
-    const visualizerArtist = document.querySelector("#os-shuffle-visualizer-artist");
-    const sidebarTitle = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-title]");
-    const sidebarArtist = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-artist]");
-    return visualizerTitle instanceof HTMLElement
-      && visualizerArtist instanceof HTMLElement
-      && sidebarTitle instanceof HTMLElement
-      && sidebarArtist instanceof HTMLElement
-      && visualizerTitle.textContent.trim() === sidebarTitle.textContent.trim()
-      && visualizerArtist.textContent.trim() === sidebarArtist.textContent.trim();
-  });
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -2107,8 +2080,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileCentering.cinnaRect.width).toBeLessThanOrEqual(184);
   expect(mobileCentering.cinnaRect.height).toBeLessThanOrEqual(196);
   expect(Math.abs(mobileCentering.cinnaWrapRect.top - mobileCentering.presenceCardStackRect.top)).toBeLessThanOrEqual(3);
-  expect(mobileCentering.cinnaRect.bottom).toBeGreaterThan(mobileCentering.presenceCardRect.top + 6);
-  expect(mobileCentering.cinnaRect.bottom).toBeLessThan(mobileCentering.presenceCardRect.top + 88);
+  expect(mobileCentering.cinnaRect.bottom).toBeLessThanOrEqual(mobileCentering.presenceCardRect.top + 2);
   expect(mobileCentering.iconRowRect.top - mobileCentering.presencePanelRect.bottom).toBeGreaterThanOrEqual(8);
   expect(mobileCentering.mobileCurrentlyPlayingRect.top - mobileCentering.iconRowRect.bottom).toBeGreaterThanOrEqual(0);
   await expect(page.locator(".external-link-confirm")).toHaveCount(0);
