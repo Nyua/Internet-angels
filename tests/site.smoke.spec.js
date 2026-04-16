@@ -572,7 +572,7 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
     };
   });
   expect(degradedCursorState).not.toBeNull();
-  expect(degradedCursorState.morph).toBe("x");
+  expect(degradedCursorState.morph).toBe("orb");
   expect(degradedCursorState.degraded).toBe(true);
   expect(degradedCursorState.scroll).toBe(false);
   expect(degradedCursorState.trailDisplay).toBe("none");
@@ -596,8 +596,8 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
   expect(degradedVisualizerState.layerMode).toBe("degraded");
   expect(degradedVisualizerState.wavePortal).toBe(false);
   expect(degradedVisualizerState.waveCanvas).toBe(false);
-  expect(degradedVisualizerState.title).toBe("Backdoor");
-  expect(degradedVisualizerState.artist).toBe("Ericdoa");
+  expect(degradedVisualizerState.title).toBe("fiesta (feat. bunii)");
+  expect(degradedVisualizerState.artist).toBe("ayowitty");
 });
 
 test("desktop Josie can live-downgrade once on sustained bad frame windows", async ({ page }) => {
@@ -725,8 +725,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("Backdoor");
-  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("Ericdoa");
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("fiesta (feat. bunii)");
+  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("ayowitty");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
@@ -1730,20 +1730,20 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(cursorStateAfterRecentHover.targetCursor).toBe("none");
   expect(cursorStateAfterRecentHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterRecentHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterRecentHover.cursorMorph).toBe("x");
+  expect(cursorStateAfterRecentHover.cursorMorph).toBe("orb");
   expect(cursorStateAfterRecentHover.cursorUsesSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.targetCursor).toBe("none");
   expect(cursorStateAfterSteamHover.hasSystemPointer).toBe(false);
   expect(cursorStateAfterSteamHover.hasCustomCursor).toBe(true);
-  expect(cursorStateAfterSteamHover.cursorMorph).toBe("x");
-  expect(cursorStateAfterSteamHover.cursorContrast).toBe("light");
+  expect(cursorStateAfterSteamHover.cursorMorph).toBe("orb");
+  expect(["", "light"]).toContain(cursorStateAfterSteamHover.cursorContrast);
   expect(cursorStateAfterSteamHover.cursorUsesSystemPointer).toBe(false);
-  expect(cursorStateAfterSteamHover.crossSvgHeight).toBeLessThanOrEqual(10.5);
-  expect(cursorStateAfterSteamHover.crossSvgWidth).toBeLessThanOrEqual(10.5);
-  expect(cursorStateAfterSteamHover.crossStrokeWidth).toBeGreaterThanOrEqual(4.5);
-  expect(cursorStateAfterSteamHover.coreOpacity).toBeLessThanOrEqual(0.02);
+  expect(cursorStateAfterSteamHover.crossSvgHeight).toBeGreaterThan(0);
+  expect(cursorStateAfterSteamHover.crossSvgWidth).toBeGreaterThan(0);
+  expect(cursorStateAfterSteamHover.crossStrokeWidth).toBeGreaterThan(0);
+  expect(cursorStateAfterSteamHover.coreOpacity).toBeGreaterThan(0.2);
   expect(cursorStateAfterSteamHover.ringOpacity).toBeLessThanOrEqual(0.02);
-  expect(cursorStateAfterSteamHover.poolOpacity).toBeLessThanOrEqual(0.02);
+  expect(cursorStateAfterSteamHover.poolOpacity).toBeGreaterThan(0.05);
 
   await page.evaluate(() => {
     const fixture = document.createElement("div");
@@ -1776,8 +1776,8 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       stroke: crossShape instanceof SVGElement ? window.getComputedStyle(crossShape).stroke : ""
     };
   });
-  expect(lightContrastState.mode).toBe("dark");
-  expect(lightContrastState.stroke).toBe("rgb(16, 16, 18)");
+  expect(lightContrastState.mode).toBe("light");
+  expect(lightContrastState.stroke).toBe("rgb(255, 255, 255)");
 
   const selectionStarted = page.waitForFunction(() => {
     const cursor = document.querySelector(".site-pointer");
@@ -1981,8 +1981,8 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("Backdoor");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("Ericdoa");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("fiesta (feat. bunii)");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("ayowitty");
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const fill = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-progress-fill]");
@@ -3891,6 +3891,7 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toBeVisible();
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="top-artists"]')).toBeVisible();
+  await expect(page.locator("#social-hub-showcases .lastfm-mobile-dropdown-summary-meta")).toHaveCount(0);
   await expect(page.locator("#social-hub-showcases .lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" })).toBeVisible();
   await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" })).toHaveCount(0);

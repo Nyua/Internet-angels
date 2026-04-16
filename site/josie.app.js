@@ -1740,7 +1740,7 @@
   }
   function findPreferredInitialShuffleTrack(tracks) {
     const safeTracks = Array.isArray(tracks) ? tracks : [];
-    const preferredTitle = "backdoor";
+    const preferredTitle = "fiesta (feat. bunii)";
     return safeTracks.find((track) => normalizeShuffleTrackLookup(track?.title) === preferredTitle) || null;
   }
   function pickWeightedShuffleTrack(tracks, excludeId = "") {
@@ -2777,6 +2777,8 @@
       loadState = loadState === "blocked" ? "blocked" : "ready";
       syncUi();
     });
+    audioEl.addEventListener("loadeddata", syncUi);
+    audioEl.addEventListener("durationchange", syncUi);
     audioEl.addEventListener("play", () => {
       loadState = "ready";
       syncUi();
@@ -3267,7 +3269,7 @@
   }
   function renderMobileLastFmDropdown(contentMarkup, options = {}) {
     const title = firstNonEmpty(options?.title, "Recent Tracks");
-    const summary = firstNonEmpty(options?.summary, "Tap to browse recent plays");
+    const summary = firstNonEmpty(options?.summary, "");
     const dropdownKey = firstNonEmpty(options?.dropdownKey, "recent-tracks");
     const revealState = firstNonEmpty(options?.revealState, "pending");
     const open = Boolean(options?.open);
@@ -3277,7 +3279,7 @@
                 <summary class="lastfm-mobile-dropdown-summary" data-mobile-lastfm-dropdown-summary data-mobile-lastfm-dropdown-key="${escapeHtml(dropdownKey)}" aria-label="Toggle ${escapeHtml(title)}">
                   <span class="lastfm-mobile-dropdown-summary-copy">
                     <span class="lastfm-section-title">${escapeHtml(title)}</span>
-                    <span class="lastfm-mobile-dropdown-summary-meta">${escapeHtml(summary)}</span>
+                    ${summary ? `<span class="lastfm-mobile-dropdown-summary-meta">${escapeHtml(summary)}</span>` : ""}
                   </span>
                   <span class="lastfm-mobile-dropdown-summary-chevron" aria-hidden="true"></span>
                 </summary>
@@ -3356,7 +3358,7 @@
     const mobileClass = mobile ? " steam-showcase--lastfm-mobile" : "";
     const recentTracksSection = mobile ? renderMobileLastFmDropdown(recentTracksMarkup, {
       title: "Recent Tracks",
-      summary: "Tap to browse recent plays",
+      summary: "",
       dropdownKey: "recent-tracks",
       revealState: mobileRecentRevealState,
       open: mobileRecentDropdownOpen
@@ -3376,7 +3378,7 @@
     `;
     const topArtistsSection = mobile ? renderMobileLastFmDropdown(topArtistsMarkup, {
       title: "Top Artists",
-      summary: "Tap to browse chart leaders",
+      summary: "",
       dropdownKey: "top-artists",
       revealState: mobileRecentRevealState,
       open: mobileTopArtistsDropdownOpen
@@ -5027,6 +5029,115 @@
         mobileLastFmRevealPlayed = true;
         setMobileLastFmRevealState("visible");
       }, 220);
+    }
+    function clearDesktopUnfoldOrdering() {
+      if (!(root2 instanceof HTMLElement)) return;
+      root2.querySelectorAll("[data-desktop-unfold]").forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        node.removeAttribute("data-desktop-unfold");
+        node.style.removeProperty("--desktop-unfold-order");
+      });
+    }
+    function getDesktopUnfoldTargets() {
+      if (!(root2 instanceof HTMLElement)) return [];
+      const selectors = [
+        "#social-hub-profile .steam-hero-shell",
+        "#social-hub-profile-tagline .discord-presence-reveal",
+        "#social-hub-sidebar .steam-sidebar-panel",
+        "#social-hub-showcases .steam-showcase"
+      ];
+      const targets = [];
+      selectors.forEach((selector) => {
+        root2.querySelectorAll(selector).forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          if (node.hidden || !node.isConnected || !node.getClientRects().length) return;
+          targets.push(node);
+        });
+      });
+      return targets;
+    }
+    function applyDesktopUnfoldOrdering(compactMobile = isCompactMobileLayout()) {
+      clearDesktopUnfoldOrdering();
+      if (compactMobile) return;
+      const targets = getDesktopUnfoldTargets().sort((left, right) => {
+        const leftRect = left.getBoundingClientRect();
+        const rightRect = right.getBoundingClientRect();
+        const topDelta = leftRect.top - rightRect.top;
+        if (Math.abs(topDelta) > 6) {
+          return topDelta;
+        }
+        const leftDelta = leftRect.left - rightRect.left;
+        if (Math.abs(leftDelta) > 6) {
+          return leftDelta;
+        }
+        return 0;
+      });
+      targets.forEach((target, index) => {
+        target.dataset.desktopUnfold = "true";
+        target.style.setProperty("--desktop-unfold-order", String(index));
+      });
+    }
+    function animateMobileLastFmDropdown(dropdown) {
+      if (!(dropdown instanceof HTMLDetailsElement) || !dropdown.open) return;
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+      const panel = dropdown.querySelector(".lastfm-mobile-dropdown-panel");
+      if (!(panel instanceof HTMLElement)) return;
+      const list = panel.querySelector(".lastfm-recent-list, .lastfm-media-grid");
+      panel.getAnimations().forEach((animation) => animation.cancel());
+      panel.animate([
+        {
+          opacity: 0,
+          transform: "translateY(-10px) scaleY(0.76)",
+          clipPath: "inset(0 0 100% 0 round 22px)",
+          filter: "blur(5px)"
+        },
+        {
+          opacity: 1,
+          transform: "translateY(0) scaleY(1)",
+          clipPath: "inset(0 0 0 0 round 22px)",
+          filter: "blur(0)"
+        }
+      ], {
+        duration: 320,
+        easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
+        fill: "both"
+      });
+      if (!(list instanceof HTMLElement)) return;
+      list.getAnimations().forEach((animation) => animation.cancel());
+      list.animate([
+        {
+          opacity: 0,
+          transform: "translateY(-12px)"
+        },
+        {
+          opacity: 1,
+          transform: "translateY(0)"
+        }
+      ], {
+        duration: 280,
+        delay: 30,
+        easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
+        fill: "both"
+      });
+      Array.from(list.children).slice(0, 10).forEach((item, index) => {
+        if (!(item instanceof HTMLElement)) return;
+        item.getAnimations().forEach((animation) => animation.cancel());
+        item.animate([
+          {
+            opacity: 0,
+            transform: "translateY(-8px)"
+          },
+          {
+            opacity: 1,
+            transform: "translateY(0)"
+          }
+        ], {
+          duration: 260,
+          delay: 55 + index * 24,
+          easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
+          fill: "both"
+        });
+      });
     }
     function scheduleMobileDiscordReveal() {
       if (!isCompactMobileLayout()) return;
@@ -7176,6 +7287,7 @@
         mobileTopArtistsDropdownOpen = target.open;
       }
       target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
+      animateMobileLastFmDropdown(target);
     }
     function onRefreshClick() {
       if (typeof onRefreshRequested !== "function") return;
@@ -7230,6 +7342,9 @@
             const mobileLastFmDropdown = getMobileLastFmDropdown(dropdownKey);
             if (mobileLastFmDropdown instanceof HTMLDetailsElement) {
               mobileLastFmDropdown.dataset.mobileLastfmDropdownOpen = mobileLastFmDropdown.open ? "true" : "false";
+              if (mobileLastFmDropdown.open) {
+                animateMobileLastFmDropdown(mobileLastFmDropdown);
+              }
             }
           });
         } else {
@@ -7260,6 +7375,7 @@
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);
       syncSidebarCurrentlyPlaying(shuffleState);
+      applyDesktopUnfoldOrdering(compactMobile);
       if (lastRefreshLabel instanceof HTMLElement) {
         lastRefreshLabel.textContent = "";
         lastRefreshLabel.hidden = true;
@@ -8212,8 +8328,9 @@
       const alpha = clamp(starState.alpha * (1 + starState.pointerInfluence * 0.12), 0, 1);
       const drawX = wrapCoordinate(starState.x, renderWidth);
       const drawY = wrapCoordinate(starState.y + scrollCurrentOffsetY, renderHeight);
+      const desktopStarScale = compactMobileLayout ? 1 : 1.3;
       drawPixelBurst(drawX, drawY, {
-        cellSize: getAmbientPixelCell(starState.size > 1 ? 1.7 : 1.35),
+        cellSize: getAmbientPixelCell((starState.size > 1 ? 1.7 : 1.35) * desktopStarScale),
         alpha,
         coreCells: starState.size > 1 ? 2 : 1,
         armCells: starState.size + 1,
@@ -9879,19 +9996,13 @@
     }
     function syncInteractiveTarget(target, x = lastX, y = lastY) {
       const nextTarget = resolveCustomCursorInteractiveTarget(target);
-      if (nextTarget === currentInteractiveTarget) {
-        if (nextTarget instanceof HTMLElement) {
-          syncCursorContrast(nextTarget, x, y);
-        }
-        return;
-      }
+      if (nextTarget === currentInteractiveTarget) return;
       currentInteractiveTarget = nextTarget instanceof HTMLElement ? nextTarget : null;
-      const interactive = currentInteractiveTarget instanceof HTMLElement;
-      applyCursorMorph(interactive ? "x" : "orb");
-      cursorEl.classList.toggle("is-interactive", interactive);
-      if (interactive) {
-        syncCursorContrast(currentInteractiveTarget, x, y);
-      } else if (currentContrastMode !== "light") {
+      cursorEl.classList.remove("is-interactive");
+      if (currentMorphToken !== "orb") {
+        applyCursorMorph("orb");
+      }
+      if (currentContrastMode !== "light") {
         currentContrastMode = "light";
         cursorEl.dataset.cursorContrast = "light";
       }
@@ -9944,7 +10055,7 @@
       const idleMs = Math.max(0, nowMs - lastMoveMs);
       const idleFade = clamp(Math.max(0, idleMs - 38) / 320, 0, 1);
       const motionStrength = clamp(pointerEnergy * 1.2 + (pressed ? 0.14 : 0), 0, 1);
-      const suppressTail = Boolean(currentInteractiveTarget);
+      const suppressTail = false;
       if (suppressTail) {
         cursorEl.style.setProperty("--cursor-tail-opacity", "0");
         clearTrailCanvas();

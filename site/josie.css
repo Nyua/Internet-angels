@@ -3605,6 +3605,31 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-width: 0;
 }
 
+@media (min-width: 821px) {
+  #social-hub-root[data-social-hub-ready="true"] [data-desktop-unfold] {
+    transform-origin: top center;
+    animation: socialHubDesktopUnfold 560ms cubic-bezier(0.2, 0.85, 0.18, 1) both;
+    animation-delay: calc(var(--desktop-unfold-order, 0) * 120ms);
+    will-change: opacity, transform, clip-path, filter;
+  }
+}
+
+@keyframes socialHubDesktopUnfold {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scaleY(0.26);
+    clip-path: inset(0 0 100% 0 round 28px);
+    filter: blur(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    clip-path: inset(0 0 0 0 round 28px);
+    filter: blur(0);
+  }
+}
+
 .social-hub-sidebar {
   position: static;
   display: flex;
@@ -6608,6 +6633,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-panel {
     border-top: 2px solid rgba(190, 190, 190, 0.06);
     background: transparent;
+    overflow: hidden;
+    transform-origin: top center;
+  }
+
+  .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-mobile-dropdown-panel > :is(.lastfm-recent-list, .lastfm-media-grid) {
+    min-height: 0;
   }
 
   .social-hub-showcases {
