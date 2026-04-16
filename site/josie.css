@@ -8013,7 +8013,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   background: rgba(190, 190, 190, 0.10);
   border: 2px solid rgba(190, 190, 190, 0.06);
   border-radius: 25px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: none;
   color: #bebabd;
 }
@@ -8029,6 +8029,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .discord-presence-avatar-stack {
   display: flex;
   flex: 0 0 auto;
+  overflow: visible;
+  z-index: 1;
 }
 
 .discord-presence-avatar-wrap {

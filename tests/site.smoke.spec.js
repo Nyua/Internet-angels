@@ -1138,7 +1138,7 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   await expect(page.locator(".discord-presence-card--foundlifeless")).toHaveCount(1);
   await expect(page.locator(".discord-presence-name")).toContainText("foundlifeless");
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
-  await expect(page.locator(".discord-presence-meta")).toContainText("by idkwhyy");
+  await expect(page.locator(".discord-presence-meta")).toHaveCount(0);
   await expect(page.locator(".discord-presence-nitro-badge")).toHaveCount(1);
   await expect(page.locator(".discord-presence-album-art")).toHaveAttribute("src", /example-up-down/);
   await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
@@ -1164,6 +1164,7 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   const discordCardStyles = await page.evaluate(() => {
     const card = document.querySelector(".discord-presence-card--foundlifeless");
     const avatar = document.querySelector(".discord-presence-avatar-wrap");
+    const decoration = document.querySelector(".discord-presence-avatar-decoration");
     const albumArt = document.querySelector(".discord-presence-album-art-wrap");
     const badge = document.querySelector(".discord-presence-status-badge");
     const name = document.querySelector(".discord-presence-name");
@@ -1180,7 +1181,10 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
       cardBackground: card instanceof HTMLElement ? window.getComputedStyle(card).backgroundColor : "",
       cardBorderWidth: card instanceof HTMLElement ? window.getComputedStyle(card).borderTopWidth : "",
       cardBorderColor: card instanceof HTMLElement ? window.getComputedStyle(card).borderTopColor : "",
+      cardOverflow: card instanceof HTMLElement ? window.getComputedStyle(card).overflow : "",
+      hasDecoration: decoration instanceof HTMLElement,
       avatarRect: sizeOf(avatar),
+      decorationRect: sizeOf(decoration),
       albumArtRect: sizeOf(albumArt),
       badgeRect: sizeOf(badge),
       badgeBackground: badge instanceof HTMLElement ? window.getComputedStyle(badge).backgroundColor : "",
@@ -1198,8 +1202,13 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeGreaterThan(1.5);
   expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeLessThanOrEqual(2.1);
   expect(discordCardStyles.cardBorderColor).toBe("rgba(190, 190, 190, 0.06)");
+  expect(discordCardStyles.cardOverflow).toBe("visible");
   expect(Number.parseFloat(discordCardStyles.avatarRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.avatarRect?.height || "0")).toBeGreaterThan(69);
+  if (discordCardStyles.hasDecoration) {
+    expect(Number.parseFloat(discordCardStyles.decorationRect?.width || "0")).toBeGreaterThan(Number.parseFloat(discordCardStyles.avatarRect?.width || "0"));
+    expect(Number.parseFloat(discordCardStyles.decorationRect?.height || "0")).toBeGreaterThan(Number.parseFloat(discordCardStyles.avatarRect?.height || "0"));
+  }
   expect(Number.parseFloat(discordCardStyles.albumArtRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.albumArtRect?.height || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.badgeRect?.width || "0")).toBeGreaterThan(16);
@@ -1210,7 +1219,7 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   expect(discordCardStyles.badgeInnerColor).toBe("rgb(66, 179, 107)");
   expect(discordCardStyles.nameFontFamily.toLowerCase()).toContain("pixelmplus12");
   expect(discordCardStyles.headlineFontFamily.toLowerCase()).toContain("gg sans");
-  expect(discordCardStyles.metaFontFamily.toLowerCase()).toContain("gg sans");
+  expect(discordCardStyles.metaFontFamily).toBe("");
   expect(discordCardStyles.nameColor).toBe("rgb(190, 186, 189)");
 
   const nightThemeColors = await page.evaluate(() => {
@@ -1309,7 +1318,7 @@ test("josie discord presence collapses the spotify art slot when spotify is inac
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".discord-presence-album-art-wrap")).toHaveCount(0);
   await expect(page.locator(".discord-presence-headline")).toContainText("Playing Balatro");
-  await expect(page.locator(".discord-presence-meta")).toContainText("Deep in endless mode");
+  await expect(page.locator(".discord-presence-meta")).toHaveCount(0);
   await expect(page.locator(".discord-presence-custom-emoji")).toHaveCount(0);
 });
 
@@ -3971,6 +3980,35 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
   await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
+  const mobileRevealOrder = await page.evaluate(() => {
+    const readItems = (selector) => Array.from(document.querySelectorAll(selector)).map((node) => {
+      if (!(node instanceof HTMLElement)) return null;
+      const rect = node.getBoundingClientRect();
+      const animation = node.getAnimations().map((entry) => entry.effect?.getTiming?.()).find((timing) => timing && typeof timing.delay === "number");
+      return {
+        top: rect.top,
+        left: rect.left,
+        delay: Number(animation?.delay ?? 0)
+      };
+    }).filter(Boolean);
+    return {
+      recent: readItems('#social-hub-showcases [data-mobile-lastfm-dropdown-key="recent-tracks"] .lastfm-recent-item'),
+      artists: readItems('#social-hub-showcases [data-mobile-lastfm-dropdown-key="top-artists"] .lastfm-media-item')
+    };
+  });
+  for (const group of [mobileRevealOrder.recent, mobileRevealOrder.artists]) {
+    expect(group.length).toBeGreaterThan(0);
+    const sorted = [...group].sort((left, right) => {
+      const topDelta = left.top - right.top;
+      if (Math.abs(topDelta) > 4) {
+        return topDelta;
+      }
+      return left.left - right.left;
+    });
+    for (let index = 1; index < sorted.length; index += 1) {
+      expect(sorted[index].delay).toBeGreaterThanOrEqual(sorted[index - 1].delay);
+    }
+  }
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);

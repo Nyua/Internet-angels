@@ -5083,59 +5083,80 @@
       const panel = dropdown.querySelector(".lastfm-mobile-dropdown-panel");
       if (!(panel instanceof HTMLElement)) return;
       const list = panel.querySelector(".lastfm-recent-list, .lastfm-media-grid");
-      panel.getAnimations().forEach((animation) => animation.cancel());
-      panel.animate([
-        {
-          opacity: 0,
-          transform: "translateY(-10px) scaleY(0.76)",
-          clipPath: "inset(0 0 100% 0 round 22px)",
-          filter: "blur(5px)"
-        },
-        {
-          opacity: 1,
-          transform: "translateY(0) scaleY(1)",
-          clipPath: "inset(0 0 0 0 round 22px)",
-          filter: "blur(0)"
-        }
-      ], {
-        duration: 320,
-        easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
-        fill: "both"
-      });
       if (!(list instanceof HTMLElement)) return;
+      panel.getAnimations().forEach((animation) => animation.cancel());
       list.getAnimations().forEach((animation) => animation.cancel());
-      list.animate([
-        {
-          opacity: 0,
-          transform: "translateY(-12px)"
-        },
-        {
-          opacity: 1,
-          transform: "translateY(0)"
-        }
-      ], {
-        duration: 280,
-        delay: 30,
-        easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
-        fill: "both"
-      });
-      Array.from(list.children).slice(0, 10).forEach((item, index) => {
-        if (!(item instanceof HTMLElement)) return;
-        item.getAnimations().forEach((animation) => animation.cancel());
-        item.animate([
+      window.requestAnimationFrame(() => {
+        panel.getAnimations().forEach((animation) => animation.cancel());
+        panel.animate([
           {
             opacity: 0,
-            transform: "translateY(-8px)"
+            transform: "translateY(-10px) scaleY(0.76)",
+            clipPath: "inset(0 0 100% 0 round 22px)",
+            filter: "blur(5px)"
           },
           {
             opacity: 1,
-            transform: "translateY(0)"
+            transform: "translateY(0) scaleY(1)",
+            clipPath: "inset(0 0 0 0 round 22px)",
+            filter: "blur(0)"
           }
         ], {
-          duration: 260,
-          delay: 55 + index * 24,
+          duration: 320,
           easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
           fill: "both"
+        });
+        list.getAnimations().forEach((animation) => animation.cancel());
+        list.animate([
+          {
+            opacity: 0
+          },
+          {
+            opacity: 1
+          }
+        ], {
+          duration: 180,
+          delay: 18,
+          easing: "linear",
+          fill: "both"
+        });
+        const orderedItems = Array.from(list.children).filter((item) => item instanceof HTMLElement).sort((left, right) => {
+          const leftRect = left.getBoundingClientRect();
+          const rightRect = right.getBoundingClientRect();
+          const topDelta = leftRect.top - rightRect.top;
+          if (Math.abs(topDelta) > 4) {
+            return topDelta;
+          }
+          return leftRect.left - rightRect.left;
+        });
+        let lastTop = Number.NEGATIVE_INFINITY;
+        let revealBand = -1;
+        let bandIndex = 0;
+        orderedItems.slice(0, 12).forEach((item) => {
+          const rect = item.getBoundingClientRect();
+          if (Math.abs(rect.top - lastTop) > 4) {
+            revealBand += 1;
+            bandIndex = 0;
+            lastTop = rect.top;
+          }
+          const delay = 58 + revealBand * 72 + bandIndex * 18;
+          bandIndex += 1;
+          item.getAnimations().forEach((animation) => animation.cancel());
+          item.animate([
+            {
+              opacity: 0,
+              transform: "translateY(-10px)"
+            },
+            {
+              opacity: 1,
+              transform: "translateY(0)"
+            }
+          ], {
+            duration: 250,
+            delay,
+            easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
+            fill: "both"
+          });
         });
       });
     }
@@ -7879,6 +7900,7 @@
       };
     }
     function resolveShootingStarRepulsion(x, y, field, seed) {
+      const repelRadius = field.repelRadius * 2;
       const laneRepulsion = resolveLineRepulsion(
         x,
         y,
@@ -7886,7 +7908,7 @@
         field.tailY,
         field.headX,
         field.headY,
-        field.repelRadius,
+        repelRadius,
         field.repelShift * 0.78,
         field.seed ^ seed
       );
@@ -7895,7 +7917,7 @@
         y,
         field.headX,
         field.headY,
-        field.repelRadius * 0.82,
+        repelRadius * 0.82,
         field.repelShift * 1.18,
         field.seed + seed
       );
@@ -8273,14 +8295,17 @@
       const coreAlphaScale = clamp(options.coreAlphaScale ?? 1, 0, 1.5);
       const armAlphaScale = clamp(options.armAlphaScale ?? 0.7, 0, 1.5);
       const diagonalAlphaScale = clamp(options.diagonalAlphaScale ?? 0.4, 0, 1.5);
-      fillPixelCell(
-        gridX - Math.floor(coreCells / 2),
-        gridY - Math.floor(coreCells / 2),
-        cellSize,
-        alpha * coreAlphaScale,
-        coreCells,
-        coreCells
-      );
+      const corePixelOffsetX = Number(options.corePixelOffsetX) || 0;
+      const corePixelOffsetY = Number(options.corePixelOffsetY) || 0;
+      if (alpha * coreAlphaScale > 0.002) {
+        ctx.fillStyle = `rgba(255,255,255,${clamp(alpha * coreAlphaScale, 0, 1)})`;
+        ctx.fillRect(
+          Math.round((gridX - Math.floor(coreCells / 2)) * cellSize + corePixelOffsetX),
+          Math.round((gridY - Math.floor(coreCells / 2)) * cellSize + corePixelOffsetY),
+          coreCells * cellSize,
+          coreCells * cellSize
+        );
+      }
       for (let step = 1; step <= armCells; step += 1) {
         const falloff = 1 - (step - 1) / Math.max(1, armCells) * 0.72;
         const armAlpha = alpha * armAlphaScale * falloff;
@@ -8329,12 +8354,15 @@
       const drawX = wrapCoordinate(starState.x, renderWidth);
       const drawY = wrapCoordinate(starState.y + scrollCurrentOffsetY, renderHeight);
       const desktopStarScale = compactMobileLayout ? 1 : 1.3;
+      const smallStarCoreOffset = starState.size > 1 ? 0 : 1;
       drawPixelBurst(drawX, drawY, {
         cellSize: getAmbientPixelCell((starState.size > 1 ? 1.7 : 1.35) * desktopStarScale),
         alpha,
         coreCells: starState.size > 1 ? 2 : 1,
         armCells: starState.size + 1,
         diagonalCells: starState.size > 1 ? 2 : 1,
+        corePixelOffsetX: smallStarCoreOffset,
+        corePixelOffsetY: smallStarCoreOffset,
         armAlphaScale: 0.72,
         diagonalAlphaScale: 0.34
       });
