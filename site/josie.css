@@ -1250,6 +1250,16 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-backdrop {
   position: absolute;
   inset: 0;
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition:
+    background-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    backdrop-filter 540ms cubic-bezier(0.22, 1, 0.36, 1),
+    -webkit-backdrop-filter 540ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lastfm-track-panel[data-panel-visibility="visible"] .lastfm-track-panel-backdrop {
   background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -1675,7 +1685,9 @@ body.lastfm-track-panel-open {
   contain: paint;
   transform: translateY(14px) scale(0.985);
   opacity: 0;
-  transition: transform 220ms ease, opacity 220ms ease;
+  transition:
+    transform 220ms ease,
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1);
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -1688,6 +1700,11 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel.is-open .lastfm-track-panel-window {
   transform: translateY(0) scale(1);
   opacity: 1;
+}
+
+.lastfm-track-panel[data-panel-visibility="staged"] .lastfm-track-panel-window {
+  transform: translateY(14px) scale(0.985);
+  opacity: 0;
 }
 
 .lastfm-track-panel-scene[data-panel-scene-phase="loading"] .lastfm-track-panel-window,
@@ -1714,7 +1731,9 @@ body.lastfm-track-panel-open {
   mix-blend-mode: screen;
   transform: none;
   border-radius: inherit;
-  transition: opacity 240ms ease, transform 240ms ease;
+  transition:
+    opacity 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lastfm-track-panel-window::after {
@@ -1725,7 +1744,7 @@ body.lastfm-track-panel-open {
     radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.08), transparent 32%),
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03), transparent 48%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.7) 54%, rgba(0, 0, 0, 0.94) 100%);
-  transition: opacity 240ms ease;
+  transition: opacity 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::before {
@@ -3401,6 +3420,23 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   filter: drop-shadow(0 10px 18px var(--surface-shadow));
 }
 
+#social-hub-profile,
+#social-hub-profile .steam-hero-shell,
+#social-hub-profile .steam-hero-content,
+#social-hub-profile .steam-hero-avatar-wrap {
+  overflow: visible !important;
+}
+
+#social-hub-profile .steam-hero-avatar-wrap--decorated {
+  z-index: 4;
+}
+
+#social-hub-profile .steam-hero-avatar-decoration {
+  width: 132%;
+  height: 132%;
+  max-width: none;
+}
+
 .steam-hero-copy {
   min-width: 0;
   display: flex;
@@ -3669,6 +3705,28 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     transform: translateY(0) scaleY(1);
     clip-path: inset(0 0 0 0 round 28px);
     filter: blur(0);
+  }
+}
+
+@keyframes socialHubDesktopUnfoldHero {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scaleY(0.26);
+    clip-path: inset(-52px 0 100% 0 round 28px);
+    filter: blur(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    clip-path: inset(-52px 0 0 0 round 28px);
+    filter: blur(0);
+  }
+}
+
+@media (min-width: 821px) {
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-shell[data-desktop-unfold] {
+    animation-name: socialHubDesktopUnfoldHero;
   }
 }
 
@@ -4177,6 +4235,15 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-row--soundcloud {
   --sidebar-row-accent-rgb: 255, 212, 195;
+}
+
+@media (min-width: 821px) {
+  .steam-sidebar-row--soundcloud,
+  .steam-sidebar-row--soundcloud::before,
+  .steam-sidebar-row--soundcloud .steam-sidebar-link-shell,
+  .steam-sidebar-row--soundcloud .steam-sidebar-link {
+    border-radius: 0 !important;
+  }
 }
 
 .steam-sidebar-row--twitter,
@@ -5868,6 +5935,36 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   color: #ffe3ea;
 }
 
+.lastfm-angel-footer {
+  margin: 14px 0 2px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  text-align: center;
+  font-size: clamp(18px, 2.1vw, 22px);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(255, 226, 238, 0.48);
+  text-shadow: 0 0 0 rgba(255, 213, 231, 0);
+  transition:
+    color 220ms ease,
+    letter-spacing 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    text-shadow 220ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  user-select: none;
+}
+
+.lastfm-angel-footer:hover {
+  color: rgba(255, 240, 246, 0.94);
+  letter-spacing: 0.34em;
+  text-shadow: 0 0 18px rgba(255, 213, 231, 0.34);
+  transform: translateY(-1px);
+}
+
 .lastfm-profile-totals {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5973,7 +6070,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 [data-lastfm-art-source][data-lastfm-art-source-state="launching"] {
+  opacity: 1;
+}
+
+[data-lastfm-art-source][data-lastfm-art-source-state="retiring"] {
   opacity: 0;
+  transition: opacity 220ms ease;
 }
 
 .lastfm-recent-note {
@@ -7356,7 +7458,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     pointer-events: none;
   }
 
-  .steam-sidebar-currently-playing-panel--minimal[data-mobile-currently-playing-reveal="visible"] {
+  .steam-sidebar-currently-playing-panel--minimal[data-mobile-currently-playing-reveal="visible"],
+  .steam-sidebar-currently-playing-panel--minimal.is-mobile-currently-playing-visible {
     opacity: 1;
     transform: translateY(0) scaleY(1);
     filter: blur(0);
@@ -7392,14 +7495,20 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
   .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-progress-track {
     margin-top: 8px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: none;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.12));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 0 10px rgba(255, 255, 255, 0.05);
   }
 
   .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-progress-fill {
-    background: linear-gradient(90deg, hsl(var(--shuffle-secondary) / 0.92), hsl(var(--shuffle-accent-strong) / 0.92));
-    box-shadow: none;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(250, 251, 255, 1) 52%, rgba(255, 255, 255, 0.94));
+    box-shadow:
+      0 0 8px rgba(255, 255, 255, 0.74),
+      0 0 18px rgba(255, 255, 255, 0.34),
+      0 0 28px rgba(255, 255, 255, 0.16);
   }
 
   .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-time {

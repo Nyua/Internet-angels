@@ -3374,6 +3374,7 @@
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Albums</h4>
               ${renderLastFmMediaGrid(topAlbums, "albums")}
+              <p class="lastfm-angel-footer" aria-hidden="true">Angels</p>
             </section>
     `;
     const topArtistsSection = mobile ? renderMobileLastFmDropdown(topArtistsMarkup, {
@@ -4790,6 +4791,11 @@
     let lastFmTrackPanelFitRaf = 0;
     let lastFmTrackPanelSceneTimer = 0;
     let lastFmTrackPanelArtworkLaunchCleanup = null;
+    let lastFmTrackPanelArtworkSourceElement = null;
+    let lastFmTrackPanelArtworkSourceRetireRaf = 0;
+    let lastFmTrackPanelArtworkSourceRetireTimer = 0;
+    let lastFmTrackPanelBuildAnimations = [];
+    let lastFmTrackPanelBuildNonce = 0;
     let spotifyIframeApiPromise = null;
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
@@ -4822,6 +4828,9 @@
     const LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL = "/assets/deltarune-explosion.mp3";
     const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
     const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 420;
+    const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 1500;
+    const LASTFM_PANEL_BUILD_STEP_MS = 74;
+    const LASTFM_PANEL_BUILD_DURATION_MS = 460;
     const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
     const lastFmTrackPanelSceneRuntime = new WeakMap();
     let mobileLinkSelectionTimer = 0;
@@ -4978,11 +4987,21 @@
       if (!(sidebar instanceof HTMLElement)) return null;
       return sidebar.querySelector(".steam-sidebar-list--mobile-icons");
     }
+    function getMobileCurrentlyPlayingPanel() {
+      if (!(sidebar instanceof HTMLElement)) return null;
+      return sidebar.querySelector(".steam-sidebar-currently-playing-panel--minimal");
+    }
     function setMobileLinksRevealState(nextState) {
       const row = getMobileLinksRow();
-      if (!(row instanceof HTMLElement)) return;
-      row.dataset.mobileLinksReveal = nextState;
-      row.classList.toggle("is-mobile-links-visible", nextState === "visible");
+      if (row instanceof HTMLElement) {
+        row.dataset.mobileLinksReveal = nextState;
+        row.classList.toggle("is-mobile-links-visible", nextState === "visible");
+      }
+      const currentPlayingPanel = getMobileCurrentlyPlayingPanel();
+      if (currentPlayingPanel instanceof HTMLElement) {
+        currentPlayingPanel.dataset.mobileCurrentlyPlayingReveal = nextState;
+        currentPlayingPanel.classList.toggle("is-mobile-currently-playing-visible", nextState === "visible");
+      }
     }
     function scheduleMobileLinksReveal() {
       if (!isCompactMobileLayout()) return;
@@ -5800,6 +5819,172 @@
         lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
       }
     }
+    function clearLastFmTrackPanelArtworkSourceState() {
+      if (lastFmTrackPanelArtworkSourceRetireRaf) {
+        window.cancelAnimationFrame(lastFmTrackPanelArtworkSourceRetireRaf);
+        lastFmTrackPanelArtworkSourceRetireRaf = 0;
+      }
+      if (lastFmTrackPanelArtworkSourceRetireTimer) {
+        window.clearTimeout(lastFmTrackPanelArtworkSourceRetireTimer);
+        lastFmTrackPanelArtworkSourceRetireTimer = 0;
+      }
+      if (lastFmTrackPanelArtworkSourceElement instanceof HTMLElement) {
+        delete lastFmTrackPanelArtworkSourceElement.dataset.lastfmArtSourceState;
+      }
+      lastFmTrackPanelArtworkSourceElement = null;
+    }
+    function setLastFmTrackPanelArtworkSourceLaunching(shell) {
+      clearLastFmTrackPanelArtworkSourceState();
+      if (!(shell instanceof HTMLElement)) return;
+      lastFmTrackPanelArtworkSourceElement = shell;
+      shell.dataset.lastfmArtSourceState = "launching";
+    }
+    function queueLastFmTrackPanelArtworkSourceRetireAfterReveal() {
+      if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement)) return;
+      const sourceElement = lastFmTrackPanelArtworkSourceElement;
+      if (lastFmTrackPanelArtworkSourceRetireRaf) {
+        window.cancelAnimationFrame(lastFmTrackPanelArtworkSourceRetireRaf);
+        lastFmTrackPanelArtworkSourceRetireRaf = 0;
+      }
+      lastFmTrackPanelArtworkSourceRetireRaf = window.requestAnimationFrame(() => {
+        lastFmTrackPanelArtworkSourceRetireRaf = window.requestAnimationFrame(() => {
+          lastFmTrackPanelArtworkSourceRetireRaf = 0;
+          if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
+          if (lastFmTrackPanelRoot.dataset.panelVisibility !== "visible" || lastFmTrackPanelRoot.getAttribute("aria-hidden") !== "false") {
+            return;
+          }
+          if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement) || lastFmTrackPanelArtworkSourceElement !== sourceElement) {
+            return;
+          }
+          lastFmTrackPanelArtworkSourceRetireTimer = window.setTimeout(() => {
+            lastFmTrackPanelArtworkSourceRetireTimer = 0;
+            if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
+            if (lastFmTrackPanelRoot.dataset.panelVisibility !== "visible" || lastFmTrackPanelRoot.getAttribute("aria-hidden") !== "false") {
+              return;
+            }
+            if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement) || lastFmTrackPanelArtworkSourceElement !== sourceElement) {
+              return;
+            }
+            sourceElement.dataset.lastfmArtSourceState = "retiring";
+          }, LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS);
+        });
+      });
+    }
+    function cleanupLastFmTrackPanelBuildTarget(target) {
+      if (!(target instanceof HTMLElement)) return;
+      delete target.dataset.lastfmPanelBuildDelay;
+      target.style.removeProperty("opacity");
+      target.style.removeProperty("transform");
+      target.style.removeProperty("filter");
+      target.style.removeProperty("transform-origin");
+      target.style.removeProperty("will-change");
+    }
+    function clearLastFmTrackPanelBuildReveal() {
+      lastFmTrackPanelBuildNonce += 1;
+      lastFmTrackPanelBuildAnimations.forEach((animation) => {
+        try {
+          animation?.cancel?.();
+        } catch {
+        }
+      });
+      lastFmTrackPanelBuildAnimations = [];
+      document.querySelectorAll("[data-lastfm-panel-build-delay]").forEach((target) => {
+        cleanupLastFmTrackPanelBuildTarget(target);
+      });
+    }
+    function getLastFmTrackPanelBuildTargets(windowElement) {
+      if (!(windowElement instanceof HTMLElement)) return [];
+      const targets = [];
+      const closeButton = windowElement.querySelector(".lastfm-track-panel-close");
+      if (closeButton instanceof HTMLElement) {
+        targets.push(closeButton);
+      }
+      const secondary = windowElement.querySelector(".lastfm-track-panel-secondary");
+      if (secondary instanceof HTMLElement) {
+        targets.push(...Array.from(secondary.children).filter((child) => child instanceof HTMLElement));
+      }
+      const stack = windowElement.querySelector(".lastfm-track-panel-stack");
+      if (stack instanceof HTMLElement) {
+        targets.push(...Array.from(stack.children).filter((child) => child instanceof HTMLElement));
+      }
+      return targets.filter((target) => {
+        if (!(target instanceof HTMLElement)) return false;
+        const styles = window.getComputedStyle(target);
+        if (styles.display === "none" || styles.visibility === "hidden") return false;
+        const rect = target.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }).sort((left, right) => {
+        const leftRect = left.getBoundingClientRect();
+        const rightRect = right.getBoundingClientRect();
+        const topDelta = leftRect.top - rightRect.top;
+        if (Math.abs(topDelta) > 6) return topDelta;
+        return leftRect.left - rightRect.left;
+      });
+    }
+    function prepareLastFmTrackPanelBuildReveal(windowElement) {
+      clearLastFmTrackPanelBuildReveal();
+      if (!(windowElement instanceof HTMLElement)) return [];
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+        return [];
+      }
+      const targets = getLastFmTrackPanelBuildTargets(windowElement);
+      let currentBand = -1;
+      let lastTop = Number.NEGATIVE_INFINITY;
+      targets.forEach((target) => {
+        const rect = target.getBoundingClientRect();
+        if (Math.abs(rect.top - lastTop) > 10) {
+          currentBand += 1;
+          lastTop = rect.top;
+        }
+        target.dataset.lastfmPanelBuildDelay = String(46 + currentBand * LASTFM_PANEL_BUILD_STEP_MS);
+        target.style.opacity = "0";
+        target.style.transform = "perspective(1200px) rotateX(-17deg) translateY(-20px) scaleY(0.9)";
+        target.style.filter = "blur(10px)";
+        target.style.transformOrigin = "top center";
+        target.style.willChange = "opacity, transform, filter";
+      });
+      return targets;
+    }
+    function playLastFmTrackPanelBuildReveal(windowElement) {
+      if (!(windowElement instanceof HTMLElement)) return;
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+        clearLastFmTrackPanelBuildReveal();
+        return;
+      }
+      const targets = getLastFmTrackPanelBuildTargets(windowElement);
+      if (!targets.length) return;
+      const nonce = ++lastFmTrackPanelBuildNonce;
+      lastFmTrackPanelBuildAnimations = [];
+      targets.forEach((target) => {
+        const delay = Math.max(0, Number(target.dataset.lastfmPanelBuildDelay) || 0);
+        const animation = target.animate(
+          [
+            {
+              opacity: 0,
+              transform: "perspective(1200px) rotateX(-17deg) translateY(-20px) scaleY(0.9)",
+              filter: "blur(10px)"
+            },
+            {
+              opacity: 1,
+              transform: "perspective(1200px) rotateX(0deg) translateY(0) scaleY(1)",
+              filter: "blur(0px)"
+            }
+          ],
+          {
+            duration: LASTFM_PANEL_BUILD_DURATION_MS,
+            delay,
+            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+            fill: "both"
+          }
+        );
+        lastFmTrackPanelBuildAnimations.push(animation);
+        animation.finished.catch(() => {
+        }).then(() => {
+          if (lastFmTrackPanelBuildNonce !== nonce) return;
+          cleanupLastFmTrackPanelBuildTarget(target);
+        });
+      });
+    }
     function getLastFmTrackPanelArtworkSource(trigger) {
       if (!(trigger instanceof HTMLElement) || isCompactMobileLayout()) return null;
       const shell = trigger.querySelector("[data-lastfm-art-source]");
@@ -5821,9 +6006,53 @@
       const anchor = scope.querySelector("[data-lastfm-panel-art-anchor]");
       return anchor instanceof HTMLElement ? anchor : null;
     }
+    function getLastFmTrackPanelArtworkSurface(anchor) {
+      if (!(anchor instanceof HTMLElement)) return null;
+      const selectors = [
+        ".lastfm-track-panel-art-face--front .lastfm-track-panel-art-image",
+        ".lastfm-track-panel-art-face--front .lastfm-track-panel-art-fallback",
+        ".lastfm-track-panel-art-image",
+        ".lastfm-track-panel-art-fallback",
+        ".lastfm-track-panel-art-toggle",
+        ".lastfm-track-panel-art-back"
+      ];
+      for (const selector of selectors) {
+        const candidate = anchor.querySelector(selector);
+        if (!(candidate instanceof HTMLElement)) continue;
+        const rect = candidate.getBoundingClientRect();
+        if (rect.width > 1 && rect.height > 1) {
+          return candidate;
+        }
+      }
+      return anchor;
+    }
+    function getLastFmTrackPanelArtworkLaunchTarget(layerName = "current") {
+      const anchor = getLastFmTrackPanelArtAnchor(layerName);
+      if (!(anchor instanceof HTMLElement)) return null;
+      const surface = getLastFmTrackPanelArtworkSurface(anchor);
+      const targetNode = surface instanceof HTMLElement ? surface : anchor;
+      const rect = targetNode.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) {
+        const anchorRect = anchor.getBoundingClientRect();
+        if (anchorRect.width < 1 || anchorRect.height < 1) {
+          return null;
+        }
+        return {
+          anchor,
+          surface: anchor,
+          rect: anchorRect
+        };
+      }
+      return {
+        anchor,
+        surface: targetNode,
+        rect
+      };
+    }
     function stageLastFmTrackPanelOverlay(panel) {
       if (!(panel instanceof HTMLElement)) return;
       clearLastFmTrackPanelArtworkLaunch();
+      clearLastFmTrackPanelBuildReveal();
       panel.hidden = false;
       panel.classList.add("is-open");
       panel.setAttribute("aria-hidden", "true");
@@ -5838,35 +6067,43 @@
       panel.dataset.panelVisibility = "visible";
       panel.dataset.artworkLaunchState = "idle";
       scheduleLastFmTrackPanelFit();
+      queueLastFmTrackPanelArtworkSourceRetireAfterReveal();
       playInteractionSfx("open_soft", openSoundSource);
     }
-    function animateLastFmTrackPanelArtworkLaunch(sourceState, targetAnchor) {
+    function animateLastFmTrackPanelArtworkLaunch(sourceState, targetState) {
       clearLastFmTrackPanelArtworkLaunch();
-      if (!(sourceState?.shell instanceof HTMLElement) || !(targetAnchor instanceof HTMLElement)) {
+      if (!(sourceState?.shell instanceof HTMLElement) || !(targetState?.anchor instanceof HTMLElement)) {
         return Promise.resolve(false);
       }
-      const startRect = sourceState.rect && sourceState.rect.width > 0 && sourceState.rect.height > 0
-        ? sourceState.rect
-        : sourceState.shell.getBoundingClientRect();
-      const targetRect = targetAnchor.getBoundingClientRect();
+      const liveSourceRect = sourceState.shell.isConnected ? sourceState.shell.getBoundingClientRect() : null;
+      const startRect = liveSourceRect && liveSourceRect.width > 0 && liveSourceRect.height > 0
+        ? liveSourceRect
+        : sourceState.rect;
+      const targetRect = targetState.rect;
       if (startRect.width < 1 || startRect.height < 1 || targetRect.width < 1 || targetRect.height < 1) {
         return Promise.resolve(false);
       }
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
       const startStyle = window.getComputedStyle(sourceState.shell);
-      const targetSurface = targetAnchor.querySelector(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle, .lastfm-track-panel-art-back");
-      const targetStyle = window.getComputedStyle(targetSurface instanceof HTMLElement ? targetSurface : targetAnchor);
+      const targetSurface = targetState.surface instanceof HTMLElement ? targetState.surface : targetState.anchor;
+      const targetStyle = window.getComputedStyle(targetSurface);
+      const useMediaGridLaunchStyle = sourceState.shell.classList.contains("lastfm-recent-art");
       const clone = document.createElement("div");
       clone.className = "lastfm-track-panel-art-launch";
       clone.setAttribute("aria-hidden", "true");
+      if (useMediaGridLaunchStyle) {
+        clone.dataset.launchStyle = "media-grid";
+      }
       clone.style.left = `${startRect.left}px`;
       clone.style.top = `${startRect.top}px`;
       clone.style.width = `${startRect.width}px`;
       clone.style.height = `${startRect.height}px`;
-      clone.style.border = startStyle.border;
-      clone.style.borderRadius = startStyle.borderRadius;
-      clone.style.background = startStyle.background;
-      clone.style.boxShadow = startStyle.boxShadow === "none" ? "0 10px 24px rgba(0, 0, 0, 0.18)" : startStyle.boxShadow;
+      clone.style.border = useMediaGridLaunchStyle ? "0" : startStyle.border;
+      clone.style.borderRadius = useMediaGridLaunchStyle ? "0px" : startStyle.borderRadius;
+      clone.style.background = useMediaGridLaunchStyle ? "transparent" : startStyle.background;
+      clone.style.boxShadow = useMediaGridLaunchStyle
+        ? "0 18px 34px rgba(0, 0, 0, 0.22)"
+        : startStyle.boxShadow === "none" ? "0 10px 24px rgba(0, 0, 0, 0.18)" : startStyle.boxShadow;
       const sourceMedia = sourceState.media;
       if (sourceMedia instanceof HTMLImageElement) {
         const image = sourceMedia.cloneNode(true);
@@ -5881,7 +6118,6 @@
         clone.appendChild(fallback);
       }
       const cleanup = () => {
-        delete sourceState.shell.dataset.lastfmArtSourceState;
         if (clone.isConnected) {
           clone.remove();
         }
@@ -5890,7 +6126,7 @@
         }
       };
       lastFmTrackPanelArtworkLaunchCleanup = cleanup;
-      sourceState.shell.dataset.lastfmArtSourceState = "launching";
+      setLastFmTrackPanelArtworkSourceLaunching(sourceState.shell);
       document.body.appendChild(clone);
       if (lastFmTrackPanelRoot instanceof HTMLElement) {
         lastFmTrackPanelRoot.dataset.artworkLaunchState = "animating";
@@ -5926,11 +6162,45 @@
         }, { once: true });
         window.requestAnimationFrame(() => {
           clone.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`;
-          clone.style.borderRadius = targetStyle.borderRadius;
-          clone.style.boxShadow = targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
+          clone.style.borderRadius = useMediaGridLaunchStyle ? "0px" : targetStyle.borderRadius;
+          clone.style.boxShadow = useMediaGridLaunchStyle
+            ? "0 20px 40px rgba(0, 0, 0, 0.24)"
+            : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
           clone.style.filter = "brightness(1.03)";
         });
       });
+    }
+    function waitForImageElementReady(image) {
+      if (!(image instanceof HTMLImageElement)) {
+        return Promise.resolve();
+      }
+      if (image.complete) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        const finish = () => {
+          image.removeEventListener("load", finish);
+          image.removeEventListener("error", finish);
+          resolve();
+        };
+        image.addEventListener("load", finish, { once: true });
+        image.addEventListener("error", finish, { once: true });
+      });
+    }
+    async function waitForLastFmTrackPanelArtworkReady(layerName = "current") {
+      await waitForAnimationFrames(2);
+      const target = getLastFmTrackPanelArtworkLaunchTarget(layerName);
+      if (!target) {
+        return null;
+      }
+      const artImage = target.anchor.querySelector(".lastfm-track-panel-art-image");
+      if (artImage instanceof HTMLImageElement) {
+        await waitForImageElementReady(artImage);
+        await waitForAnimationFrames(2);
+      }
+      scheduleLastFmTrackPanelFit();
+      await waitForAnimationFrames(2);
+      return getLastFmTrackPanelArtworkLaunchTarget(layerName);
     }
     async function renderLastFmPanelLoadStateIntoCurrentScene(definition, loadState) {
       if (!definition || !loadState) return false;
@@ -5981,10 +6251,6 @@
       });
       stageLastFmTrackPanelOverlay(panel);
       await waitForAnimationFrames(2);
-      const animationPromise = animateLastFmTrackPanelArtworkLaunch(
-        sourceState,
-        getLastFmTrackPanelArtAnchor()
-      );
       try {
         const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
@@ -5994,16 +6260,31 @@
         if (!preloadFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
+        const settledTargetAnchor = await waitForLastFmTrackPanelArtworkReady("current");
+        const settledWindow = getLastFmTrackPanelSceneLayerWindow(getLastFmTrackPanelCurrentScene(), "current");
+        prepareLastFmTrackPanelBuildReveal(settledWindow);
+        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
+          return true;
+        }
+        await animateLastFmTrackPanelArtworkLaunch(sourceState, settledTargetAnchor);
+        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
+          return true;
+        }
+        revealLastFmTrackPanelOverlay(panel, definition.openSoundSource);
+        const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus({ preventScroll: true });
+        }
+        window.requestAnimationFrame(() => {
+          playLastFmTrackPanelBuildReveal(getLastFmTrackPanelSceneLayerWindow(getLastFmTrackPanelCurrentScene(), "current"));
+        });
+        return true;
       } catch {
         if (lastFmTrackPanelActiveKey !== cacheKey) {
           return true;
         }
         renderLastFmPanelErrorIntoCurrentScene(definition, normalizedQuery);
       }
-      if (lastFmTrackPanelActiveKey !== cacheKey) {
-        return true;
-      }
-      await animationPromise;
       if (lastFmTrackPanelActiveKey !== cacheKey) {
         return true;
       }
@@ -7304,6 +7585,8 @@
       clearLastFmTrackPanelSceneTimer();
       clearLastFmTrackPanelSceneSettleTimer();
       clearLastFmTrackPanelArtworkLaunch();
+      clearLastFmTrackPanelArtworkSourceState();
+      clearLastFmTrackPanelBuildReveal();
       if (lastFmTrackPanelFitRaf) {
         cancelAnimationFrame(lastFmTrackPanelFitRaf);
         lastFmTrackPanelFitRaf = 0;
