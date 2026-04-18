@@ -3343,6 +3343,51 @@
     </ul>
   `;
   }
+  function renderLastFmAngelFooter() {
+    return `
+              <div class="lastfm-angel-footer" data-angels-footer data-angels-dagger-state="idle">
+                <span class="lastfm-angel-dagger" aria-hidden="true">
+                  <span class="lastfm-angel-dagger-flight">
+                    <span class="lastfm-angel-dagger-geometry">
+                      <svg class="lastfm-angel-dagger-svg" viewBox="0 0 252 92" role="presentation" focusable="false" aria-hidden="true">
+                        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+                          <g class="lastfm-angel-dagger-outline lastfm-angel-dagger-outline--rear" stroke-width="2.6">
+                            <polygon points="16,35 28,25 42,35 28,45"></polygon>
+                            <polygon points="42,31 78,31 90,35 78,39 42,39 30,35"></polygon>
+                            <polygon points="78,24 106,31 114,35 106,39 78,46 90,35"></polygon>
+                            <polygon points="108,30 184,24 226,35 184,46 108,40 118,35"></polygon>
+                            <path d="M114 35H226"></path>
+                          </g>
+                          <g class="lastfm-angel-dagger-outline lastfm-angel-dagger-outline--front" stroke-width="3.2">
+                            <polygon points="16,49 28,39 42,49 28,59"></polygon>
+                            <polygon points="42,45 78,45 90,49 78,53 42,53 30,49"></polygon>
+                            <polygon points="78,38 106,45 114,49 106,53 78,60 90,49"></polygon>
+                            <polygon points="108,44 184,38 226,49 184,60 108,54 118,49"></polygon>
+                            <path d="M114 49H226"></path>
+                          </g>
+                          <g class="lastfm-angel-dagger-connectors" stroke-width="2.1">
+                            <line x1="16" y1="35" x2="16" y2="49"></line>
+                            <line x1="28" y1="25" x2="28" y2="39"></line>
+                            <line x1="42" y1="35" x2="42" y2="49"></line>
+                            <line x1="42" y1="31" x2="42" y2="45"></line>
+                            <line x1="78" y1="31" x2="78" y2="45"></line>
+                            <line x1="90" y1="35" x2="90" y2="49"></line>
+                            <line x1="78" y1="24" x2="78" y2="38"></line>
+                            <line x1="106" y1="31" x2="106" y2="45"></line>
+                            <line x1="114" y1="35" x2="114" y2="49"></line>
+                            <line x1="108" y1="30" x2="108" y2="44"></line>
+                            <line x1="184" y1="24" x2="184" y2="38"></line>
+                            <line x1="226" y1="35" x2="226" y2="49"></line>
+                          </g>
+                        </g>
+                      </svg>
+                    </span>
+                  </span>
+                </span>
+                <button class="lastfm-angel-trigger" type="button" data-angels-footer-trigger>Angels</button>
+              </div>
+    `;
+  }
   function renderLastFmShowcase(site, payload, options = {}) {
     const mobile = Boolean(options?.mobile);
     const mobileRecentRevealState = mobile ? String(options?.mobileRecentRevealState || "pending") : "";
@@ -3374,7 +3419,7 @@
             <section class="lastfm-section">
               <h4 class="lastfm-section-title">Top Albums</h4>
               ${renderLastFmMediaGrid(topAlbums, "albums")}
-              <p class="lastfm-angel-footer" aria-hidden="true">Angels</p>
+              ${renderLastFmAngelFooter()}
             </section>
     `;
     const topArtistsSection = mobile ? renderMobileLastFmDropdown(topArtistsMarkup, {
@@ -4808,10 +4853,13 @@
     let mobileLastFmRevealTimer = 0;
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
+    let activeAngelsFooter = null;
+    let angelsFooterLungeTimer = 0;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
+    const ANGELS_FOOTER_LUNGE_MS = 760;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
@@ -4986,6 +5034,39 @@
     function getMobileLinksRow() {
       if (!(sidebar instanceof HTMLElement)) return null;
       return sidebar.querySelector(".steam-sidebar-list--mobile-icons");
+    }
+    function clearAngelsFooterLungeState() {
+      if (angelsFooterLungeTimer) {
+        window.clearTimeout(angelsFooterLungeTimer);
+        angelsFooterLungeTimer = 0;
+      }
+      if (activeAngelsFooter instanceof HTMLElement) {
+        activeAngelsFooter.dataset.angelsDaggerState = "idle";
+      }
+      activeAngelsFooter = null;
+    }
+    function triggerAngelsFooterLunge(trigger) {
+      const footer = trigger instanceof HTMLElement ? trigger.closest("[data-angels-footer]") : null;
+      if (!(footer instanceof HTMLElement)) return;
+      if (activeAngelsFooter instanceof HTMLElement && activeAngelsFooter !== footer) {
+        activeAngelsFooter.dataset.angelsDaggerState = "idle";
+      }
+      if (angelsFooterLungeTimer) {
+        window.clearTimeout(angelsFooterLungeTimer);
+        angelsFooterLungeTimer = 0;
+      }
+      activeAngelsFooter = footer;
+      footer.dataset.angelsDaggerState = "priming";
+      void footer.offsetWidth;
+      footer.dataset.angelsDaggerState = "lunging";
+      angelsFooterLungeTimer = window.setTimeout(() => {
+        angelsFooterLungeTimer = 0;
+        if (!(activeAngelsFooter instanceof HTMLElement) || activeAngelsFooter !== footer) {
+          return;
+        }
+        activeAngelsFooter.dataset.angelsDaggerState = "idle";
+        activeAngelsFooter = null;
+      }, ANGELS_FOOTER_LUNGE_MS);
     }
     function getMobileCurrentlyPlayingPanel() {
       if (!(sidebar instanceof HTMLElement)) return null;
@@ -7795,6 +7876,12 @@
         }, lastFmTrackButton);
         return;
       }
+      const angelsFooterTrigger = target.closest("[data-angels-footer-trigger]");
+      if (angelsFooterTrigger instanceof HTMLElement) {
+        event.preventDefault();
+        triggerAngelsFooterLunge(angelsFooterTrigger);
+        return;
+      }
       const copyHandleButton = target.closest("[data-profile-copy-handle]");
       if (copyHandleButton instanceof HTMLElement) {
         event.preventDefault();
@@ -7847,6 +7934,7 @@
       if (!(showcases instanceof HTMLElement)) return;
       if (!(profile instanceof HTMLElement)) return;
       if (!(sidebar instanceof HTMLElement)) return;
+      clearAngelsFooterLungeState();
       const compactMobile = isCompactMobileLayout();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));

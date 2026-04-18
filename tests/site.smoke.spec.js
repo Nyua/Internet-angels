@@ -1088,6 +1088,21 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(intervalCalls).not.toContain(12 * 60 * 60 * 1000);
 });
 
+test("josie animates the Angels footer dagger on click", async ({ page }) => {
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  const angelsFooter = page.locator("[data-angels-footer]");
+  const angelsTrigger = page.locator("[data-angels-footer-trigger]");
+  await angelsTrigger.scrollIntoViewIfNeeded();
+  await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "idle");
+  await expect(page.locator(".lastfm-angel-dagger-svg")).toBeVisible();
+  await expect(angelsTrigger).toHaveText("Angels");
+  await angelsTrigger.click();
+  await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "lunging");
+  await expect.poll(() => angelsFooter.getAttribute("data-angels-dagger-state"), { timeout: 2_000 }).toBe("idle");
+});
+
 test("desktop profile links open the confirm prompt immediately with no full-screen flash", async ({ page }) => {
   await stubWindowOpen(page);
   await page.goto("/josie.html");
