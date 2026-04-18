@@ -800,6 +800,30 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-player")).toHaveCount(1);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
+  const heroDecorationOverflow = await page.evaluate(() => {
+    const profile = document.querySelector(".social-hub-profile");
+    const shell = document.querySelector(".steam-hero-shell");
+    const wrap = document.querySelector(".steam-hero-avatar-wrap");
+    const decoration = document.querySelector(".steam-hero-avatar-decoration");
+    if (!(profile instanceof HTMLElement && shell instanceof HTMLElement && wrap instanceof HTMLElement && decoration instanceof HTMLElement)) {
+      return null;
+    }
+    const wrapRect = wrap.getBoundingClientRect();
+    const decorationRect = decoration.getBoundingClientRect();
+    return {
+      profileOverflow: window.getComputedStyle(profile).overflow,
+      shellOverflow: window.getComputedStyle(shell).overflow,
+      extendsPastWrapTop: decorationRect.top < wrapRect.top,
+      extendsPastWrapLeft: decorationRect.left < wrapRect.left,
+      extendsPastWrapRight: decorationRect.right > wrapRect.right
+    };
+  });
+  expect(heroDecorationOverflow).not.toBeNull();
+  expect(heroDecorationOverflow.profileOverflow).toBe("visible");
+  expect(heroDecorationOverflow.shellOverflow).toBe("visible");
+  expect(heroDecorationOverflow.extendsPastWrapTop).toBe(true);
+  expect(heroDecorationOverflow.extendsPastWrapLeft).toBe(true);
+  expect(heroDecorationOverflow.extendsPastWrapRight).toBe(true);
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-section-title", { hasText: "Top Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
@@ -2394,6 +2418,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const track = url.searchParams.get("track");
     const artist = url.searchParams.get("artist");
     if (track === "One Time") {
+      await new Promise((resolve) => setTimeout(resolve, 140));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -2534,8 +2559,13 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   const sourceRow = page.locator(".lastfm-recent-button").first();
   await clearInteractionSfxLog(page);
   await sourceRow.click();
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(1);
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-art--flip")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time");
@@ -2915,6 +2945,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   });
 
   await page.route("**/api/lastfm-artist-details**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 140));
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -3092,7 +3123,12 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-kicker")).toContainText("Artist details");
   await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
   const artistAmbient = await page.evaluate(() => {
@@ -3280,7 +3316,11 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
 
   await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1);
   const albumAmbient = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
