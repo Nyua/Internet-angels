@@ -635,8 +635,8 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
   expect(degradedVisualizerState.layerMode).toBe("degraded");
   expect(degradedVisualizerState.wavePortal).toBe(false);
   expect(degradedVisualizerState.waveCanvas).toBe(false);
-  expect(degradedVisualizerState.title).toBe("fiesta (feat. bunii)");
-  expect(degradedVisualizerState.artist).toBe("ayowitty");
+  expect(degradedVisualizerState.title).toBe("trinket [full album]");
+  expect(degradedVisualizerState.artist).toBe("tsubi club");
 });
 
 test("desktop Josie can live-downgrade once on sustained bad frame windows", async ({ page }) => {
@@ -658,6 +658,67 @@ test("desktop Josie can live-downgrade once on sustained bad frame windows", asy
     window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.(healthyWindow);
   });
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+});
+
+test("josie keeps the desktop shuffle visualizer as a full-width equalizer layer", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+
+  const visualizerLayout = await page.evaluate(() => {
+    const layer = document.querySelector("#os-shuffle-visualizer-layer");
+    const surface = document.querySelector("#os-shuffle-visualizer-surface");
+    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
+    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    const rectOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect() : null;
+    const styleOf = (node) => node instanceof HTMLElement ? window.getComputedStyle(node) : null;
+    const canvasRegionAlpha = () => {
+      if (!(canvas instanceof HTMLCanvasElement)) return null;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return null;
+      const sampleArea = ctx.getImageData(
+        Math.max(0, Math.floor(canvas.width * 0.35)),
+        Math.max(0, Math.floor(canvas.height * 0.45)),
+        Math.max(1, Math.floor(canvas.width * 0.3)),
+        Math.max(1, Math.floor(canvas.height * 0.35))
+      ).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    };
+    return {
+      pointerEvents: styleOf(layer)?.pointerEvents || "",
+      portalOpacity: styleOf(portal)?.opacity || "",
+      surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
+      canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
+      canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
+      surfaceRect: rectOf(surface),
+      canvasRect: rectOf(canvas),
+      copyRect: rectOf(copy),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      regionAlpha: canvasRegionAlpha()
+    };
+  });
+
+  expect(visualizerLayout.pointerEvents).toBe("none");
+  expect(visualizerLayout.portalOpacity).toBe("0.4");
+  expect(visualizerLayout.surfaceVisualStyle).toBe("equalizer");
+  expect(visualizerLayout.canvasVisualStyle).toBe("equalizer");
+  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
+  expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
+  expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
+  expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
+  expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
+  expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
+  expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
+  expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
@@ -764,8 +825,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("fiesta (feat. bunii)");
-  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("ayowitty");
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("trinket [full album]");
+  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("tsubi club");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
@@ -926,9 +987,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(visualizerLayout.pointerEvents).toBe("none");
   expect(visualizerLayout.portalOpacity).toBe("0.4");
-  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
-  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
-  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
+  expect(visualizerLayout.surfaceVisualStyle).toBe("equalizer");
+  expect(visualizerLayout.canvasVisualStyle).toBe("equalizer");
+  expect(visualizerLayout.canvasImageRendering).toBe("auto");
   expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
@@ -1091,15 +1152,32 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
 test("josie animates the Angels footer dagger on click", async ({ page }) => {
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.evaluate(() => {
+    window.__angelsFooterCollisionEvents = [];
+    window.addEventListener("internet-angel:angels-footer-collision", (event) => {
+      window.__angelsFooterCollisionEvents.push(event.detail);
+    });
+  });
 
   const angelsFooter = page.locator("[data-angels-footer]");
   const angelsTrigger = page.locator("[data-angels-footer-trigger]");
+  const angelsDagger = page.locator(".lastfm-angel-dagger");
   await angelsTrigger.scrollIntoViewIfNeeded();
   await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "idle");
-  await expect(page.locator(".lastfm-angel-dagger-svg")).toBeVisible();
+  await expect(angelsDagger).toBeHidden();
   await expect(angelsTrigger).toHaveText("Angels");
+  await angelsTrigger.hover();
+  await expect(angelsDagger).toBeVisible();
   await angelsTrigger.click();
   await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "lunging");
+  await expect.poll(async () => page.evaluate(() => window.__angelsFooterCollisionEvents.length), { timeout: 2_000 }).toBe(1);
+  const collisionEvent = await page.evaluate(() => window.__angelsFooterCollisionEvents[0]);
+  expect(collisionEvent).toMatchObject({
+    label: "Angels",
+    source: "angelsFooter",
+    collisionTarget: "first-letter",
+    destinationUrl: ""
+  });
   await expect.poll(() => angelsFooter.getAttribute("data-angels-dagger-state"), { timeout: 2_000 }).toBe("idle");
 });
 
@@ -2068,8 +2146,8 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("fiesta (feat. bunii)");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("ayowitty");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("trinket [full album]");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("tsubi club");
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const track = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-progress-track");

@@ -1740,8 +1740,7 @@
   }
   function findPreferredInitialShuffleTrack(tracks) {
     const safeTracks = Array.isArray(tracks) ? tracks : [];
-    const preferredTitle = "fiesta (feat. bunii)";
-    return safeTracks.find((track) => normalizeShuffleTrackLookup(track?.title) === preferredTitle) || null;
+    return safeTracks[0] || null;
   }
   function pickWeightedShuffleTrack(tracks, excludeId = "") {
     const safeTracks = sortShuffleTracksByRecency(Array.isArray(tracks) ? tracks : []);
@@ -1797,10 +1796,11 @@
     let analyserNode = null;
     let outputGainNode = null;
     let analyserSamples = new Float32Array(0);
+    let analyserFrequencyData = new Uint8Array(0);
     let waveformTracks = [];
     let currentTrack = null;
-    let traceValues = new Float32Array(0);
-    let traceSmoothingValues = new Float32Array(0);
+    let barLevelValues = new Float32Array(0);
+    let barPeakValues = new Float32Array(0);
     let rafId = 0;
     let loadState = "loading";
     let playbackUnlocked = !document.body?.classList.contains("site-load-playing") && !Boolean(window.__josieHandoffPending);
@@ -1820,12 +1820,15 @@
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
-    const SHUFFLE_TRACE_OPACITY_SCALE = 2;
+    const SHUFFLE_VISUAL_STYLE = "equalizer";
     const SHUFFLE_MAX_CANVAS_DPR = 1;
-    const SHUFFLE_TRACE_POINT_LIMIT = 320;
-    const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
-    const SHUFFLE_ASCII_MIN_CELL_PX = 1;
-    const SHUFFLE_ASCII_MAX_CELL_PX = 2;
+    const SHUFFLE_BAR_MIN_COUNT = 40;
+    const SHUFFLE_BAR_MAX_COUNT = 88;
+    const SHUFFLE_BAR_MIN_WIDTH_PX = 3;
+    const SHUFFLE_BAR_MAX_WIDTH_PX = 10;
+    const SHUFFLE_BAR_MIN_GAP_PX = 0;
+    const SHUFFLE_BAR_MAX_GAP_PX = 0;
+    const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -2173,7 +2176,7 @@
         waveCanvas = document.createElement("canvas");
         waveCanvas.className = "josie-audio-player-wave";
         waveCanvas.setAttribute("aria-hidden", "true");
-        waveCanvas.setAttribute("data-shuffle-visual-style", "ascii");
+        waveCanvas.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
         wavePortal.appendChild(waveCanvas);
       }
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
@@ -2302,9 +2305,12 @@
       if (!(analyserSamples instanceof Float32Array) || analyserSamples.length !== analyserNode.fftSize) {
         analyserSamples = new Float32Array(analyserNode.fftSize);
       }
+      if (!(analyserFrequencyData instanceof Uint8Array) || analyserFrequencyData.length !== analyserNode.frequencyBinCount) {
+        analyserFrequencyData = new Uint8Array(analyserNode.frequencyBinCount);
+      }
       return analyserNode;
     }
-    function drawTrace(reuseCurrentFrameSamples = false) {
+    function drawTrace(_reuseCurrentFrameSamples = false) {
       const metrics = ensureWaveCanvasSize();
       if (!(waveCtx instanceof CanvasRenderingContext2D) || !metrics.drawWidth || !metrics.drawHeight) return;
       const canvasWidth = metrics.canvasWidth;
@@ -2313,199 +2319,155 @@
       const originY = metrics.drawTop;
       const width = metrics.drawWidth;
       const height = metrics.drawHeight;
-      const asciiCellWidth = clamp2(Math.round(width / 208), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
-      const asciiCellHeight = Math.max(2, Math.round(asciiCellWidth * 1.42));
-      const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
-      const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
-      if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
-        traceValues = new Float32Array(pointCount);
-      }
-      if (!(traceSmoothingValues instanceof Float32Array) || traceSmoothingValues.length !== pointCount) {
-        traceSmoothingValues = new Float32Array(pointCount);
-      }
-      const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode);
-      let peak = 0;
-      let transientPeak = 0;
-      if (shouldSampleLive && analyserSamples.length) {
-        if (!reuseCurrentFrameSamples) {
-          analyserNode.getFloatTimeDomainData(analyserSamples);
-        }
-        let filteredValue = 0;
-        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-          const sampleIndex = Math.min(analyserSamples.length - 1, Math.floor(pointIndex / Math.max(pointCount - 1, 1) * (analyserSamples.length - 1)));
-          const currentSample = analyserSamples[sampleIndex] || 0;
-          const previousSample = analyserSamples[Math.max(0, sampleIndex - 6)] || currentSample;
-          const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 6)] || currentSample;
-          const transient = (nextSample - previousSample) * 4.8;
-          const rawValue = currentSample * 0.72 + transient;
-          filteredValue = filteredValue * 0.22 + rawValue * 0.78;
-          const magnitude = Math.abs(filteredValue);
-          peak = Math.max(peak, magnitude);
-          transientPeak = Math.max(transientPeak, Math.abs(transient));
-          let shapedMagnitude = magnitude;
-          if (magnitude > 0.2) {
-            const excess = magnitude - 0.2;
-            shapedMagnitude = 0.2 + excess / (1 + excess * 1.9);
-          }
-          if (magnitude > 0.46) {
-            const surgeExcess = magnitude - 0.46;
-            shapedMagnitude += surgeExcess / (1 + surgeExcess * 0.42) * 0.82;
-          }
-          if (magnitude > 0.68) {
-            const absoluteExcess = magnitude - 0.68;
-            shapedMagnitude += absoluteExcess / (1 + absoluteExcess * 0.18) * 1.05;
-          }
-          traceValues[pointIndex] = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * 2.35), -1, 1);
-        }
-      }
-      const structureHold = clamp2(
-        Math.max(0, peak - 0.46) * 1.08 +
-        Math.max(0, transientPeak - 0.24) * 1.42,
-        0,
-        1
+      const preferredBarWidth = clamp2(Math.round(width / 92), SHUFFLE_BAR_MIN_WIDTH_PX, SHUFFLE_BAR_MAX_WIDTH_PX);
+      let barGap = clamp2(Math.round(preferredBarWidth * 0.55), SHUFFLE_BAR_MIN_GAP_PX, SHUFFLE_BAR_MAX_GAP_PX);
+      let barCount = clamp2(
+        Math.floor((width + barGap) / (preferredBarWidth + barGap)),
+        SHUFFLE_BAR_MIN_COUNT,
+        SHUFFLE_BAR_MAX_COUNT
       );
-      if (structureHold > 0.01 && pointCount > 4) {
-        const blend = structureHold * 0.76;
-        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-          const center = traceValues[pointIndex] || 0;
-          const left = traceValues[Math.max(0, pointIndex - 1)] || center;
-          const right = traceValues[Math.min(pointCount - 1, pointIndex + 1)] || center;
-          const farLeft = traceValues[Math.max(0, pointIndex - 3)] || left;
-          const farRight = traceValues[Math.min(pointCount - 1, pointIndex + 3)] || right;
-          const spine = (left + center + right) / 3;
-          const structure = (farLeft * 0.8 + left * 1.15 + center * 1.5 + right * 1.15 + farRight * 0.8) / 5.4;
-          traceSmoothingValues[pointIndex] = center * (1 - blend) + (spine * 0.42 + structure * 0.58) * blend;
-        }
-        traceValues.set(traceSmoothingValues);
-      }
-      let rms = 0;
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const value = traceValues[pointIndex] || 0;
-        rms += value * value;
-      }
-      rms = Math.sqrt(rms / Math.max(pointCount, 1));
-      const loudnessBoost = clamp2(
-        Math.max(0, peak - 0.42) * 0.88 +
-        Math.max(0, rms - 0.18) * 1.55 +
-        Math.max(0, transientPeak - 0.34) * 0.1,
-        0,
-        1
-      );
-      const peakSurge = clamp2(
-        Math.max(0, peak - 0.5) * 1.9 +
-        Math.max(0, transientPeak - 0.32) * 0.28,
-        0,
-        1
-      );
-      const absolutePeakSurge = clamp2(
-        Math.max(0, peak - 0.68) * 3.15 +
-        Math.max(0, transientPeak - 0.44) * 0.52,
-        0,
-        1
-      );
-      const impact = clamp2(
-        rms * 1.08 +
-        Math.max(0, peak - 0.18) * 0.72 +
-        Math.max(0, transientPeak - 0.16) * 0.12 +
-        peakSurge * 0.34 +
-        absolutePeakSurge * 0.22,
-        0,
-        1
-      );
-      const structureDamping = 1 - structureHold * 0.42;
-      let baselineY = Math.round(height * (0.49 + loudnessBoost * 0.02 + structureHold * 0.008)) + 0.5;
-      const desiredAmplitude = Math.max(
-        16,
-        height * (
-          0.31 +
-          loudnessBoost * (0.095 - structureHold * 0.02) +
-          peakSurge * (0.12 * structureDamping) +
-          absolutePeakSurge * (0.13 * structureDamping)
-        )
-      );
-      const overscanPad = Math.max(14, height * 0.08);
-      const maxAmplitude = Math.max(
-        14,
-        Math.min(baselineY - overscanPad, height - baselineY - overscanPad)
-      );
-      const amplitude = Math.min(desiredAmplitude * 2, maxAmplitude);
-      baselineY = clamp2(baselineY, overscanPad + amplitude, height - overscanPad - amplitude);
-      waveCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-      const rowCount = Math.max(8, Math.floor(height / asciiCellHeight));
-      const verticalInset = Math.max(0, Math.round((height - rowCount * asciiCellHeight) / 2));
-      const baselineRow = clamp2(
-        Math.round(rowCount * (0.52 + loudnessBoost * 0.03 + structureHold * 0.01)),
-        2,
-        rowCount - 3
-      );
-      const amplitudeRows = clamp2(
-        Math.round(
-          rowCount * (
-            0.18 +
-            loudnessBoost * 0.12 +
-            peakSurge * (0.1 * structureDamping) +
-            absolutePeakSurge * (0.12 * structureDamping)
-          )
-        ),
-        2,
-        Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
-      );
-      const baselineGlyph = impact > 0.38 ? "-" : ".";
-      const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
-      const fontSize = Math.max(3, Math.round(asciiCellWidth * 1.36));
-      waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
-      waveCtx.textBaseline = "top";
-      waveCtx.textAlign = "center";
-      const baselineYText = originY + verticalInset + baselineRow * asciiCellHeight;
-      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.18 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const x = originX + pointIndex * pointSpacing;
-        waveCtx.fillText(baselineGlyph, x, baselineYText);
-      }
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const value = traceValues[pointIndex] || 0;
-        const magnitude = Math.abs(value);
-        if (magnitude < 0.012) {
-          continue;
-        }
-        const x = originX + pointIndex * pointSpacing;
-        const targetRow = clamp2(
-          baselineRow - Math.round(value * amplitudeRows),
-          0,
-          rowCount - 1
+      let barWidth = Math.floor((width - barGap * Math.max(0, barCount - 1)) / Math.max(barCount, 1));
+      if (barWidth < SHUFFLE_BAR_MIN_WIDTH_PX) {
+        barGap = SHUFFLE_BAR_MIN_GAP_PX;
+        barCount = clamp2(
+          Math.floor((width + barGap) / (SHUFFLE_BAR_MIN_WIDTH_PX + barGap)),
+          SHUFFLE_BAR_MIN_COUNT,
+          SHUFFLE_BAR_MAX_COUNT
         );
-        const startRow = Math.min(baselineRow, targetRow);
-        const endRow = Math.max(baselineRow, targetRow);
-        const travel = Math.max(1, endRow - startRow);
-        for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
-          const distanceRatio = Math.abs(rowIndex - baselineRow) / travel;
-          const intensity = clamp2(
-            magnitude * (0.74 + distanceRatio * 0.48) +
-            impact * 0.22 +
-            peakSurge * 0.12 +
-            absolutePeakSurge * 0.14,
-            0,
-            1
-          );
-          const glyphIndex = clamp2(Math.round(intensity * glyphMaxIndex), 0, glyphMaxIndex);
-          const glyph = SHUFFLE_ASCII_CHAR_RAMP[glyphIndex] || ".";
-          const alpha = clamp2(
-            0.22 +
-            intensity * 0.62 +
-            (rowIndex === targetRow ? 0.12 : 0) +
-            reactiveFlash * 0.06,
-            0.2,
-            0.96
-          );
-          waveCtx.fillStyle = `rgba(248, 253, 255, ${(alpha * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-          waveCtx.fillText(glyph, x, originY + verticalInset + rowIndex * asciiCellHeight);
-        }
+        barWidth = Math.max(
+          SHUFFLE_BAR_MIN_WIDTH_PX,
+          Math.floor((width - barGap * Math.max(0, barCount - 1)) / Math.max(barCount, 1))
+        );
       }
-      const edgeMarkerHeight = Math.max(2, Math.round(Math.min(height * 0.22, amplitude * 0.32)));
-      const edgeMarkerTop = Math.round(originY + baselineY - edgeMarkerHeight / 2);
-      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.16 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      waveCtx.fillRect(originX, edgeMarkerTop, 1, edgeMarkerHeight);
-      waveCtx.fillRect(originX + width - 1, edgeMarkerTop, 1, edgeMarkerHeight);
+      if (!(barLevelValues instanceof Float32Array) || barLevelValues.length !== barCount) {
+        barLevelValues = new Float32Array(barCount);
+      }
+      if (!(barPeakValues instanceof Float32Array) || barPeakValues.length !== barCount) {
+        barPeakValues = new Float32Array(barCount);
+      }
+      const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode && analyserFrequencyData.length);
+      if (shouldSampleLive) {
+        analyserNode.getByteFrequencyData(analyserFrequencyData);
+      }
+      let averageLevel = 0;
+      let peakLevel = 0;
+      const maxBin = Math.max(0, analyserFrequencyData.length - 1);
+      for (let barIndex = 0; barIndex < barCount; barIndex += 1) {
+        let targetLevel = 0;
+        if (shouldSampleLive && maxBin > 0) {
+          const startRatio = Math.pow(barIndex / Math.max(barCount, 1), 1.82);
+          const endRatio = Math.pow((barIndex + 1) / Math.max(barCount, 1), 1.82);
+          const startBin = clamp2(Math.floor(startRatio * Math.max(1, maxBin - 2)) + 2, 2, maxBin);
+          const endBin = clamp2(Math.floor(endRatio * Math.max(1, maxBin - 2)) + 2, startBin, maxBin);
+          let weightedTotal = 0;
+          let weightTotal = 0;
+          let localPeak = 0;
+          for (let bin = startBin; bin <= endBin; bin += 1) {
+            const normalized = (analyserFrequencyData[bin] || 0) / 255;
+            const binProgress = bin / Math.max(maxBin, 1);
+            const emphasis = 1 + (1 - binProgress) * 0.2 + (1 - barIndex / Math.max(barCount - 1, 1)) * 0.14;
+            weightedTotal += normalized * emphasis;
+            weightTotal += emphasis;
+            localPeak = Math.max(localPeak, normalized);
+          }
+          const averagedLevel = weightTotal ? weightedTotal / weightTotal : 0;
+          const curvedLevel = Math.pow(clamp2(averagedLevel, 0, 1), 1.32);
+          const lowBandLift = (1 - barIndex / Math.max(barCount - 1, 1)) * 0.18;
+          const peakLift = Math.max(0, localPeak - 0.2) * 0.34;
+          targetLevel = clamp2((curvedLevel + peakLift) * (0.8 + lowBandLift), 0, 1);
+        }
+        const previousLevel = barLevelValues[barIndex] || 0;
+        const attackMix = 0.26 + reactiveBeat * 0.16;
+        const releaseMix = shouldSampleLive ? 0.16 : 0.22;
+        const nextLevel = targetLevel > previousLevel
+          ? previousLevel + (targetLevel - previousLevel) * attackMix
+          : previousLevel + (targetLevel - previousLevel) * releaseMix;
+        const settledLevel = clamp2(shouldSampleLive ? nextLevel : nextLevel * 0.92, 0, 1);
+        barLevelValues[barIndex] = settledLevel;
+        const previousPeak = barPeakValues[barIndex] || 0;
+        const peakDecay = shouldSampleLive ? 0.016 + reactiveBeat * 0.016 : 0.045;
+        barPeakValues[barIndex] = settledLevel >= previousPeak
+          ? clamp2(settledLevel + 0.035, 0, 1)
+          : Math.max(settledLevel, previousPeak - peakDecay);
+        averageLevel += barLevelValues[barIndex];
+        peakLevel = Math.max(peakLevel, barPeakValues[barIndex]);
+      }
+      averageLevel /= Math.max(barCount, 1);
+      const totalBarsWidth = barCount * barWidth + Math.max(0, barCount - 1) * barGap;
+      const startX = originX + Math.max(0, Math.floor((width - totalBarsWidth) / 2));
+      const topInset = Math.max(34, Math.round(height * 0.2));
+      const bottomInset = Math.max(18, Math.round(height * 0.09));
+      const availableHeight = Math.max(44, height - topInset - bottomInset);
+      const baselineY = originY + height - bottomInset;
+      waveCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+      const hazeGradient = waveCtx.createLinearGradient(0, baselineY - availableHeight, 0, baselineY + 10);
+      hazeGradient.addColorStop(0, "rgba(248, 253, 255, 0)");
+      hazeGradient.addColorStop(0.6, `rgba(248, 253, 255, ${(0.016 + averageLevel * 0.06).toFixed(3)})`);
+      hazeGradient.addColorStop(1, `rgba(248, 253, 255, ${(0.08 + reactiveBeat * 0.08 + reactiveFlash * 0.04).toFixed(3)})`);
+      waveCtx.fillStyle = hazeGradient;
+      waveCtx.fillRect(originX, originY, width, height);
+      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.028 + averageLevel * 0.03).toFixed(3)})`;
+      for (let guideIndex = 1; guideIndex <= 3; guideIndex += 1) {
+        const guideY = Math.round(baselineY - availableHeight * (guideIndex / 4));
+        waveCtx.fillRect(originX, guideY, width, 1);
+      }
+      const edgeGuideHeight = Math.max(22, Math.round(availableHeight * 0.72));
+      const edgeGuideTop = Math.round(baselineY - edgeGuideHeight);
+      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.12 + peakLevel * 0.08).toFixed(3)})`;
+      waveCtx.fillRect(originX, edgeGuideTop, 1, edgeGuideHeight);
+      waveCtx.fillRect(originX + width - 1, edgeGuideTop, 1, edgeGuideHeight);
+      const slotGradient = waveCtx.createLinearGradient(0, baselineY - availableHeight, 0, baselineY);
+      slotGradient.addColorStop(0, "rgba(248, 253, 255, 0.014)");
+      slotGradient.addColorStop(1, "rgba(248, 253, 255, 0.06)");
+      const barGradient = waveCtx.createLinearGradient(0, baselineY - availableHeight, 0, baselineY);
+      barGradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+      barGradient.addColorStop(0.42, "rgba(248, 253, 255, 0.88)");
+      barGradient.addColorStop(1, "rgba(197, 220, 234, 0.22)");
+      for (let barIndex = 0; barIndex < barCount; barIndex += 1) {
+        const x = startX + barIndex * (barWidth + barGap);
+        const level = barLevelValues[barIndex] || 0;
+        const peakMarker = barPeakValues[barIndex] || 0;
+        waveCtx.globalAlpha = 1;
+        waveCtx.fillStyle = slotGradient;
+        waveCtx.fillRect(x, baselineY - availableHeight, barWidth, availableHeight);
+        const rawBarHeight = Math.max(
+          1,
+          Math.round(
+            availableHeight * (
+              0.014 +
+              level * (0.78 + reactiveBeat * 0.12 + peakLevel * 0.08)
+            )
+          )
+        );
+        const barHeight = Math.max(
+          SHUFFLE_BAR_CELL_HEIGHT_PX,
+          Math.round(rawBarHeight / SHUFFLE_BAR_CELL_HEIGHT_PX) * SHUFFLE_BAR_CELL_HEIGHT_PX
+        );
+        const barTop = baselineY - barHeight;
+        waveCtx.globalAlpha = clamp2(0.22 + level * 0.96 + reactiveFlash * 0.08, 0.18, 1);
+        waveCtx.fillStyle = barGradient;
+        waveCtx.fillRect(x, barTop, barWidth, barHeight);
+        waveCtx.globalAlpha = clamp2(0.1 + level * 0.24, 0.1, 0.38);
+        waveCtx.fillStyle = "rgba(255, 255, 255, 1)";
+        for (let cellY = barTop + SHUFFLE_BAR_CELL_HEIGHT_PX; cellY < baselineY; cellY += SHUFFLE_BAR_CELL_HEIGHT_PX) {
+          waveCtx.fillRect(x, cellY - 1, barWidth, 1);
+        }
+        const peakY = baselineY - Math.max(
+          SHUFFLE_BAR_CELL_HEIGHT_PX,
+          Math.round(Math.round(availableHeight * peakMarker) / SHUFFLE_BAR_CELL_HEIGHT_PX) * SHUFFLE_BAR_CELL_HEIGHT_PX
+        );
+        waveCtx.globalAlpha = clamp2(0.18 + peakMarker * 0.78 + reactiveFlash * 0.12, 0.16, 0.92);
+        waveCtx.fillStyle = "rgba(248, 253, 255, 1)";
+        waveCtx.fillRect(x, peakY, barWidth, 1);
+      }
+      waveCtx.globalAlpha = 1;
+      const baselineGradient = waveCtx.createLinearGradient(originX, 0, originX + width, 0);
+      baselineGradient.addColorStop(0, "rgba(248, 253, 255, 0)");
+      baselineGradient.addColorStop(0.12, `rgba(248, 253, 255, ${(0.2 + averageLevel * 0.18).toFixed(3)})`);
+      baselineGradient.addColorStop(0.88, `rgba(248, 253, 255, ${(0.2 + averageLevel * 0.18).toFixed(3)})`);
+      baselineGradient.addColorStop(1, "rgba(248, 253, 255, 0)");
+      waveCtx.fillStyle = baselineGradient;
+      waveCtx.fillRect(originX, baselineY + 1, width, 1);
     }
     function renderLoop(nowMs) {
       if (disposed) return;
@@ -2527,8 +2489,8 @@
     }
     function onPerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
-      traceValues = new Float32Array(0);
-      traceSmoothingValues = new Float32Array(0);
+      barLevelValues = new Float32Array(0);
+      barPeakValues = new Float32Array(0);
       hideWavePortal();
       syncReactiveVisuals(0, 0);
       syncVisualizerPerformanceMode();
@@ -2551,8 +2513,8 @@
       if (!track) return;
       currentTrack = track;
       loadState = "loading";
-      traceValues = new Float32Array(0);
-      traceSmoothingValues = new Float32Array(0);
+      barLevelValues = new Float32Array(0);
+      barPeakValues = new Float32Array(0);
       audioEl.pause();
       audioEl.src = resolveTrackUrl(track);
       audioEl.load();
@@ -2598,7 +2560,7 @@
       timeRemainingEl = root2.querySelector("[data-shuffle-time]");
       applyVisualizerCopyState();
       if (waveSurface instanceof HTMLElement) {
-        waveSurface.setAttribute("data-shuffle-visual-style", "ascii");
+        waveSurface.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
           if (!currentTrack) {
@@ -2656,8 +2618,8 @@
       hideWavePortal();
       invalidateWaveLayout();
       syncVisualizerPerformanceMode();
-      traceValues = new Float32Array(0);
-      traceSmoothingValues = new Float32Array(0);
+      barLevelValues = new Float32Array(0);
+      barPeakValues = new Float32Array(0);
       titleEl = null;
       artistEl = null;
       copyRootEl = null;
@@ -2763,7 +2725,9 @@
       analyserNode = null;
       outputGainNode = null;
       analyserSamples = new Float32Array(0);
-      traceSmoothingValues = new Float32Array(0);
+      analyserFrequencyData = new Uint8Array(0);
+      barLevelValues = new Float32Array(0);
+      barPeakValues = new Float32Array(0);
       unbindRoot();
       if (wavePortal instanceof HTMLElement) {
         wavePortal.remove();
@@ -3346,45 +3310,26 @@
   function renderLastFmAngelFooter() {
     return `
               <div class="lastfm-angel-footer" data-angels-footer data-angels-dagger-state="idle">
+                <button class="lastfm-angel-trigger" type="button" data-angels-footer-trigger>
+                  <span class="lastfm-angel-trigger-first-letter" data-angels-footer-first-letter>A</span><span class="lastfm-angel-trigger-rest">ngels</span>
+                </button>
                 <span class="lastfm-angel-dagger" aria-hidden="true">
                   <span class="lastfm-angel-dagger-flight">
                     <span class="lastfm-angel-dagger-geometry">
-                      <svg class="lastfm-angel-dagger-svg" viewBox="0 0 252 92" role="presentation" focusable="false" aria-hidden="true">
-                        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
-                          <g class="lastfm-angel-dagger-outline lastfm-angel-dagger-outline--rear" stroke-width="2.6">
-                            <polygon points="16,35 28,25 42,35 28,45"></polygon>
-                            <polygon points="42,31 78,31 90,35 78,39 42,39 30,35"></polygon>
-                            <polygon points="78,24 106,31 114,35 106,39 78,46 90,35"></polygon>
-                            <polygon points="108,30 184,24 226,35 184,46 108,40 118,35"></polygon>
-                            <path d="M114 35H226"></path>
-                          </g>
-                          <g class="lastfm-angel-dagger-outline lastfm-angel-dagger-outline--front" stroke-width="3.2">
-                            <polygon points="16,49 28,39 42,49 28,59"></polygon>
-                            <polygon points="42,45 78,45 90,49 78,53 42,53 30,49"></polygon>
-                            <polygon points="78,38 106,45 114,49 106,53 78,60 90,49"></polygon>
-                            <polygon points="108,44 184,38 226,49 184,60 108,54 118,49"></polygon>
-                            <path d="M114 49H226"></path>
-                          </g>
-                          <g class="lastfm-angel-dagger-connectors" stroke-width="2.1">
-                            <line x1="16" y1="35" x2="16" y2="49"></line>
-                            <line x1="28" y1="25" x2="28" y2="39"></line>
-                            <line x1="42" y1="35" x2="42" y2="49"></line>
-                            <line x1="42" y1="31" x2="42" y2="45"></line>
-                            <line x1="78" y1="31" x2="78" y2="45"></line>
-                            <line x1="90" y1="35" x2="90" y2="49"></line>
-                            <line x1="78" y1="24" x2="78" y2="38"></line>
-                            <line x1="106" y1="31" x2="106" y2="45"></line>
-                            <line x1="114" y1="35" x2="114" y2="49"></line>
-                            <line x1="108" y1="30" x2="108" y2="44"></line>
-                            <line x1="184" y1="24" x2="184" y2="38"></line>
-                            <line x1="226" y1="35" x2="226" y2="49"></line>
-                          </g>
-                        </g>
-                      </svg>
+                      <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--rear"></span>
+                      <span class="lastfm-angel-dagger-connectors">
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 12%;"></span>
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 23%;"></span>
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 36%;"></span>
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 52%;"></span>
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 71%;"></span>
+                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 88%;"></span>
+                      </span>
+                      <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--front"></span>
+                      <span class="lastfm-angel-dagger-tip" data-angels-footer-dagger-tip></span>
                     </span>
                   </span>
                 </span>
-                <button class="lastfm-angel-trigger" type="button" data-angels-footer-trigger>Angels</button>
               </div>
     `;
   }
@@ -3453,7 +3398,7 @@
     const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
     return `
     <div class="${escapeHtml(playerClassName)}" data-shuffle-player>
-        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="ascii" aria-label="Audio visualizer">
+        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="equalizer" aria-label="Audio visualizer">
           <div class="josie-audio-player-overlay">
           <div class="josie-audio-player-copy" data-shuffle-copy data-shuffle-copy-state="visible">
             <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
@@ -4854,12 +4799,14 @@
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
     let activeAngelsFooter = null;
+    let angelsFooterCollisionTimer = 0;
     let angelsFooterLungeTimer = 0;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const ANGELS_FOOTER_LUNGE_MS = 760;
+    const ANGELS_FOOTER_COLLISION_DELAY_MS = 470;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
@@ -5036,6 +4983,10 @@
       return sidebar.querySelector(".steam-sidebar-list--mobile-icons");
     }
     function clearAngelsFooterLungeState() {
+      if (angelsFooterCollisionTimer) {
+        window.clearTimeout(angelsFooterCollisionTimer);
+        angelsFooterCollisionTimer = 0;
+      }
       if (angelsFooterLungeTimer) {
         window.clearTimeout(angelsFooterLungeTimer);
         angelsFooterLungeTimer = 0;
@@ -5045,20 +4996,76 @@
       }
       activeAngelsFooter = null;
     }
+    function getAngelsFooterFirstLetter(footer) {
+      if (!(footer instanceof HTMLElement)) return null;
+      const firstLetter = footer.querySelector("[data-angels-footer-first-letter]");
+      return firstLetter instanceof HTMLElement ? firstLetter : null;
+    }
+    function getAngelsFooterDaggerTip(footer) {
+      if (!(footer instanceof HTMLElement)) return null;
+      const tip = footer.querySelector("[data-angels-footer-dagger-tip]");
+      return tip instanceof HTMLElement ? tip : null;
+    }
+    function updateAngelsFooterStrikeMetrics(footer) {
+      const firstLetter = getAngelsFooterFirstLetter(footer);
+      const daggerTip = getAngelsFooterDaggerTip(footer);
+      if (!(firstLetter instanceof HTMLElement) || !(daggerTip instanceof HTMLElement)) return;
+      const firstLetterRect = firstLetter.getBoundingClientRect();
+      const daggerTipRect = daggerTip.getBoundingClientRect();
+      if (!firstLetterRect.width || !daggerTipRect.width) return;
+      const collisionX = firstLetterRect.left + Math.min(firstLetterRect.width * 0.5, 8);
+      const tipX = daggerTipRect.left + daggerTipRect.width * 0.5;
+      const lungeDistance = Math.max(10, Math.round(collisionX - tipX));
+      footer.style.setProperty("--angels-dagger-lunge-x", `${lungeDistance}px`);
+    }
+    function resolveAngelsFooterDestination(footer) {
+      if (!(footer instanceof HTMLElement)) return "";
+      const footerDestination = firstNonEmpty(footer.getAttribute("data-angels-footer-destination"));
+      const globalDestination = typeof window.__internetAngelAngelsFooterDestinationUrl === "string"
+        ? window.__internetAngelAngelsFooterDestinationUrl
+        : "";
+      return sanitizeUrl(firstNonEmpty(footerDestination, globalDestination));
+    }
+    function dispatchAngelsFooterCollision(footer, trigger) {
+      if (!(footer instanceof HTMLElement) || !(trigger instanceof HTMLElement)) return;
+      const destinationUrl = resolveAngelsFooterDestination(footer);
+      const detail = {
+        label: trigger.textContent?.trim() || "Angels",
+        source: "angelsFooter",
+        collisionTarget: "first-letter",
+        destinationUrl: destinationUrl || ""
+      };
+      try {
+        if (typeof window.__internetAngelHandleAngelsFooterCollision === "function") {
+          const handled = window.__internetAngelHandleAngelsFooterCollision(detail);
+          if (handled === true) {
+            return;
+          }
+        }
+      } catch {
+      }
+      window.dispatchEvent(new CustomEvent("internet-angel:angels-footer-collision", { detail }));
+      if (destinationUrl) {
+        window.location.assign(destinationUrl);
+      }
+    }
     function triggerAngelsFooterLunge(trigger) {
       const footer = trigger instanceof HTMLElement ? trigger.closest("[data-angels-footer]") : null;
       if (!(footer instanceof HTMLElement)) return;
-      if (activeAngelsFooter instanceof HTMLElement && activeAngelsFooter !== footer) {
-        activeAngelsFooter.dataset.angelsDaggerState = "idle";
-      }
-      if (angelsFooterLungeTimer) {
-        window.clearTimeout(angelsFooterLungeTimer);
-        angelsFooterLungeTimer = 0;
-      }
+      clearAngelsFooterLungeState();
       activeAngelsFooter = footer;
-      footer.dataset.angelsDaggerState = "priming";
+      updateAngelsFooterStrikeMetrics(footer);
+      footer.dataset.angelsDaggerState = "idle";
       void footer.offsetWidth;
       footer.dataset.angelsDaggerState = "lunging";
+      const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+      angelsFooterCollisionTimer = window.setTimeout(() => {
+        angelsFooterCollisionTimer = 0;
+        if (!(activeAngelsFooter instanceof HTMLElement) || activeAngelsFooter !== footer) {
+          return;
+        }
+        dispatchAngelsFooterCollision(footer, trigger);
+      }, prefersReducedMotion ? 120 : ANGELS_FOOTER_COLLISION_DELAY_MS);
       angelsFooterLungeTimer = window.setTimeout(() => {
         angelsFooterLungeTimer = 0;
         if (!(activeAngelsFooter instanceof HTMLElement) || activeAngelsFooter !== footer) {

@@ -1,22 +1,10 @@
 {
   "tracks": [
     {
-      "title": "fiesta (feat. bunii)",
-      "path": "/Shuffle/fiesta%20(feat.%20bunii)%20-%20ayowitty.mp3",
-      "addedAt": "2026-04-16T13:36:56+10:00",
-      "artist": "ayowitty"
-    },
-    {
-      "title": "Backdoor",
-      "path": "/Shuffle/Backdoor.mp3",
-      "addedAt": "2026-04-10T21:55:00+10:00",
-      "artist": "Ericdoa"
-    },
-    {
-      "title": "NOT ENOUGH",
-      "path": "/Shuffle/NOT%20ENOUGH.mp3",
-      "addedAt": "2026-03-03T14:29:36+11:00",
-      "artist": "Quadeca"
+      "title": "trinket [full album]",
+      "path": "/Shuffle/tsubi%20club%20-%20trinket%20%5Bfull%20album%5D%20-%20tsubi%20club.mp3",
+      "addedAt": "2026-04-19T00:00:00+10:00",
+      "artist": "tsubi club"
     }
   ]
 }
