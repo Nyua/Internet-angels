@@ -1721,30 +1721,55 @@
     const fileName = decodeURIComponent(path.split("/").pop() || "").replace(/\.[^/.]+$/, "");
     const sourceTitle = String(source.title || "").trim() || fileName || `Track ${index + 1}`;
     const sourceArtist = normalizeShuffleArtist(source.artist || source.albumArtist || "");
+    const sourceId = String(source.id || "").trim();
+    const groupId = String(source.groupId || sourceId || path).trim();
+    const segmentIndexValue = Number(source.segmentIndex);
+    const segmentCountValue = Number(source.segmentCount);
+    const segmentStartValue = Number(source.segmentStart);
+    const segmentEndValue = Number(source.segmentEnd);
+    const segmentOffsetValue = Number(source.segmentOffset);
+    const groupDurationValue = Number(source.groupDuration);
+    const nextTrackId = String(source.nextTrackId || "").trim();
     return {
-      id: `shuffle-track-${index}-${hashText(path).slice(0, 10)}`,
+      id: sourceId || `shuffle-track-${index}-${hashText(`${path}|${sourceTitle}|${sourceArtist}`).slice(0, 10)}`,
       title: sourceTitle,
+      displayTitle: String(source.displayTitle || "").trim() || sourceTitle,
       artist: sourceArtist || "Unknown Artist",
+      displayArtist: normalizeShuffleArtist(source.displayArtist || "") || sourceArtist || "Unknown Artist",
       path,
       addedAt: Number.isFinite(addedAt) ? addedAt : 0
+      ,
+      groupId,
+      queueId: groupId,
+      nextTrackId,
+      segmentIndex: Number.isFinite(segmentIndexValue) ? Math.max(0, Math.floor(segmentIndexValue)) : 0,
+      segmentCount: Number.isFinite(segmentCountValue) ? Math.max(1, Math.floor(segmentCountValue)) : 1,
+      segmentStart: Number.isFinite(segmentStartValue) ? Math.max(0, segmentStartValue) : 0,
+      segmentEnd: Number.isFinite(segmentEndValue) && segmentEndValue > 0 ? segmentEndValue : 0,
+      segmentOffset: Number.isFinite(segmentOffsetValue) ? Math.max(0, segmentOffsetValue) : 0,
+      groupDuration: Number.isFinite(groupDurationValue) && groupDurationValue > 0 ? groupDurationValue : 0
     };
   }
   function sortShuffleTracksByRecency(tracks) {
     return tracks.slice().sort((a, b) => {
       if (b.addedAt !== a.addedAt) return b.addedAt - a.addedAt;
+      if ((a?.segmentIndex || 0) !== (b?.segmentIndex || 0)) return (a?.segmentIndex || 0) - (b?.segmentIndex || 0);
       return a.title.localeCompare(b.title);
     });
   }
   function normalizeShuffleTrackLookup(value) {
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
+  function getSelectableShuffleTracks(tracks) {
+    return (Array.isArray(tracks) ? tracks : []).filter((track) => (track?.segmentIndex || 0) === 0);
+  }
   function findPreferredInitialShuffleTrack(tracks) {
-    const safeTracks = Array.isArray(tracks) ? tracks : [];
+    const safeTracks = getSelectableShuffleTracks(tracks);
     return safeTracks[0] || null;
   }
-  function pickWeightedShuffleTrack(tracks, excludeId = "") {
-    const safeTracks = sortShuffleTracksByRecency(Array.isArray(tracks) ? tracks : []);
-    const candidates = safeTracks.filter((track) => !excludeId || track.id !== excludeId);
+  function pickWeightedShuffleTrack(tracks, excludeQueueId = "") {
+    const safeTracks = sortShuffleTracksByRecency(getSelectableShuffleTracks(tracks));
+    const candidates = safeTracks.filter((track) => !excludeQueueId || track.queueId !== excludeQueueId);
     const pool = candidates.length ? candidates : safeTracks;
     if (!pool.length) return null;
     let totalWeight = 0;
@@ -1798,6 +1823,7 @@
     let analyserSamples = new Float32Array(0);
     let analyserFrequencyData = new Uint8Array(0);
     let waveformTracks = [];
+    let waveformTrackLookup = /* @__PURE__ */ new Map();
     let currentTrack = null;
     let barLevelValues = new Float32Array(0);
     let barPeakValues = new Float32Array(0);
@@ -1817,6 +1843,8 @@
     let reactiveVisualSignature = "";
     let lastVisualizerFrameMs = 0;
     let performanceDegraded = isDesktopPerformanceDegraded();
+    let pendingSegmentSeekTime = null;
+    let segmentAdvanceCooldownUntilMs = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
@@ -1840,6 +1868,79 @@
     function resolveTrackUrl(track) {
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
+    }
+    function getTrackDisplayCopy(track) {
+      return {
+        title: firstNonEmpty(track?.displayTitle, track?.title, "Loading Shuffle..."),
+        artist: firstNonEmpty(track?.displayArtist, track?.artist, "Unknown Artist")
+      };
+    }
+    function getTrackSegmentStart(track) {
+      return Number.isFinite(track?.segmentStart) ? Math.max(0, track.segmentStart) : 0;
+    }
+    function getTrackSegmentOffset(track) {
+      return Number.isFinite(track?.segmentOffset) ? Math.max(0, track.segmentOffset) : 0;
+    }
+    function getTrackSegmentEnd(track, fallbackDuration = 0) {
+      const start = getTrackSegmentStart(track);
+      const candidate = Number(track?.segmentEnd);
+      if (Number.isFinite(candidate) && candidate > start) {
+        return candidate;
+      }
+      return Number.isFinite(fallbackDuration) && fallbackDuration > start ? fallbackDuration : 0;
+    }
+    function getTrackDisplayDuration(track, fallbackDuration = 0) {
+      const segmentEnd = getTrackSegmentEnd(track, fallbackDuration);
+      const segmentOffset = getTrackSegmentOffset(track);
+      const segmentDuration = Math.max(0, segmentEnd - getTrackSegmentStart(track));
+      const candidate = Number(track?.groupDuration);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        return candidate;
+      }
+      return segmentOffset + segmentDuration;
+    }
+    function getTrackNextSegment(track) {
+      if (!track?.nextTrackId) return null;
+      return waveformTrackLookup.get(track.nextTrackId) || null;
+    }
+    function applyPendingSegmentSeek() {
+      if (!Number.isFinite(pendingSegmentSeekTime)) return false;
+      try {
+        audioEl.currentTime = pendingSegmentSeekTime;
+        pendingSegmentSeekTime = null;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    function seekToTrackSegment(track) {
+      const segmentStart = getTrackSegmentStart(track);
+      pendingSegmentSeekTime = segmentStart;
+      if (audioEl.readyState >= 1) {
+        applyPendingSegmentSeek();
+      }
+      syncUi();
+    }
+    function maybeAdvanceSegmentTrack(nowMs = performance.now()) {
+      if (!currentTrack || loadState === "error") return false;
+      if (nowMs < segmentAdvanceCooldownUntilMs) return false;
+      const segmentEnd = getTrackSegmentEnd(currentTrack, audioEl.duration);
+      if (!(segmentEnd > 0) || !Number.isFinite(audioEl.currentTime)) return false;
+      if (audioEl.currentTime + 0.04 < segmentEnd) return false;
+      segmentAdvanceCooldownUntilMs = nowMs + 240;
+      const nextSegment = getTrackNextSegment(currentTrack);
+      if (nextSegment && resolveTrackUrl(nextSegment) === resolveTrackUrl(currentTrack)) {
+        currentTrack = nextSegment;
+        loadState = audioEl.paused && loadState === "blocked" ? "blocked" : "ready";
+        seekToTrackSegment(nextSegment);
+        syncUi();
+        return true;
+      }
+      if (nextSegment) {
+        void chooseAndLoadTrack(nextSegment, { autoplay: true });
+        return true;
+      }
+      return false;
     }
     function getReactiveTargets() {
       const targets = [];
@@ -1889,15 +1990,27 @@
       });
     }
     function getShuffleDisplayCopy() {
+      if (currentTrack) {
+        return getTrackDisplayCopy(currentTrack);
+      }
       return {
-        title: currentTrack?.title || (loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle..."),
-        artist: currentTrack?.artist || (loadState === "error" ? "No artist data" : "Unknown Artist")
+        title: loadState === "error" ? "Shuffle unavailable" : "Loading Shuffle...",
+        artist: loadState === "error" ? "No artist data" : "Unknown Artist"
       };
     }
     function buildPublicState() {
       const displayCopy = getShuffleDisplayCopy();
-      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
-      const currentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const rawDuration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const rawCurrentTime = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const segmentStart = getTrackSegmentStart(currentTrack);
+      const segmentEnd = getTrackSegmentEnd(currentTrack, rawDuration);
+      const segmentOffset = getTrackSegmentOffset(currentTrack);
+      const duration = currentTrack ? getTrackDisplayDuration(currentTrack, rawDuration) : rawDuration;
+      const currentTime = currentTrack ? clamp2(
+        segmentOffset + clamp2(rawCurrentTime - segmentStart, 0, Math.max(0, segmentEnd - segmentStart)),
+        0,
+        Math.max(duration, 0)
+      ) : rawCurrentTime;
       const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
       return {
         muted: Boolean(audioEl.muted),
@@ -1936,7 +2049,7 @@
     }
     function getVisualizerCopyTrackKey(track) {
       if (!track || typeof track !== "object") return "";
-      return firstNonEmpty(track.id, `${track.title || ""}|${track.artist || ""}`);
+      return firstNonEmpty(track.queueId, track.id, `${track.title || ""}|${track.artist || ""}`);
     }
     function restartVisualizerCopyCycle() {
       clearVisualizerCopyTimers();
@@ -2471,6 +2584,7 @@
     }
     function renderLoop(nowMs) {
       if (disposed) return;
+      maybeAdvanceSegmentTrack(nowMs);
       const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !performanceDegraded);
       const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? SHUFFLE_ACTIVE_FRAME_INTERVAL_MS : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
@@ -2511,6 +2625,8 @@
     }
     async function chooseAndLoadTrack(track, options = {}) {
       if (!track) return;
+      pendingSegmentSeekTime = null;
+      segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
       loadState = "loading";
       barLevelValues = new Float32Array(0);
@@ -2518,6 +2634,7 @@
       audioEl.pause();
       audioEl.src = resolveTrackUrl(track);
       audioEl.load();
+      seekToTrackSegment(track);
       void ensureAnalysisGraph(false);
       syncUi();
       if (options.autoplay !== false) {
@@ -2525,7 +2642,7 @@
       }
     }
     async function chooseNextTrack(options = {}) {
-      const nextTrack = pickWeightedShuffleTrack(waveformTracks, options.excludeCurrent === false ? "" : currentTrack?.id || "");
+      const nextTrack = pickWeightedShuffleTrack(waveformTracks, options.excludeCurrent === false ? "" : currentTrack?.queueId || "");
       if (!nextTrack) return;
       await chooseAndLoadTrack(nextTrack, options);
     }
@@ -2539,9 +2656,11 @@
         const data = await response.json();
         const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(normalizeShuffleTrackEntry).filter(Boolean);
         waveformTracks = sortShuffleTracksByRecency(tracks);
+        waveformTrackLookup = new Map(waveformTracks.map((track) => [track.id, track]));
         return waveformTracks;
       })().catch(() => {
         waveformTracks = [];
+        waveformTrackLookup = /* @__PURE__ */ new Map();
         loadState = "error";
         syncUi();
         return [];
@@ -2721,6 +2840,9 @@
       audioEl.pause();
       audioEl.src = "";
       audioEl.load();
+      waveformTrackLookup = /* @__PURE__ */ new Map();
+      pendingSegmentSeekTime = null;
+      segmentAdvanceCooldownUntilMs = 0;
       mediaSourceNode = null;
       analyserNode = null;
       outputGainNode = null;
@@ -2736,24 +2858,36 @@
       waveCanvas = null;
       waveCtx = null;
     }
-    audioEl.addEventListener("timeupdate", syncUi);
+    audioEl.addEventListener("timeupdate", () => {
+      maybeAdvanceSegmentTrack();
+      syncUi();
+    });
     audioEl.addEventListener("loadedmetadata", () => {
+      applyPendingSegmentSeek();
       loadState = loadState === "blocked" ? "blocked" : "ready";
       syncUi();
     });
     audioEl.addEventListener("loadeddata", syncUi);
-    audioEl.addEventListener("durationchange", syncUi);
+    audioEl.addEventListener("durationchange", () => {
+      applyPendingSegmentSeek();
+      syncUi();
+    });
     audioEl.addEventListener("play", () => {
       loadState = "ready";
       syncUi();
     });
     audioEl.addEventListener("pause", syncUi);
     audioEl.addEventListener("volumechange", syncUi);
-    audioEl.addEventListener("seeked", syncUi);
+    audioEl.addEventListener("seeked", () => {
+      maybeAdvanceSegmentTrack();
+      syncUi();
+    });
     audioEl.addEventListener("ended", () => {
+      segmentAdvanceCooldownUntilMs = 0;
       void chooseNextTrack({ autoplay: true });
     });
     audioEl.addEventListener("error", () => {
+      pendingSegmentSeekTime = null;
       loadState = "error";
       syncUi();
     });
@@ -2768,6 +2902,42 @@
       attach,
       dispose,
       debugAdvanceTrack: () => chooseNextTrack({ autoplay: true }),
+      debugSetCurrentTime: (nextTime) => {
+        const numericTime = Number(nextTime);
+        if (!Number.isFinite(numericTime) || numericTime < 0) return false;
+        try {
+          audioEl.currentTime = numericTime;
+          maybeAdvanceSegmentTrack();
+          syncUi();
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      debugAdvanceSegment: () => {
+        const nextSegment = getTrackNextSegment(currentTrack);
+        if (!nextSegment) return false;
+        currentTrack = nextSegment;
+        segmentAdvanceCooldownUntilMs = 0;
+        seekToTrackSegment(nextSegment);
+        syncUi();
+        return true;
+      },
+      debugGetTrack: () => currentTrack ? {
+        id: currentTrack.id,
+        queueId: currentTrack.queueId,
+        title: currentTrack.title,
+        displayTitle: currentTrack.displayTitle,
+        artist: currentTrack.artist,
+        displayArtist: currentTrack.displayArtist,
+        segmentIndex: currentTrack.segmentIndex,
+        segmentCount: currentTrack.segmentCount,
+        segmentStart: currentTrack.segmentStart,
+        segmentEnd: currentTrack.segmentEnd,
+        segmentOffset: currentTrack.segmentOffset,
+        groupDuration: currentTrack.groupDuration,
+        nextTrackId: currentTrack.nextTrackId
+      } : null,
       isPlaying,
       ensureStarted,
       toggleMuted,
@@ -4757,7 +4927,11 @@
     let disposed = false;
     const shufflePlayerController = createShufflePlayerController();
     const shuffleDebugController = {
-      advanceTrack: () => shufflePlayerController.debugAdvanceTrack?.()
+      advanceTrack: () => shufflePlayerController.debugAdvanceTrack?.(),
+      advanceSegment: () => shufflePlayerController.debugAdvanceSegment?.(),
+      setCurrentTime: (nextTime) => shufflePlayerController.debugSetCurrentTime?.(nextTime),
+      getTrack: () => shufflePlayerController.debugGetTrack?.(),
+      getState: () => shufflePlayerController.getState?.()
     };
     window.__internetAngelShuffleDebug = shuffleDebugController;
     let externalPromptRoot = null;

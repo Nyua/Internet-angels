@@ -721,6 +721,47 @@ test("josie keeps the desktop shuffle visualizer as a full-width equalizer layer
   expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
 });
 
+test("josie hands segmented shuffle tracks across the midpoint without resetting visible playback", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForFunction(() => window.__internetAngelShuffleDebug?.getTrack?.()?.segmentIndex === 0, null, { timeout: 15_000 });
+
+  const firstSegment = await page.evaluate(() => {
+    return {
+      track: window.__internetAngelShuffleDebug?.getTrack?.(),
+      state: window.__internetAngelShuffleDebug?.getState?.()
+    };
+  });
+  expect(firstSegment.track?.segmentCount).toBe(2);
+  expect(firstSegment.state?.title).toBe("trinket [full album]");
+  expect(firstSegment.state?.artist).toBe("tsubi club");
+  expect(firstSegment.state?.duration).toBeCloseTo(1679, 0);
+
+  await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceSegment?.());
+
+  await expect.poll(async () => {
+    const track = await page.evaluate(() => window.__internetAngelShuffleDebug?.getTrack?.());
+    return track?.segmentIndex ?? -1;
+  }, { timeout: 5_000 }).toBe(1);
+
+  const secondSegment = await page.evaluate(() => {
+    return {
+      track: window.__internetAngelShuffleDebug?.getTrack?.(),
+      state: window.__internetAngelShuffleDebug?.getState?.()
+    };
+  });
+  expect(secondSegment.track?.segmentOffset).toBeCloseTo(839.5, 1);
+  expect(secondSegment.state?.title).toBe("trinket [full album]");
+  expect(secondSegment.state?.artist).toBe("tsubi club");
+  expect(secondSegment.state?.duration).toBeCloseTo(1679, 0);
+  expect(secondSegment.state?.currentTime).toBeGreaterThan(839);
+  expect(secondSegment.state?.progress).toBeGreaterThan(0.49);
+});
+
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   const avatarManifestResponse = await request.get("/assets/avatar-manifest.json");

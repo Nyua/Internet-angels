@@ -1,10 +1,36 @@
 {
   "tracks": [
     {
+      "id": "trinket-full-album-part-1",
+      "groupId": "trinket-full-album",
       "title": "trinket [full album]",
+      "displayTitle": "trinket [full album]",
+      "artist": "tsubi club",
+      "displayArtist": "tsubi club",
       "path": "/Shuffle/tsubi%20club%20-%20trinket%20%5Bfull%20album%5D%20-%20tsubi%20club.mp3",
       "addedAt": "2026-04-19T00:00:00+10:00",
-      "artist": "tsubi club"
+      "segmentIndex": 0,
+      "segmentCount": 2,
+      "segmentStart": 0,
+      "segmentEnd": 839.5,
+      "segmentOffset": 0,
+      "groupDuration": 1679,
+      "nextTrackId": "trinket-full-album-part-2"
+    },
+    {
+      "id": "trinket-full-album-part-2",
+      "groupId": "trinket-full-album",
+      "title": "trinket [full album]",
+      "displayTitle": "trinket [full album]",
+      "artist": "tsubi club",
+      "displayArtist": "tsubi club",
+      "path": "/Shuffle/tsubi%20club%20-%20trinket%20%5Bfull%20album%5D%20-%20tsubi%20club.mp3",
+      "addedAt": "2026-04-19T00:00:00+10:00",
+      "segmentIndex": 1,
+      "segmentCount": 2,
+      "segmentStart": 839.5,
+      "segmentOffset": 839.5,
+      "groupDuration": 1679
     }
   ]
 }
