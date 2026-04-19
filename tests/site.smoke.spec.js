@@ -660,7 +660,7 @@ test("desktop Josie can live-downgrade once on sustained bad frame windows", asy
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
 });
 
-test("josie keeps the desktop shuffle visualizer as a full-width equalizer layer", async ({ page }) => {
+test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform layer", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
@@ -696,7 +696,9 @@ test("josie keeps the desktop shuffle visualizer as a full-width equalizer layer
       pointerEvents: styleOf(layer)?.pointerEvents || "",
       portalOpacity: styleOf(portal)?.opacity || "",
       surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
+      surfaceAsciiOverlay: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-ascii-overlay") || "" : "",
       canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
+      canvasAsciiOverlay: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-ascii-overlay") || "" : "",
       canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
       surfaceRect: rectOf(surface),
       canvasRect: rectOf(canvas),
@@ -709,8 +711,10 @@ test("josie keeps the desktop shuffle visualizer as a full-width equalizer layer
 
   expect(visualizerLayout.pointerEvents).toBe("none");
   expect(visualizerLayout.portalOpacity).toBe("0.4");
-  expect(visualizerLayout.surfaceVisualStyle).toBe("equalizer");
-  expect(visualizerLayout.canvasVisualStyle).toBe("equalizer");
+  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
+  expect(visualizerLayout.surfaceAsciiOverlay).toBe("glyph");
+  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
+  expect(visualizerLayout.canvasAsciiOverlay).toBe("glyph");
   expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
@@ -881,16 +885,47 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     return copy.dataset.shuffleCopyState === "hidden"
       && Number.parseFloat(window.getComputedStyle(copy).opacity || "1") < 0.2;
   }, null, { timeout: 7000 });
-  const firstVisualizerTrackTitle = (await page.locator("#os-shuffle-visualizer-title").textContent())?.trim() || "";
-  await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceTrack?.());
-  await page.waitForFunction((previousTitle) => {
+  const firstVisualizerTrackState = await page.evaluate(async () => {
     const title = document.querySelector("#os-shuffle-visualizer-title");
-    const copy = document.querySelector("#os-shuffle-visualizer-copy");
-    if (!(title instanceof HTMLElement) || !(copy instanceof HTMLElement)) return false;
-    return title.textContent.trim() !== previousTitle
-      && copy.dataset.shuffleCopyState === "visible"
-      && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
-  }, firstVisualizerTrackTitle);
+    let selectableQueueCount = 0;
+    try {
+      const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
+      const data = response.ok ? await response.json() : null;
+      const selectableQueueIds = new Set(
+        (Array.isArray(data?.tracks) ? data.tracks : [])
+          .filter((track) => Number(track?.segmentIndex || 0) === 0)
+          .map((track) => String(track?.groupId || track?.id || track?.path || "").trim())
+          .filter(Boolean)
+      );
+      selectableQueueCount = selectableQueueIds.size;
+    } catch {
+      selectableQueueCount = 0;
+    }
+    return {
+      title: title instanceof HTMLElement ? title.textContent.trim() : "",
+      trackId: window.__internetAngelShuffleDebug?.getTrack?.()?.id || "",
+      selectableQueueCount
+    };
+  });
+  await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceTrack?.());
+  if (firstVisualizerTrackState.selectableQueueCount > 1) {
+    await page.waitForFunction((previousTitle) => {
+      const title = document.querySelector("#os-shuffle-visualizer-title");
+      const copy = document.querySelector("#os-shuffle-visualizer-copy");
+      if (!(title instanceof HTMLElement) || !(copy instanceof HTMLElement)) return false;
+      return title.textContent.trim() !== previousTitle
+        && copy.dataset.shuffleCopyState === "visible"
+        && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
+    }, firstVisualizerTrackState.title);
+  } else {
+    await page.waitForFunction((baseline) => {
+      const title = document.querySelector("#os-shuffle-visualizer-title");
+      const currentTrackId = window.__internetAngelShuffleDebug?.getTrack?.()?.id || "";
+      return title instanceof HTMLElement
+        && title.textContent.trim() === baseline.title
+        && currentTrackId === baseline.trackId;
+    }, firstVisualizerTrackState);
+  }
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
@@ -1028,9 +1063,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   expect(visualizerLayout.pointerEvents).toBe("none");
   expect(visualizerLayout.portalOpacity).toBe("0.4");
-  expect(visualizerLayout.surfaceVisualStyle).toBe("equalizer");
-  expect(visualizerLayout.canvasVisualStyle).toBe("equalizer");
-  expect(visualizerLayout.canvasImageRendering).toBe("auto");
+  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
+  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
+  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
   expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
