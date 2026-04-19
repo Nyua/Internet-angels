@@ -1847,6 +1847,7 @@
     let segmentAdvanceCooldownUntilMs = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
+    const queuedSegmentAudioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_VISUAL_STYLE = "equalizer";
     const SHUFFLE_MAX_CANVAS_DPR = 1;
@@ -1865,6 +1866,9 @@
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
     audioEl.volume = SHUFFLE_MAX_VOLUME;
+    queuedSegmentAudioEl.preload = "auto";
+    queuedSegmentAudioEl.playsInline = true;
+    queuedSegmentAudioEl.crossOrigin = "anonymous";
     function resolveTrackUrl(track) {
       if (!track?.path) return "";
       return resolveUrl(track.path, window.location.origin);
@@ -1903,6 +1907,29 @@
       if (!track?.nextTrackId) return null;
       return waveformTrackLookup.get(track.nextTrackId) || null;
     }
+    function clearQueuedSegmentAudio() {
+      queuedSegmentAudioEl.pause();
+      queuedSegmentAudioEl.src = "";
+      queuedSegmentAudioEl.load();
+    }
+    function primeQueuedSegmentAudio(track) {
+      const nextSegment = getTrackNextSegment(track);
+      if (!nextSegment) {
+        clearQueuedSegmentAudio();
+        return;
+      }
+      const currentUrl = resolveTrackUrl(track);
+      const nextUrl = resolveTrackUrl(nextSegment);
+      if (!nextUrl || nextUrl === currentUrl) {
+        clearQueuedSegmentAudio();
+        return;
+      }
+      if (queuedSegmentAudioEl.currentSrc === nextUrl || queuedSegmentAudioEl.src === nextUrl) {
+        return;
+      }
+      queuedSegmentAudioEl.src = nextUrl;
+      queuedSegmentAudioEl.load();
+    }
     function applyPendingSegmentSeek() {
       if (!Number.isFinite(pendingSegmentSeekTime)) return false;
       try {
@@ -1924,20 +1951,19 @@
     function maybeAdvanceSegmentTrack(nowMs = performance.now()) {
       if (!currentTrack || loadState === "error") return false;
       if (nowMs < segmentAdvanceCooldownUntilMs) return false;
+      const nextSegment = getTrackNextSegment(currentTrack);
+      if (!(nextSegment && resolveTrackUrl(nextSegment) === resolveTrackUrl(currentTrack))) {
+        return false;
+      }
       const segmentEnd = getTrackSegmentEnd(currentTrack, audioEl.duration);
       if (!(segmentEnd > 0) || !Number.isFinite(audioEl.currentTime)) return false;
       if (audioEl.currentTime + 0.04 < segmentEnd) return false;
       segmentAdvanceCooldownUntilMs = nowMs + 240;
-      const nextSegment = getTrackNextSegment(currentTrack);
-      if (nextSegment && resolveTrackUrl(nextSegment) === resolveTrackUrl(currentTrack)) {
+      if (nextSegment) {
         currentTrack = nextSegment;
         loadState = audioEl.paused && loadState === "blocked" ? "blocked" : "ready";
         seekToTrackSegment(nextSegment);
         syncUi();
-        return true;
-      }
-      if (nextSegment) {
-        void chooseAndLoadTrack(nextSegment, { autoplay: true });
         return true;
       }
       return false;
@@ -2628,6 +2654,7 @@
       pendingSegmentSeekTime = null;
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
+      primeQueuedSegmentAudio(track);
       loadState = "loading";
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
@@ -2840,6 +2867,7 @@
       audioEl.pause();
       audioEl.src = "";
       audioEl.load();
+      clearQueuedSegmentAudio();
       waveformTrackLookup = /* @__PURE__ */ new Map();
       pendingSegmentSeekTime = null;
       segmentAdvanceCooldownUntilMs = 0;
@@ -2884,6 +2912,11 @@
     });
     audioEl.addEventListener("ended", () => {
       segmentAdvanceCooldownUntilMs = 0;
+      const nextSegment = getTrackNextSegment(currentTrack);
+      if (nextSegment) {
+        void chooseAndLoadTrack(nextSegment, { autoplay: true });
+        return;
+      }
       void chooseNextTrack({ autoplay: true });
     });
     audioEl.addEventListener("error", () => {
@@ -2914,9 +2947,13 @@
           return false;
         }
       },
-      debugAdvanceSegment: () => {
+      debugAdvanceSegment: async () => {
         const nextSegment = getTrackNextSegment(currentTrack);
         if (!nextSegment) return false;
+        if (resolveTrackUrl(nextSegment) !== resolveTrackUrl(currentTrack)) {
+          await chooseAndLoadTrack(nextSegment, { autoplay: !audioEl.paused });
+          return true;
+        }
         currentTrack = nextSegment;
         segmentAdvanceCooldownUntilMs = 0;
         seekToTrackSegment(nextSegment);

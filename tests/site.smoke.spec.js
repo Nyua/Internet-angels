@@ -739,7 +739,7 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
   expect(firstSegment.track?.segmentCount).toBe(2);
   expect(firstSegment.state?.title).toBe("trinket [full album]");
   expect(firstSegment.state?.artist).toBe("tsubi club");
-  expect(firstSegment.state?.duration).toBeCloseTo(1679, 0);
+  expect(firstSegment.state?.duration).toBeCloseTo(1678, 0);
 
   await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceSegment?.());
 
@@ -754,11 +754,11 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
       state: window.__internetAngelShuffleDebug?.getState?.()
     };
   });
-  expect(secondSegment.track?.segmentOffset).toBeCloseTo(839.5, 1);
+  expect(secondSegment.track?.segmentOffset).toBeCloseTo(932, 0);
   expect(secondSegment.state?.title).toBe("trinket [full album]");
   expect(secondSegment.state?.artist).toBe("tsubi club");
-  expect(secondSegment.state?.duration).toBeCloseTo(1679, 0);
-  expect(secondSegment.state?.currentTime).toBeGreaterThan(839);
+  expect(secondSegment.state?.duration).toBeCloseTo(1678, 0);
+  expect(secondSegment.state?.currentTime).toBeGreaterThan(931);
   expect(secondSegment.state?.progress).toBeGreaterThan(0.49);
 });
 
