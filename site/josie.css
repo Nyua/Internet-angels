@@ -38,7 +38,7 @@
   --glass-white-a: rgba(255, 255, 255, 0.14);
   --glass-white-b: rgba(240, 248, 255, 0.09);
   --glass-white-c: rgba(223, 238, 250, 0.06);
-  --glass-white-border: rgba(235, 246, 255, 0.3);
+  --glass-white-border: rgba(235, 246, 255, 0.3); 
   --glass-white-border-strong: rgba(235, 246, 255, 0.42);
   --glass-white-shadow: rgba(3, 12, 24, 0.58);
 
@@ -3682,7 +3682,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 14px;
   min-width: 0;
 }
-
+/*
 @media (min-width: 821px) {
   #social-hub-root[data-social-hub-ready="true"] [data-desktop-unfold] {
     transform-origin: top center;
@@ -3691,7 +3691,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     will-change: opacity, transform, clip-path, filter;
   }
 }
-
+*/
 @keyframes socialHubDesktopUnfold {
   0% {
     opacity: 0;
@@ -3723,13 +3723,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     filter: blur(0);
   }
 }
-
+/*
 @media (min-width: 821px) {
   #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-shell[data-desktop-unfold] {
     animation-name: socialHubDesktopUnfoldHero;
   }
 }
-
+*/
 .social-hub-sidebar {
   position: static;
   display: flex;
@@ -3743,7 +3743,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-panel {
   border: 0;
-  border-radius: 8px;
+  border-radius: 0px;
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
@@ -4236,7 +4236,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-sidebar-row--soundcloud {
   --sidebar-row-accent-rgb: 255, 212, 195;
 }
-
+/*
 @media (min-width: 821px) {
   .steam-sidebar-row--soundcloud,
   .steam-sidebar-row--soundcloud::before,
@@ -4245,7 +4245,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     border-radius: 0 !important;
   }
 }
-
+*/
 .steam-sidebar-row--twitter,
 .steam-sidebar-row--twitter * {
   font-family: var(--twitter-font);
@@ -6778,13 +6778,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     position: static;
   }
 }
-
+/*
 @media (max-width: 820px) {
   .os-stage {
     overflow-y: auto;
     overflow-x: hidden;
   }
-
+*/
   .social-hub-scale-frame {
     width: 100%;
     max-width: 390px;
@@ -8567,13 +8567,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   object-fit: cover;
   border-radius: inherit;
 }
-
+/*
 @media (max-width: 820px) {
   .discord-presence-panel {
     width: min(100%, 320px);
     margin: 0 auto;
   }
-
+*/
   .discord-presence-reveal {
     transition:
       opacity 320ms cubic-bezier(0.2, 0.85, 0.18, 1),
