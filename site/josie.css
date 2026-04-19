@@ -4686,7 +4686,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .josie-audio-player-wave-shell {
   position: relative;
-  min-height: clamp(112px, 10vw, 142px);
+  min-height: clamp(152px, 13vw, 206px);
   height: 100%;
   border: 0;
   background: transparent;
@@ -4765,7 +4765,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   display: block;
   overflow: hidden;
   pointer-events: none;
-  opacity: 0.4;
+  opacity: 0.56;
   contain: layout paint size;
   will-change: transform, opacity;
   transform: translateZ(0);
@@ -4780,10 +4780,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   pointer-events: none;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  filter:
-    brightness(1.08)
-    drop-shadow(0 0 10px rgba(248, 253, 255, 0.14))
-    drop-shadow(0 0 18px rgba(248, 253, 255, 0.06));
+  filter: none;
 }
 
 @media (min-width: 821px) and (pointer: fine) and (hover: hover) {

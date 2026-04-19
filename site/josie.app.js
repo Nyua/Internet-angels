@@ -1823,7 +1823,14 @@
     let analyserSamples = new Float32Array(0);
     let analyserFrequencyData = new Uint8Array(0);
     let traceValues = new Float32Array(0);
+    let traceBodyValues = new Float32Array(0);
+    let traceDetailValues = new Float32Array(0);
     let traceSmoothingValues = new Float32Array(0);
+    let traceDisplayValues = new Float32Array(0);
+    let traceDetailDisplayValues = new Float32Array(0);
+    let traceSampleIndexLookup = new Uint16Array(0);
+    let traceSampleLookupSourceLength = 0;
+    let traceSampleLookupPointCount = 0;
     let waveformTracks = [];
     let waveformTrackLookup = /* @__PURE__ */ new Map();
     let currentTrack = null;
@@ -1842,7 +1849,30 @@
     let visualizerCopyState = "visible";
     let reactiveBeat = 0;
     let reactiveFlash = 0;
+    let reactiveBass = 0;
+    let reactiveBassFlash = 0;
+    let previousBassEnergy = 0;
     let reactiveVisualSignature = "";
+    let lastShuffleThemeCacheKey = "";
+    let lastShuffleThemeCacheValue = null;
+    let appliedShuffleThemeSignature = "";
+    let appliedShuffleThemePrimaryTarget = null;
+    let appliedShuffleThemeSecondaryTarget = null;
+    let cachedReactiveTargetPrimary = null;
+    let cachedReactiveTargetSecondary = null;
+    const cachedReactiveTargets = [];
+    const reactivePulseMetrics = {
+      beat: 0,
+      flash: 0,
+      bass: 0,
+      bassFlash: 0,
+      sampled: false
+    };
+    let visualizerLayerHost = null;
+    let appliedVisualizerMode = "";
+    let appliedVisualizerModePlayerRoot = null;
+    let appliedVisualizerModeWaveSurface = null;
+    let lastUiState = null;
     let lastVisualizerFrameMs = 0;
     let performanceDegraded = isDesktopPerformanceDegraded();
     let pendingSegmentSeekTime = null;
@@ -1852,8 +1882,8 @@
     const queuedSegmentAudioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_VISUAL_STYLE = "ascii";
-    const SHUFFLE_MAX_CANVAS_DPR = 1;
-    const SHUFFLE_TRACE_OPACITY_SCALE = 2;
+    const SHUFFLE_MAX_CANVAS_DPR = 2;
+    const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
@@ -1864,11 +1894,77 @@
     const SHUFFLE_BAR_MAX_WIDTH_PX = 10;
     const SHUFFLE_BAR_MIN_GAP_PX = 0;
     const SHUFFLE_BAR_MAX_GAP_PX = 0;
+    const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
-    const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 40;
-    const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 16;
+    const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
+    const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
     const SHUFFLE_MAX_VOLUME = 0.077;
+    const SHUFFLE_BODY_RIBBON_CONFIG = Object.freeze({
+      baseBrush: 0.8,
+      brushScale: 2.1,
+      impactScale: 0.65,
+      surgeScale: 0.92,
+      bassScale: 1.8,
+      detailScale: 0.18,
+      minBrush: 1,
+      maxBrush: 4,
+      magnitudeScale: 0.9,
+      impactContribution: 0.24,
+      surgeContribution: 0.12,
+      bassContribution: 0.28,
+      detailContribution: 0.08,
+      connectorPenalty: 0.08,
+      alphaBase: 0.24,
+      alphaScale: 0.46,
+      targetAccent: 0.14,
+      flashContribution: 0.08,
+      bassFlashContribution: 0.06,
+      alphaMin: 0.18,
+      alphaMax: 0.96
+    });
+    const SHUFFLE_DETAIL_RIBBON_CONFIG = Object.freeze({
+      baseBrush: 0.16,
+      brushScale: 1.22,
+      impactScale: 0.22,
+      surgeScale: 0.18,
+      bassScale: 0.12,
+      detailScale: 0.86,
+      minBrush: 0,
+      maxBrush: 2,
+      magnitudeScale: 1.04,
+      edgeFalloff: 0.18,
+      impactContribution: 0.12,
+      surgeContribution: 0.1,
+      bassContribution: 0.04,
+      detailContribution: 0.34,
+      connectorPenalty: 0.03,
+      glyphFloor: 1,
+      alphaBase: 0.12,
+      alphaScale: 0.34,
+      targetAccent: 0.08,
+      flashContribution: 0.12,
+      bassFlashContribution: 0.04,
+      alphaEdgeFalloff: 0.06,
+      alphaMin: 0.1,
+      alphaMax: 0.84
+    });
+    const asciiAlphaStyleCache = [];
+    const waveformAvoidancePoints = [];
+    const waveformAvoidanceState = {
+      active: false,
+      viewportLeft: 0,
+      viewportTop: 0,
+      drawWidth: 0,
+      drawHeight: 0,
+      repelRadius: 0,
+      repelShift: 0,
+      revision: 0,
+      points: []
+    };
+    if (typeof window === "object") {
+      window.__internetAngelShuffleWaveformAvoidance = waveformAvoidanceState;
+    }
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -1947,13 +2043,75 @@
         return false;
       }
     }
-    function seekToTrackSegment(track) {
+    function getTrackGroupTracks(track) {
+      if (!track?.queueId) {
+        return track ? [track] : [];
+      }
+      return waveformTracks.filter((candidate) => candidate?.queueId === track.queueId).sort((a, b) => {
+        if ((a?.segmentOffset || 0) !== (b?.segmentOffset || 0)) {
+          return (a?.segmentOffset || 0) - (b?.segmentOffset || 0);
+        }
+        return (a?.segmentIndex || 0) - (b?.segmentIndex || 0);
+      });
+    }
+    function resolveTrackForDisplayTime(track, nextDisplayTime, fallbackDuration = 0) {
+      if (!track) return null;
+      const groupTracks = getTrackGroupTracks(track);
+      if (!groupTracks.length) return null;
+      const totalDuration = getTrackDisplayDuration(track, fallbackDuration);
+      const clampedDisplayTime = clamp2(Number(nextDisplayTime) || 0, 0, Math.max(totalDuration, 0));
+      for (let index = 0; index < groupTracks.length; index += 1) {
+        const candidate = groupTracks[index];
+        const startOffset = getTrackSegmentOffset(candidate);
+        const nextCandidate = groupTracks[index + 1] || null;
+        const fallbackSegmentEnd = nextCandidate ? getTrackSegmentOffset(nextCandidate) : totalDuration;
+        const endOffset = Math.max(startOffset, fallbackSegmentEnd);
+        if (index < groupTracks.length - 1 && clampedDisplayTime >= endOffset) {
+          continue;
+        }
+        const audioTime = getTrackSegmentStart(candidate) + clamp2(clampedDisplayTime - startOffset, 0, Math.max(0, endOffset - startOffset));
+        return {
+          track: candidate,
+          audioTime,
+          displayTime: clampedDisplayTime,
+          duration: totalDuration
+        };
+      }
+      const lastTrack = groupTracks[groupTracks.length - 1];
+      return {
+        track: lastTrack,
+        audioTime: getTrackSegmentStart(lastTrack) + Math.max(0, clampedDisplayTime - getTrackSegmentOffset(lastTrack)),
+        displayTime: clampedDisplayTime,
+        duration: totalDuration
+      };
+    }
+    function seekToTrackSegment(track, nextAudioTime = null) {
       const segmentStart = getTrackSegmentStart(track);
-      pendingSegmentSeekTime = segmentStart;
+      pendingSegmentSeekTime = Number.isFinite(nextAudioTime) ? Math.max(0, nextAudioTime) : segmentStart;
       if (audioEl.readyState >= 1) {
         applyPendingSegmentSeek();
       }
       syncUi();
+    }
+    async function seekToDisplayTime(nextDisplayTime) {
+      if (!currentTrack) return false;
+      const rawDuration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const target = resolveTrackForDisplayTime(currentTrack, nextDisplayTime, rawDuration);
+      if (!target?.track) return false;
+      const targetTrack = target.track;
+      const autoplay = !audioEl.paused;
+      if (targetTrack.id === currentTrack.id || resolveTrackUrl(targetTrack) === resolveTrackUrl(currentTrack)) {
+        currentTrack = targetTrack;
+        segmentAdvanceCooldownUntilMs = 0;
+        seekToTrackSegment(targetTrack, target.audioTime);
+        syncUi();
+        return true;
+      }
+      await chooseAndLoadTrack(targetTrack, {
+        autoplay,
+        seekTime: target.audioTime
+      });
+      return true;
     }
     function maybeAdvanceSegmentTrack(nowMs = performance.now()) {
       if (!currentTrack || loadState === "error") return false;
@@ -1975,6 +2133,41 @@
       }
       return false;
     }
+    function ensureTraceSampleLookup(pointCount) {
+      if (
+        pointCount === traceSampleLookupPointCount
+        && analyserSamples.length === traceSampleLookupSourceLength
+        && traceSampleIndexLookup.length === pointCount
+      ) {
+        return traceSampleIndexLookup;
+      }
+      const sourceLength = analyserSamples.length;
+      traceSampleLookupPointCount = pointCount;
+      traceSampleLookupSourceLength = sourceLength;
+      traceSampleIndexLookup = new Uint16Array(pointCount);
+      if (!(sourceLength > 0) || !(pointCount > 0)) {
+        return traceSampleIndexLookup;
+      }
+      const maxSampleIndex = sourceLength - 1;
+      const pointDenominator = Math.max(pointCount - 1, 1);
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        traceSampleIndexLookup[pointIndex] = Math.min(
+          maxSampleIndex,
+          Math.floor(pointIndex / pointDenominator * maxSampleIndex)
+        );
+      }
+      return traceSampleIndexLookup;
+    }
+    function getAsciiAlphaFillStyle(alpha) {
+      const scaledAlpha = clamp2(alpha * SHUFFLE_TRACE_OPACITY_SCALE, 0, 4);
+      const alphaKey = Math.round(scaledAlpha * 1e3);
+      let fillStyle = asciiAlphaStyleCache[alphaKey];
+      if (!fillStyle) {
+        fillStyle = `rgba(248, 253, 255, ${(alphaKey / 1e3).toFixed(3)})`;
+        asciiAlphaStyleCache[alphaKey] = fillStyle;
+      }
+      return fillStyle;
+    }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
       const asciiCellWidth = clamp2(Math.round(width / 208), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
@@ -1984,10 +2177,81 @@
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
         traceValues = new Float32Array(pointCount);
       }
+      if (!(traceBodyValues instanceof Float32Array) || traceBodyValues.length !== pointCount) {
+        traceBodyValues = new Float32Array(pointCount);
+      }
+      if (!(traceDetailValues instanceof Float32Array) || traceDetailValues.length !== pointCount) {
+        traceDetailValues = new Float32Array(pointCount);
+      }
       if (!(traceSmoothingValues instanceof Float32Array) || traceSmoothingValues.length !== pointCount) {
         traceSmoothingValues = new Float32Array(pointCount);
       }
+      if (!(traceDisplayValues instanceof Float32Array) || traceDisplayValues.length !== pointCount) {
+        traceDisplayValues = new Float32Array(pointCount);
+      }
+      if (!(traceDetailDisplayValues instanceof Float32Array) || traceDetailDisplayValues.length !== pointCount) {
+        traceDetailDisplayValues = new Float32Array(pointCount);
+      }
       const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode);
+      const sampleIndexLookup = shouldSampleLive && analyserSamples.length ? ensureTraceSampleLookup(pointCount) : traceSampleIndexLookup;
+      let bassBodyDrive = 0;
+      let detailPresenceDrive = 0;
+      let textureRecovery = 0;
+      let mudSuppression = 0;
+      if (shouldSampleLive && analyserFrequencyData.length) {
+        const readBand = (startBin, endBin) => {
+          const start = clamp2(startBin, 0, analyserFrequencyData.length - 1);
+          const end = clamp2(endBin, start, analyserFrequencyData.length - 1);
+          let weightedTotal = 0;
+          let weightTotal = 0;
+          let peakValue = 0;
+          for (let bin = start; bin <= end; bin += 1) {
+            const normalized = (analyserFrequencyData[bin] || 0) / 255;
+            const distance = (bin - start) / Math.max(end - start, 1);
+            const weight = 1.18 - distance * 0.24;
+            weightedTotal += normalized * weight;
+            weightTotal += weight;
+            peakValue = Math.max(peakValue, normalized);
+          }
+          return {
+            avg: weightTotal ? weightedTotal / weightTotal : 0,
+            peak: peakValue
+          };
+        };
+        const subBand = readBand(2, 7);
+        const bassBand = readBand(8, 20);
+        const lowMidBand = readBand(21, 46);
+        const presenceBand = readBand(47, 96);
+        const airBand = readBand(97, Math.min(analyserFrequencyData.length - 1, 168));
+        bassBodyDrive = clamp2(
+          subBand.avg * 1.08 +
+          subBand.peak * 0.42 +
+          bassBand.avg * 0.92 +
+          bassBand.peak * 0.36,
+          0,
+          1
+        );
+        detailPresenceDrive = clamp2(
+          lowMidBand.avg * 0.52 +
+          presenceBand.avg * 1.12 +
+          presenceBand.peak * 0.28 +
+          airBand.avg * 0.66,
+          0,
+          1
+        );
+        textureRecovery = clamp2(
+          detailPresenceDrive * 0.74 +
+          Math.max(0, lowMidBand.peak - bassBodyDrive * 0.22) * 0.82 +
+          airBand.peak * 0.24,
+          0,
+          1
+        );
+        mudSuppression = clamp2(
+          bassBodyDrive * 0.9 - detailPresenceDrive * 0.44 - textureRecovery * 0.18,
+          0,
+          1
+        );
+      }
       let peak = 0;
       let transientPeak = 0;
       if (shouldSampleLive && analyserSamples.length) {
@@ -1996,30 +2260,49 @@
         }
         let filteredValue = 0;
         for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-          const sampleIndex = Math.min(analyserSamples.length - 1, Math.floor(pointIndex / Math.max(pointCount - 1, 1) * (analyserSamples.length - 1)));
+          const sampleIndex = sampleIndexLookup[pointIndex] || 0;
           const currentSample = analyserSamples[sampleIndex] || 0;
           const previousSample = analyserSamples[Math.max(0, sampleIndex - 6)] || currentSample;
           const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 6)] || currentSample;
+          const nearPreviousSample = analyserSamples[Math.max(0, sampleIndex - 2)] || previousSample;
+          const nearNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 2)] || nextSample;
+          const farPreviousSample = analyserSamples[Math.max(0, sampleIndex - 18)] || previousSample;
+          const farNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 18)] || nextSample;
+          const mediumContour = nearPreviousSample * 0.24 + currentSample * 0.52 + nearNextSample * 0.24;
+          const wideContour = farPreviousSample * 0.16 + previousSample * 0.22 + currentSample * 0.24 + nextSample * 0.22 + farNextSample * 0.16;
           const transient = (nextSample - previousSample) * 4.8;
-          const rawValue = currentSample * 0.72 + transient;
-          filteredValue = filteredValue * 0.22 + rawValue * 0.78;
-          const magnitude = Math.abs(filteredValue);
-          peak = Math.max(peak, magnitude);
-          transientPeak = Math.max(transientPeak, Math.abs(transient));
-          let shapedMagnitude = magnitude;
-          if (magnitude > 0.2) {
-            const excess = magnitude - 0.2;
-            shapedMagnitude = 0.2 + excess / (1 + excess * 1.9);
+          const microTransient = (nearNextSample - nearPreviousSample) * 3.1;
+          const resonance = (mediumContour - wideContour) * (1.06 + textureRecovery * 0.68);
+          const bodyRaw = wideContour * (0.84 + bassBodyDrive * 0.28) + currentSample * (0.38 + bassBodyDrive * 0.14) + transient * (0.08 + bassBodyDrive * 0.06);
+          const detailRaw = (currentSample - wideContour) * (1.02 + detailPresenceDrive * 0.82) + transient * (0.14 + detailPresenceDrive * 0.18) + microTransient * (0.12 + detailPresenceDrive * 0.2) + resonance * (0.44 + textureRecovery * 0.46);
+          filteredValue = filteredValue * (0.26 + mudSuppression * 0.06) + bodyRaw * (0.74 - mudSuppression * 0.08);
+          const bodyMagnitude = Math.abs(filteredValue);
+          const detailMagnitude = Math.abs(detailRaw);
+          peak = Math.max(peak, bodyMagnitude + detailMagnitude * 0.18);
+          transientPeak = Math.max(transientPeak, Math.abs(transient) + detailMagnitude * 0.22);
+          let shapedMagnitude = bodyMagnitude;
+          if (bodyMagnitude > 0.2) {
+            const excess = bodyMagnitude - 0.2;
+            shapedMagnitude = 0.2 + excess / (1 + excess * (1.9 - bassBodyDrive * 0.34));
           }
-          if (magnitude > 0.46) {
-            const surgeExcess = magnitude - 0.46;
-            shapedMagnitude += surgeExcess / (1 + surgeExcess * 0.42) * 0.82;
+          if (bodyMagnitude > 0.46) {
+            const surgeExcess = bodyMagnitude - 0.46;
+            shapedMagnitude += surgeExcess / (1 + surgeExcess * (0.42 + mudSuppression * 0.22)) * (0.82 + bassBodyDrive * 0.18);
           }
-          if (magnitude > 0.68) {
-            const absoluteExcess = magnitude - 0.68;
-            shapedMagnitude += absoluteExcess / (1 + absoluteExcess * 0.18) * 1.05;
+          if (bodyMagnitude > 0.68) {
+            const absoluteExcess = bodyMagnitude - 0.68;
+            shapedMagnitude += absoluteExcess / (1 + absoluteExcess * 0.18) * (1.05 + bassBodyDrive * 0.28);
           }
-          traceValues[pointIndex] = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * 2.35), -1, 1);
+          const bodyValue = clamp2(Math.sign(filteredValue) * Math.tanh(shapedMagnitude * (2.15 + bassBodyDrive * 0.46)), -1, 1);
+          const detailValue = clamp2(Math.tanh(detailRaw * (1.58 + detailPresenceDrive * 0.74 + textureRecovery * 0.38)), -1, 1);
+          traceBodyValues[pointIndex] = bodyValue;
+          traceDetailValues[pointIndex] = detailValue;
+          traceValues[pointIndex] = clamp2(
+            bodyValue * (0.84 + bassBodyDrive * 0.14) +
+            detailValue * (0.22 + textureRecovery * 0.26),
+            -1,
+            1
+          );
         }
       }
       const structureHold = clamp2(
@@ -2042,19 +2325,6 @@
         }
         traceValues.set(traceSmoothingValues);
       }
-      let rms = 0;
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const value = traceValues[pointIndex] || 0;
-        rms += value * value;
-      }
-      rms = Math.sqrt(rms / Math.max(pointCount, 1));
-      const loudnessBoost = clamp2(
-        Math.max(0, peak - 0.42) * 0.88 +
-        Math.max(0, rms - 0.18) * 1.55 +
-        Math.max(0, transientPeak - 0.34) * 0.1,
-        0,
-        1
-      );
       const peakSurge = clamp2(
         Math.max(0, peak - 0.5) * 1.9 +
         Math.max(0, transientPeak - 0.32) * 0.28,
@@ -2067,12 +2337,63 @@
         0,
         1
       );
+      const bassDrive = clamp2(
+        reactiveBass * 1.22 +
+        reactiveBassFlash * 0.92 +
+        bassBodyDrive * 0.48,
+        0,
+        1
+      );
+      const detailDrive = clamp2(
+        detailPresenceDrive * 0.82 +
+        textureRecovery * 0.74 +
+        reactiveFlash * 0.22,
+        0,
+        1
+      );
+      const traceAttackMix = clamp2(0.44 + reactiveBeat * 0.14 + peakSurge * 0.08 + bassDrive * 0.12, 0.44, 0.82);
+      const traceReleaseMix = clamp2(0.2 + structureHold * 0.1 + absolutePeakSurge * 0.05 + bassDrive * 0.03, 0.2, 0.46);
+      const detailAttackMix = clamp2(0.54 + detailDrive * 0.18 + reactiveFlash * 0.08, 0.54, 0.88);
+      const detailReleaseMix = clamp2(0.28 + textureRecovery * 0.14 + detailPresenceDrive * 0.08, 0.28, 0.56);
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const targetValue = traceValues[pointIndex] || 0;
+        const previousValue = traceDisplayValues[pointIndex] || 0;
+        const targetDetailValue = traceDetailValues[pointIndex] || 0;
+        const previousDetailValue = traceDetailDisplayValues[pointIndex] || 0;
+        if (!shouldSampleLive) {
+          traceDisplayValues[pointIndex] = previousValue * 0.88;
+          traceDetailDisplayValues[pointIndex] = previousDetailValue * 0.84;
+          continue;
+        }
+        const smoothingMix = Math.abs(targetValue) >= Math.abs(previousValue) ? traceAttackMix : traceReleaseMix;
+        traceDisplayValues[pointIndex] = previousValue + (targetValue - previousValue) * smoothingMix;
+        const detailSmoothingMix = Math.abs(targetDetailValue) >= Math.abs(previousDetailValue) ? detailAttackMix : detailReleaseMix;
+        traceDetailDisplayValues[pointIndex] = previousDetailValue + (targetDetailValue - previousDetailValue) * detailSmoothingMix;
+      }
+      let rms = 0;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const value = traceDisplayValues[pointIndex] || 0;
+        rms += value * value;
+      }
+      rms = Math.sqrt(rms / Math.max(pointCount, 1));
+      const loudnessBoost = clamp2(
+        Math.max(0, peak - 0.42) * 0.88 +
+        Math.max(0, rms - 0.18) * 1.55 +
+        Math.max(0, transientPeak - 0.34) * 0.1 +
+        bassDrive * 0.82 +
+        detailDrive * 0.26 +
+        textureRecovery * 0.14,
+        0,
+        1
+      );
       const impact = clamp2(
         rms * 1.08 +
         Math.max(0, peak - 0.18) * 0.72 +
         Math.max(0, transientPeak - 0.16) * 0.12 +
         peakSurge * 0.34 +
-        absolutePeakSurge * 0.22,
+        absolutePeakSurge * 0.22 +
+        bassDrive * 0.58 +
+        detailDrive * 0.18,
         0,
         1
       );
@@ -2090,85 +2411,228 @@
             0.18 +
             loudnessBoost * 0.12 +
             peakSurge * (0.1 * structureDamping) +
-            absolutePeakSurge * (0.12 * structureDamping)
+            absolutePeakSurge * (0.12 * structureDamping) +
+            bassDrive * 0.2 +
+            detailDrive * 0.08
           )
         ),
         2,
         Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
       );
-      const baselineGlyph = impact > 0.38 ? "-" : ".";
+      const detailAmplitudeRows = clamp2(
+        Math.round(
+          amplitudeRows * (
+            0.24 +
+            detailDrive * 0.44 +
+            textureRecovery * 0.24 +
+            bassDrive * 0.08
+          )
+        ),
+        1,
+        Math.max(1, amplitudeRows + 2)
+      );
       const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
-      const fontSize = Math.max(3, Math.round(asciiCellWidth * 1.36));
+      const fontSize = Math.max(4, Math.round(asciiCellWidth * 1.65));
       waveCtx.save();
       waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
       waveCtx.textBaseline = "top";
       waveCtx.textAlign = "center";
       waveCtx.globalCompositeOperation = "screen";
       const baselineYText = originY + verticalInset + baselineRow * asciiCellHeight;
-      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.14 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const x = originX + pointIndex * pointSpacing;
-        waveCtx.fillText(baselineGlyph, x, baselineYText);
-      }
-      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
-        const value = traceValues[pointIndex] || 0;
-        const magnitude = Math.abs(value);
-        if (magnitude < 0.012) {
-          continue;
+      const bodyRibbonConfig = SHUFFLE_BODY_RIBBON_CONFIG;
+      const detailRibbonConfig = SHUFFLE_DETAIL_RIBBON_CONFIG;
+      const paintRibbon = (previousRow, targetRow, x, magnitude, config = {}) => {
+        const connectorStartRow = previousRow === null ? targetRow : Math.min(previousRow, targetRow);
+        const connectorEndRow = previousRow === null ? targetRow : Math.max(previousRow, targetRow);
+        const connectorTravel = Math.max(1, connectorEndRow - connectorStartRow);
+        const brushRadius = clamp2(
+          Math.round(
+            (config.baseBrush || 0) +
+            magnitude * (config.brushScale || 1.4) +
+            impact * (config.impactScale || 0.16) +
+            peakSurge * (config.surgeScale || 0.12) +
+            bassDrive * (config.bassScale || 0) +
+            detailDrive * (config.detailScale || 0)
+          ),
+          Number.isFinite(config.minBrush) ? config.minBrush : 0,
+          Number.isFinite(config.maxBrush) ? config.maxBrush : 3
+        );
+        for (let baseRow = connectorStartRow; baseRow <= connectorEndRow; baseRow += 1) {
+          const connectorDistanceRatio = previousRow === null
+            ? 0
+            : Math.abs(baseRow - targetRow) / connectorTravel;
+          for (let offset = -brushRadius; offset <= brushRadius; offset += 1) {
+            const rowIndex = clamp2(baseRow + offset, 0, rowCount - 1);
+            const edgeDistance = Math.abs(offset);
+            const intensity = clamp2(
+              magnitude * ((config.magnitudeScale || 0.9) - edgeDistance * (config.edgeFalloff || 0.12)) +
+              impact * (config.impactContribution || 0.1) +
+              peakSurge * (config.surgeContribution || 0.06) +
+              bassDrive * (config.bassContribution || 0) +
+              detailDrive * (config.detailContribution || 0) -
+              connectorDistanceRatio * (config.connectorPenalty || 0.06),
+              0,
+              1
+            );
+            if (intensity <= 0.02) {
+              continue;
+            }
+            const glyphIndex = clamp2(
+              Math.round((config.glyphFloor || 0) + intensity * (glyphMaxIndex - (config.glyphFloor || 0))),
+              0,
+              glyphMaxIndex
+            );
+            const glyph = SHUFFLE_ASCII_CHAR_RAMP[glyphIndex] || ".";
+            const alpha = clamp2(
+              (config.alphaBase || 0.14) +
+              intensity * (config.alphaScale || 0.34) +
+              (baseRow === targetRow ? (config.targetAccent || 0.08) : 0) +
+              reactiveFlash * (config.flashContribution || 0.04) +
+              reactiveBassFlash * (config.bassFlashContribution || 0) -
+              edgeDistance * (config.alphaEdgeFalloff || 0.04),
+              config.alphaMin || 0.12,
+              config.alphaMax || 0.86
+            );
+            waveCtx.fillStyle = getAsciiAlphaFillStyle(alpha);
+            waveCtx.fillText(glyph, x, originY + verticalInset + rowIndex * asciiCellHeight);
+          }
         }
+      };
+      let avoidancePointCount = 0;
+      const avoidanceStep = Math.max(1, Math.ceil(pointCount / SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT));
+      let previousBodyTargetRow = null;
+      let previousDetailTargetRow = null;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const bodyValue = traceDisplayValues[pointIndex] || 0;
+        const detailValue = traceDetailDisplayValues[pointIndex] || 0;
+        const magnitude = Math.abs(bodyValue);
+        const detailMagnitude = Math.abs(detailValue);
         const x = originX + pointIndex * pointSpacing;
-        const targetRow = clamp2(
-          baselineRow - Math.round(value * amplitudeRows),
+        const bodyTargetRow = clamp2(
+          baselineRow - Math.round(bodyValue * amplitudeRows),
           0,
           rowCount - 1
         );
-        const startRow = Math.min(baselineRow, targetRow);
-        const endRow = Math.max(baselineRow, targetRow);
-        const travel = Math.max(1, endRow - startRow);
-        for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
-          const distanceRatio = Math.abs(rowIndex - baselineRow) / travel;
-          const intensity = clamp2(
-            magnitude * (0.74 + distanceRatio * 0.48) +
-            impact * 0.22 +
-            peakSurge * 0.12 +
-            absolutePeakSurge * 0.14,
+        if (magnitude < 0.014 && detailMagnitude < 0.018) {
+          if (pointIndex === 0 || pointIndex === pointCount - 1 || pointIndex % avoidanceStep === 0) {
+            const avoidancePoint = waveformAvoidancePoints[avoidancePointCount] || (waveformAvoidancePoints[avoidancePointCount] = {
+              x: 0,
+              y: 0,
+              weight: 0
+            });
+            avoidancePoint.x = x;
+            avoidancePoint.y = originY + verticalInset + bodyTargetRow * asciiCellHeight + asciiCellHeight * 0.5;
+            avoidancePoint.weight = clamp2(0.14 + impact * 0.08 + bassDrive * 0.06, 0.14, 0.34);
+            avoidancePointCount += 1;
+          }
+          previousBodyTargetRow = null;
+          previousDetailTargetRow = null;
+          continue;
+        }
+        if (pointIndex === 0 || pointIndex === pointCount - 1 || pointIndex % avoidanceStep === 0) {
+          const avoidancePoint = waveformAvoidancePoints[avoidancePointCount] || (waveformAvoidancePoints[avoidancePointCount] = {
+            x: 0,
+            y: 0,
+            weight: 0
+          });
+          avoidancePoint.x = x;
+          avoidancePoint.y = originY + verticalInset + bodyTargetRow * asciiCellHeight + asciiCellHeight * 0.5;
+          avoidancePoint.weight = clamp2(
+            magnitude * 0.84 +
+            detailMagnitude * 0.34 +
+            impact * 0.28 +
+            bassDrive * 0.24,
             0,
             1
           );
-          const glyphIndex = clamp2(Math.round(intensity * glyphMaxIndex), 0, glyphMaxIndex);
-          const glyph = SHUFFLE_ASCII_CHAR_RAMP[glyphIndex] || ".";
-          const alpha = clamp2(
-            0.12 +
-            intensity * 0.34 +
-            (rowIndex === targetRow ? 0.08 : 0) +
-            reactiveFlash * 0.04,
-            0.12,
-            0.72
-          );
-          waveCtx.fillStyle = `rgba(248, 253, 255, ${(alpha * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
-          waveCtx.fillText(glyph, x, originY + verticalInset + rowIndex * asciiCellHeight);
+          avoidancePointCount += 1;
         }
+        paintRibbon(previousBodyTargetRow, bodyTargetRow, x, magnitude, bodyRibbonConfig);
+        if (detailMagnitude >= 0.018) {
+          const detailTargetRow = clamp2(
+            bodyTargetRow - Math.round(detailValue * detailAmplitudeRows),
+            0,
+            rowCount - 1
+          );
+          paintRibbon(previousDetailTargetRow, detailTargetRow, x, detailMagnitude, detailRibbonConfig);
+          previousDetailTargetRow = detailTargetRow;
+        } else {
+          previousDetailTargetRow = null;
+        }
+        previousBodyTargetRow = bodyTargetRow;
       }
       const edgeMarkerHeight = Math.max(2, Math.round(Math.min(height * 0.22, amplitudeRows * asciiCellHeight * 0.32)));
       const edgeMarkerTop = Math.round(originY + baselineYText + asciiCellHeight / 2 - edgeMarkerHeight / 2);
-      waveCtx.fillStyle = `rgba(248, 253, 255, ${(0.12 * SHUFFLE_TRACE_OPACITY_SCALE).toFixed(3)})`;
+      waveCtx.fillStyle = getAsciiAlphaFillStyle(0.12);
       waveCtx.fillRect(originX, edgeMarkerTop, 1, edgeMarkerHeight);
       waveCtx.fillRect(originX + width - 1, edgeMarkerTop, 1, edgeMarkerHeight);
       waveCtx.restore();
+      const waveformViewportLeft = Number(cachedWaveLayout?.viewportLeft) || 0;
+      const waveformViewportTop = Number(cachedWaveLayout?.viewportTop) || 0;
+      if (avoidancePointCount > 1) {
+        syncWaveformAvoidanceState({
+          active: true,
+          viewportLeft: waveformViewportLeft + originX,
+          viewportTop: waveformViewportTop,
+          drawWidth: width,
+          drawHeight: height,
+          repelRadius: clamp2(
+            asciiCellHeight * 2.1 +
+            amplitudeRows * asciiCellHeight * 0.12 +
+            impact * 4.4 +
+            bassDrive * 5.2 +
+            detailDrive * 1.6,
+            14,
+            Math.max(22, height * 0.11)
+          ),
+          repelShift: clamp2(
+            1.1 +
+            impact * 1.2 +
+            bassDrive * 0.9 +
+            reactiveBassFlash * 0.42 +
+            detailDrive * 0.2,
+            1.1,
+            3.4
+          ),
+          points: waveformAvoidancePoints,
+          pointCount: avoidancePointCount,
+          viewportOffsetX: waveformViewportLeft,
+          viewportOffsetY: waveformViewportTop
+        });
+      } else {
+        clearWaveformAvoidanceState();
+      }
     }
     function getReactiveTargets() {
-      const targets = [];
-      if (playerRoot instanceof HTMLElement) {
-        targets.push(playerRoot);
+      const primaryTarget = playerRoot instanceof HTMLElement ? playerRoot : null;
+      const secondaryTarget = waveSurface instanceof HTMLElement && waveSurface !== primaryTarget ? waveSurface : null;
+      if (primaryTarget === cachedReactiveTargetPrimary && secondaryTarget === cachedReactiveTargetSecondary) {
+        return cachedReactiveTargets;
       }
-      if (waveSurface instanceof HTMLElement && !targets.includes(waveSurface)) {
-        targets.push(waveSurface);
+      cachedReactiveTargetPrimary = primaryTarget;
+      cachedReactiveTargetSecondary = secondaryTarget;
+      cachedReactiveTargets.length = 0;
+      if (primaryTarget) {
+        cachedReactiveTargets.push(primaryTarget);
       }
-      return targets;
+      if (secondaryTarget) {
+        cachedReactiveTargets.push(secondaryTarget);
+      }
+      return cachedReactiveTargets;
     }
     function syncVisualizerPerformanceMode() {
       const mode = performanceDegraded ? "degraded" : "full";
-      const layerHost = document.getElementById("os-shuffle-visualizer-layer");
+      const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
+        ? visualizerLayerHost
+        : document.getElementById("os-shuffle-visualizer-layer");
+      visualizerLayerHost = layerHost instanceof HTMLElement ? layerHost : null;
+      if (
+        mode === appliedVisualizerMode
+        && playerRoot === appliedVisualizerModePlayerRoot
+        && waveSurface === appliedVisualizerModeWaveSurface
+      ) {
+        return;
+      }
       if (layerHost instanceof HTMLElement) {
         layerHost.setAttribute("data-visualizer-mode", mode);
       }
@@ -2178,8 +2642,19 @@
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-visualizer-mode", mode);
       }
+      appliedVisualizerMode = mode;
+      appliedVisualizerModePlayerRoot = playerRoot;
+      appliedVisualizerModeWaveSurface = waveSurface;
     }
     function resolveShuffleTheme(track) {
+      const themeKey = firstNonEmpty(
+        track?.queueId,
+        track?.id,
+        `${track?.title || "Shuffle"}|${track?.artist || "Unknown Artist"}`
+      );
+      if (themeKey === lastShuffleThemeCacheKey && lastShuffleThemeCacheValue) {
+        return lastShuffleThemeCacheValue;
+      }
       const themeSeed = hashText(`${track?.title || "Shuffle"}|${track?.artist || "Unknown Artist"}`).padStart(8, "0");
       const primaryBase = parseInt(themeSeed.slice(0, 2), 16) || 120;
       const secondaryBase = parseInt(themeSeed.slice(2, 4), 16) || 188;
@@ -2187,21 +2662,38 @@
       const primaryHue = Math.round(primaryBase / 255 * 360);
       const secondaryHue = (primaryHue + 28 + Math.round(secondaryBase / 255 * 84)) % 360;
       const sparkleHue = (secondaryHue + 12 + Math.round(sparkleBase / 255 * 42)) % 360;
-      return {
+      const theme = {
         accent: `${primaryHue} 90% 72%`,
         accentStrong: `${(primaryHue + 10) % 360} 96% 80%`,
         secondary: `${secondaryHue} 88% 76%`,
         sparkle: `${sparkleHue} 96% 92%`
       };
+      lastShuffleThemeCacheKey = themeKey;
+      lastShuffleThemeCacheValue = theme;
+      return theme;
     }
     function applyShuffleTheme(track) {
       const theme = resolveShuffleTheme(track);
-      getReactiveTargets().forEach((target) => {
+      const targets = getReactiveTargets();
+      const primaryTarget = targets[0] || null;
+      const secondaryTarget = targets[1] || null;
+      const themeSignature = `${theme.accent}|${theme.accentStrong}|${theme.secondary}|${theme.sparkle}`;
+      if (
+        themeSignature === appliedShuffleThemeSignature
+        && primaryTarget === appliedShuffleThemePrimaryTarget
+        && secondaryTarget === appliedShuffleThemeSecondaryTarget
+      ) {
+        return;
+      }
+      targets.forEach((target) => {
         target.style.setProperty("--shuffle-accent", theme.accent);
         target.style.setProperty("--shuffle-accent-strong", theme.accentStrong);
         target.style.setProperty("--shuffle-secondary", theme.secondary);
         target.style.setProperty("--shuffle-sparkle", theme.sparkle);
       });
+      appliedShuffleThemeSignature = themeSignature;
+      appliedShuffleThemePrimaryTarget = primaryTarget;
+      appliedShuffleThemeSecondaryTarget = secondaryTarget;
     }
     function getShuffleDisplayCopy() {
       if (currentTrack) {
@@ -2232,6 +2724,7 @@
         playing: Boolean(currentTrack) && !audioEl.paused,
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack),
+        copyState: visualizerCopyState,
         title: displayCopy.title,
         artist: displayCopy.artist,
         currentTime,
@@ -2258,8 +2751,14 @@
       copyRootEl.setAttribute("data-shuffle-copy-state", visualizerCopyState);
     }
     function setVisualizerCopyState(nextState) {
-      visualizerCopyState = nextState === "hidden" ? "hidden" : "visible";
+      const resolvedState = nextState === "hidden" ? "hidden" : "visible";
+      if (visualizerCopyState === resolvedState) {
+        applyVisualizerCopyState();
+        return;
+      }
+      visualizerCopyState = resolvedState;
       applyVisualizerCopyState();
+      notifyStateSubscribers();
     }
     function getVisualizerCopyTrackKey(track) {
       if (!track || typeof track !== "object") return "";
@@ -2317,19 +2816,26 @@
         }
       });
     }
-    function syncReactiveVisuals(rawBeat = 0, rawFlash = 0) {
+    function syncReactiveVisuals(rawBeat = 0, rawFlash = 0, rawBass = 0, rawBassFlash = 0) {
       const targetBeat = clamp2(performanceDegraded ? 0 : rawBeat, 0, 1);
       const beatAttack = targetBeat > reactiveBeat ? 0.34 : 0.14;
       reactiveBeat = clamp2(reactiveBeat + (targetBeat - reactiveBeat) * beatAttack, 0, 1);
       reactiveBeat *= targetBeat > 0.008 ? 0.998 : 0.948;
       reactiveFlash = clamp2(Math.max(performanceDegraded ? 0 : rawFlash, reactiveFlash * 0.86), 0, 1);
+      const targetBass = clamp2(performanceDegraded ? 0 : rawBass, 0, 1);
+      const bassAttack = targetBass > reactiveBass ? 0.54 : 0.16;
+      reactiveBass = clamp2(reactiveBass + (targetBass - reactiveBass) * bassAttack, 0, 1);
+      reactiveBass *= targetBass > 0.012 ? 0.9985 : 0.954;
+      reactiveBassFlash = clamp2(Math.max(performanceDegraded ? 0 : rawBassFlash, reactiveBassFlash * 0.9), 0, 1);
       setInternetAngelReactivePulse(reactiveBeat, reactiveFlash, reactiveBeat > 0.004 || reactiveFlash > 0.004);
-      const glowOpacity = Math.min(0.46, 0.16 + reactiveBeat * 0.24 + reactiveFlash * 0.06);
-      const frostOpacity = Math.min(0.96, 0.76 + reactiveBeat * 0.18 + reactiveFlash * 0.04);
-      const auraBlur = 30 + reactiveBeat * 22 + reactiveFlash * 18;
-      const drift = reactiveBeat * 14 + reactiveFlash * 8;
+      const glowOpacity = Math.min(0.58, 0.16 + reactiveBeat * 0.18 + reactiveFlash * 0.05 + reactiveBass * 0.16 + reactiveBassFlash * 0.09);
+      const frostOpacity = Math.min(0.98, 0.76 + reactiveBeat * 0.12 + reactiveFlash * 0.03 + reactiveBass * 0.1);
+      const auraBlur = 30 + reactiveBeat * 16 + reactiveFlash * 12 + reactiveBass * 18 + reactiveBassFlash * 14;
+      const drift = reactiveBeat * 10 + reactiveFlash * 6 + reactiveBass * 8;
       const beatValue = reactiveBeat.toFixed(2);
       const flashValue = reactiveFlash.toFixed(2);
+      const bassValue = reactiveBass.toFixed(2);
+      const bassFlashValue = reactiveBassFlash.toFixed(2);
       const glowOpacityValue = glowOpacity.toFixed(2);
       const frostOpacityValue = frostOpacity.toFixed(2);
       const auraBlurValue = `${auraBlur.toFixed(0)}px`;
@@ -2337,6 +2843,8 @@
       const nextSignature = [
         beatValue,
         flashValue,
+        bassValue,
+        bassFlashValue,
         glowOpacityValue,
         frostOpacityValue,
         auraBlurValue,
@@ -2357,9 +2865,18 @@
     }
     function measureReactivePulse() {
       if (audioEl.paused || !(analyserNode instanceof AnalyserNode) || !analyserSamples.length) {
-        return { beat: 0, flash: 0, sampled: false };
+        previousBassEnergy = 0;
+        reactivePulseMetrics.beat = 0;
+        reactivePulseMetrics.flash = 0;
+        reactivePulseMetrics.bass = 0;
+        reactivePulseMetrics.bassFlash = 0;
+        reactivePulseMetrics.sampled = false;
+        return reactivePulseMetrics;
       }
       analyserNode.getFloatTimeDomainData(analyserSamples);
+      if (analyserFrequencyData.length) {
+        analyserNode.getByteFrequencyData(analyserFrequencyData);
+      }
       let peak = 0;
       let transientPeak = 0;
       let sumSquares = 0;
@@ -2375,39 +2892,85 @@
         sampleCount += 1;
       }
       const rms = sampleCount ? Math.sqrt(sumSquares / sampleCount) : 0;
-      return {
-        beat: clamp2(
-          rms * 3.9 +
-          Math.max(0, peak - 0.16) * 1.8 +
-          Math.max(0, transientPeak - 0.04) * 6.4,
-          0,
-          1
-        ),
-        flash: clamp2(
-          Math.max(0, peak - 0.26) * 2.4 +
-          Math.max(0, transientPeak - 0.075) * 9.6,
-          0,
-          1
-        ),
-        sampled: true
-      };
+      let bassAverage = 0;
+      let bassPeak = 0;
+      if (analyserFrequencyData.length) {
+        const bassEndBin = Math.min(analyserFrequencyData.length - 1, 22);
+        const subEndBin = Math.min(analyserFrequencyData.length - 1, 8);
+        let weightedTotal = 0;
+        let weightTotal = 0;
+        for (let bin = 2; bin <= bassEndBin; bin += 1) {
+          const normalized = (analyserFrequencyData[bin] || 0) / 255;
+          const weight = bin <= subEndBin
+            ? 1.9 - (bin - 2) * 0.09
+            : 1.2 - (bin - subEndBin) * 0.03;
+          weightedTotal += normalized * weight;
+          weightTotal += weight;
+          bassPeak = Math.max(bassPeak, normalized);
+        }
+        bassAverage = weightTotal ? weightedTotal / weightTotal : 0;
+      }
+      const bassEnergy = clamp2(bassAverage * 0.7 + bassPeak * 0.3, 0, 1);
+      const bassOnset = Math.max(0, bassEnergy - previousBassEnergy);
+      previousBassEnergy = bassEnergy * 0.72 + previousBassEnergy * 0.28;
+      reactivePulseMetrics.beat = clamp2(
+        rms * 3.9 +
+        Math.max(0, peak - 0.16) * 1.8 +
+        Math.max(0, transientPeak - 0.04) * 6.4 +
+        bassAverage * 1.15 +
+        bassOnset * 1.8,
+        0,
+        1
+      );
+      reactivePulseMetrics.flash = clamp2(
+        Math.max(0, peak - 0.26) * 2.4 +
+        Math.max(0, transientPeak - 0.075) * 9.6 +
+        Math.max(0, bassPeak - 0.28) * 1.8 +
+        bassOnset * 2.8,
+        0,
+        1
+      );
+      reactivePulseMetrics.bass = clamp2(
+        bassAverage * 1.95 +
+        bassPeak * 0.92 +
+        bassOnset * 2.65,
+        0,
+        1
+      );
+      reactivePulseMetrics.bassFlash = clamp2(
+        Math.max(0, bassPeak - 0.24) * 2.2 +
+        bassOnset * 4.4,
+        0,
+        1
+      );
+      reactivePulseMetrics.sampled = true;
+      return reactivePulseMetrics;
     }
     function syncUi() {
       syncVisualizerPerformanceMode();
       const state = buildPublicState();
+      const previousState = lastUiState;
       if (titleEl instanceof HTMLElement) {
-        titleEl.textContent = state.title;
+        if (!previousState || previousState.title !== state.title) {
+          titleEl.textContent = state.title;
+        }
       }
       if (artistEl instanceof HTMLElement) {
-        artistEl.textContent = state.artist;
+        if (!previousState || previousState.artist !== state.artist) {
+          artistEl.textContent = state.artist;
+        }
       }
       syncVisualizerCopyCycle();
       applyShuffleTheme(currentTrack);
       if (progressFillEl instanceof HTMLElement) {
-        progressFillEl.style.transform = `scaleX(${state.progress.toFixed(4)})`;
+        if (!previousState || Math.abs(previousState.progress - state.progress) > 1e-4) {
+          progressFillEl.style.transform = `scaleX(${state.progress.toFixed(4)})`;
+        }
       }
       if (timeRemainingEl instanceof HTMLElement) {
-        timeRemainingEl.textContent = state.timeRemainingLabel;
+        if (!previousState || previousState.timeRemainingLabel !== state.timeRemainingLabel) {
+          timeRemainingEl.textContent = state.timeRemainingLabel;
+        }
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.classList.toggle("is-compact", compactPlayerMode);
@@ -2420,6 +2983,7 @@
         waveSurface.classList.toggle("is-blocked", loadState === "blocked");
         waveSurface.classList.toggle("is-playing", state.playing);
       }
+      lastUiState = state;
       notifyStateSubscribers(state);
     }
     function isSiteLoadPending() {
@@ -2485,6 +3049,51 @@
         initialTrackQueuePromise = null;
       }
     }
+    function syncWaveformAvoidanceState(nextState) {
+      if (typeof window !== "object") return;
+      const safeState = nextState && typeof nextState === "object" ? nextState : null;
+      const safePoints = Array.isArray(safeState?.points) ? safeState.points : [];
+      const pointCount = clamp2(
+        Math.floor(Number(safeState?.pointCount) || safePoints.length),
+        0,
+        safePoints.length
+      );
+      const offsetX = Number(safeState?.viewportOffsetX) || 0;
+      const offsetY = Number(safeState?.viewportOffsetY) || 0;
+      waveformAvoidanceState.active = Boolean(safeState?.active);
+      waveformAvoidanceState.viewportLeft = Number(safeState?.viewportLeft) || 0;
+      waveformAvoidanceState.viewportTop = Number(safeState?.viewportTop) || 0;
+      waveformAvoidanceState.drawWidth = Number(safeState?.drawWidth) || 0;
+      waveformAvoidanceState.drawHeight = Number(safeState?.drawHeight) || 0;
+      waveformAvoidanceState.repelRadius = Number(safeState?.repelRadius) || 0;
+      waveformAvoidanceState.repelShift = Number(safeState?.repelShift) || 0;
+      const targetPoints = waveformAvoidanceState.points;
+      targetPoints.length = pointCount;
+      for (let index = 0; index < pointCount; index += 1) {
+        const sourcePoint = safePoints[index] || {};
+        const targetPoint = targetPoints[index] || (targetPoints[index] = {
+          x: 0,
+          y: 0,
+          weight: 0
+        });
+        targetPoint.x = offsetX + (Number(sourcePoint.x) || 0);
+        targetPoint.y = offsetY + (Number(sourcePoint.y) || 0);
+        targetPoint.weight = Number(sourcePoint.weight) || 0;
+      }
+      waveformAvoidanceState.revision += 1;
+      window.__internetAngelShuffleWaveformAvoidance = waveformAvoidanceState;
+    }
+    function clearWaveformAvoidanceState() {
+      syncWaveformAvoidanceState({
+        active: false,
+        drawWidth: 0,
+        drawHeight: 0,
+        repelRadius: 0,
+        repelShift: 0,
+        pointCount: 0,
+        points: waveformAvoidancePoints
+      });
+    }
     function ensureWavePortal() {
       if (performanceDegraded) {
         hideWavePortal();
@@ -2519,6 +3128,7 @@
       if (wavePortal instanceof HTMLElement) {
         wavePortal.hidden = true;
       }
+      clearWaveformAvoidanceState();
     }
     function syncWavePortalLayout() {
       const portal = ensureWavePortal();
@@ -2545,6 +3155,8 @@
       cachedWaveLayout = {
         canvasWidth: viewportWidth,
         canvasHeight: drawHeight,
+        viewportLeft: 0,
+        viewportTop: drawTop,
         drawLeft: 0,
         drawTop: 0,
         drawWidth: viewportWidth,
@@ -2558,6 +3170,8 @@
         return {
           canvasWidth: 0,
           canvasHeight: 0,
+          viewportLeft: 0,
+          viewportTop: 0,
           drawLeft: 0,
           drawTop: 0,
           drawWidth: 0,
@@ -2579,6 +3193,8 @@
       return {
         canvasWidth: cssWidth,
         canvasHeight: cssHeight,
+        viewportLeft: layout.viewportLeft,
+        viewportTop: layout.viewportTop,
         drawLeft: layout.drawLeft,
         drawTop: layout.drawTop,
         drawWidth: layout.drawWidth,
@@ -2624,7 +3240,7 @@
         analyserNode = ctx.createAnalyser();
         outputGainNode = ctx.createGain();
         analyserNode.fftSize = SHUFFLE_ANALYSER_FFT_SIZE;
-        analyserNode.smoothingTimeConstant = 0.62;
+        analyserNode.smoothingTimeConstant = 0.78;
         mediaSourceNode.connect(analyserNode);
         analyserNode.connect(outputGainNode);
         outputGainNode.connect(ctx.destination);
@@ -2655,7 +3271,7 @@
       }
       lastVisualizerFrameMs = nowMs;
       const pulseMetrics = measureReactivePulse();
-      syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash);
+      syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash, pulseMetrics.bass, pulseMetrics.bassFlash);
       if (shouldRenderDesktopWave) {
         drawTrace(pulseMetrics.sampled);
       } else {
@@ -2668,7 +3284,14 @@
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
       traceValues = new Float32Array(0);
+      traceBodyValues = new Float32Array(0);
+      traceDetailValues = new Float32Array(0);
       traceSmoothingValues = new Float32Array(0);
+      traceDisplayValues = new Float32Array(0);
+      traceDetailDisplayValues = new Float32Array(0);
+      traceSampleIndexLookup = new Uint16Array(0);
+      traceSampleLookupSourceLength = 0;
+      traceSampleLookupPointCount = 0;
       hideWavePortal();
       syncReactiveVisuals(0, 0);
       syncVisualizerPerformanceMode();
@@ -2699,7 +3322,7 @@
       audioEl.pause();
       audioEl.src = resolveTrackUrl(track);
       audioEl.load();
-      seekToTrackSegment(track);
+      seekToTrackSegment(track, Number.isFinite(options.seekTime) ? Number(options.seekTime) : null);
       void ensureAnalysisGraph(false);
       syncUi();
       if (options.autoplay !== false) {
@@ -2735,6 +3358,7 @@
     function bindRoot(root2) {
       if (!(root2 instanceof HTMLElement)) return;
       playerRoot = root2;
+      lastUiState = null;
       compactPlayerMode = root2.getAttribute("data-shuffle-mode") === "compact";
       waveSurface = root2.matches("[data-shuffle-surface]") ? root2 : root2.querySelector("[data-shuffle-surface]");
       titleEl = root2.querySelector("[data-shuffle-title]");
@@ -2800,6 +3424,12 @@
       }
       playerRoot = null;
       waveSurface = null;
+      lastUiState = null;
+      appliedShuffleThemePrimaryTarget = null;
+      appliedShuffleThemeSecondaryTarget = null;
+      cachedReactiveTargetPrimary = null;
+      cachedReactiveTargetSecondary = null;
+      cachedReactiveTargets.length = 0;
       hideWavePortal();
       invalidateWaveLayout();
       syncVisualizerPerformanceMode();
@@ -2915,8 +3545,20 @@
       outputGainNode = null;
       analyserSamples = new Float32Array(0);
       analyserFrequencyData = new Uint8Array(0);
+      traceValues = new Float32Array(0);
+      traceBodyValues = new Float32Array(0);
+      traceDetailValues = new Float32Array(0);
+      traceSmoothingValues = new Float32Array(0);
+      traceDisplayValues = new Float32Array(0);
+      traceDetailDisplayValues = new Float32Array(0);
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
+      reactiveBeat = 0;
+      reactiveFlash = 0;
+      reactiveBass = 0;
+      reactiveBassFlash = 0;
+      previousBassEnergy = 0;
+      clearWaveformAvoidanceState();
       unbindRoot();
       if (wavePortal instanceof HTMLElement) {
         wavePortal.remove();
@@ -3021,6 +3663,7 @@
       setVolumeRatio,
       isMuted,
       getState: buildPublicState,
+      seekToDisplayTime,
       subscribe,
       pauseForExternalAudio,
       resumeAfterExternalAudio
@@ -3666,22 +4309,25 @@
   }
   function renderSidebarCurrentlyPlayingPanel(state, options = {}) {
     const compact = Boolean(options?.compact);
-    if (!compact) return "";
     const mobileRevealState = String(options?.mobileRevealState || "pending");
+    const desktopRevealState = String(options?.desktopRevealState || "hidden");
     const title = firstNonEmpty(state?.title, "Loading Shuffle...");
     const artist = firstNonEmpty(state?.artist, "Unknown Artist");
     const progress = clamp2(Number(state?.progress) || 0, 0, 1);
     const currentTimeLabel = firstNonEmpty(state?.currentTimeLabel, "0:00");
     const durationLabel = firstNonEmpty(state?.durationLabel, "--:--");
     const playbackState = !state?.hasTrack ? "loading" : state?.blocked ? "blocked" : state?.playing ? "playing" : "paused";
+    const panelMode = compact ? "mobile" : "desktop";
+    const revealState = compact ? mobileRevealState : desktopRevealState;
+    const canSeek = !compact && Number(state?.duration) > 0;
     return `
-      <section class="steam-sidebar-currently-playing-panel steam-sidebar-currently-playing-panel--minimal${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}">
+      <section class="steam-sidebar-currently-playing-panel${compact ? " steam-sidebar-currently-playing-panel--minimal" : " steam-sidebar-currently-playing-panel--desktop"}${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-mode="${escapeHtml(panelMode)}" data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-sidebar-shuffle-reveal="${escapeHtml(revealState)}"${compact ? ` data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}"` : ""} aria-hidden="${compact ? "false" : revealState === "visible" ? "false" : "true"}">
         <p class="steam-sidebar-currently-playing-label">Currently playing</p>
         <div class="steam-sidebar-currently-playing-copy">
           <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
           <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
         </div>
-        <div class="steam-sidebar-currently-playing-progress-track">
+        <div class="steam-sidebar-currently-playing-progress-track${canSeek ? " steam-sidebar-currently-playing-progress-track--scrubbable" : ""}" data-sidebar-shuffle-progress-track${canSeek ? ` role="slider" tabindex="0" aria-label="Seek current track" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}" aria-valuetext="${escapeHtml(`${currentTimeLabel} of ${durationLabel}`)}"` : ""}>
           <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
         </div>
         <div class="steam-sidebar-currently-playing-time">
@@ -4984,7 +5630,8 @@
       </ul>
       ${renderSidebarCurrentlyPlayingPanel(shuffleState, {
         compact,
-        mobileRevealState: compact ? mobileLinksRevealState : ""
+        mobileRevealState: compact ? mobileLinksRevealState : "",
+        desktopRevealState: compact ? "" : shuffleState?.copyState === "hidden" ? "visible" : "hidden"
       })}
     </section>
   `;
@@ -5040,6 +5687,9 @@
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
     let shuffleUiUnsubscribe = null;
+    let sidebarCurrentlyPlayingScrubCleanup = null;
+    let sidebarCurrentlyPlayingScrubState = null;
+    let sidebarCurrentlyPlayingElements = null;
     let mobileDiscordRevealPlayed = false;
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
@@ -5754,40 +6404,194 @@
         shuffleVolumeSlider.setAttribute("aria-valuetext", `${volumePercent}%`);
       }
     }
-    function syncSidebarCurrentlyPlaying(state = shufflePlayerController.getState()) {
-      if (!(sidebar instanceof HTMLElement)) return;
+    function readSidebarCurrentlyPlayingElements() {
+      if (sidebarCurrentlyPlayingElements?.panel?.isConnected) {
+        return sidebarCurrentlyPlayingElements;
+      }
+      if (!(sidebar instanceof HTMLElement)) {
+        sidebarCurrentlyPlayingElements = null;
+        return null;
+      }
       const panel = sidebar.querySelector("[data-sidebar-shuffle-panel]");
-      if (!(panel instanceof HTMLElement)) return;
-      const safeState = state && typeof state === "object" ? state : shufflePlayerController.getState();
-      const playbackState = !safeState?.hasTrack ? "loading" : safeState?.blocked ? "blocked" : safeState?.playing ? "playing" : "paused";
-      const progress = clamp2(Number(safeState?.progress) || 0, 0, 1);
-      const title = firstNonEmpty(safeState?.title, "Loading Shuffle...");
-      const artist = firstNonEmpty(safeState?.artist, "Unknown Artist");
-      const currentTimeLabel = firstNonEmpty(safeState?.currentTimeLabel, "0:00");
-      const durationLabel = firstNonEmpty(safeState?.durationLabel, "--:--");
-      panel.classList.toggle("is-playing", playbackState === "playing");
-      panel.classList.toggle("is-blocked", playbackState === "blocked");
-      panel.setAttribute("data-sidebar-shuffle-state", playbackState);
-      const titleEl = panel.querySelector("[data-sidebar-shuffle-title]");
-      if (titleEl instanceof HTMLElement) {
-        titleEl.textContent = title;
+      if (!(panel instanceof HTMLElement)) {
+        sidebarCurrentlyPlayingElements = null;
+        return null;
       }
-      const artistEl = panel.querySelector("[data-sidebar-shuffle-artist]");
-      if (artistEl instanceof HTMLElement) {
-        artistEl.textContent = artist;
-      }
-      const fillEl = panel.querySelector("[data-sidebar-shuffle-progress-fill]");
+      sidebarCurrentlyPlayingElements = {
+        panel,
+        titleEl: panel.querySelector("[data-sidebar-shuffle-title]"),
+        artistEl: panel.querySelector("[data-sidebar-shuffle-artist]"),
+        fillEl: panel.querySelector("[data-sidebar-shuffle-progress-fill]"),
+        currentTimeEl: panel.querySelector("[data-sidebar-shuffle-current-time]"),
+        durationEl: panel.querySelector("[data-sidebar-shuffle-duration]"),
+        progressTrackEl: panel.querySelector("[data-sidebar-shuffle-progress-track]")
+      };
+      return sidebarCurrentlyPlayingElements;
+    }
+    function applySidebarCurrentlyPlayingProgress(sidebarElements, progress, currentTimeLabel, durationLabel, canSeek = false) {
+      const fillEl = sidebarElements?.fillEl;
       if (fillEl instanceof HTMLElement) {
         fillEl.style.transform = `scaleX(${progress.toFixed(4)})`;
       }
-      const currentTimeEl = panel.querySelector("[data-sidebar-shuffle-current-time]");
+      const currentTimeEl = sidebarElements?.currentTimeEl;
       if (currentTimeEl instanceof HTMLElement) {
         currentTimeEl.textContent = currentTimeLabel;
       }
-      const durationEl = panel.querySelector("[data-sidebar-shuffle-duration]");
+      const durationEl = sidebarElements?.durationEl;
       if (durationEl instanceof HTMLElement) {
         durationEl.textContent = durationLabel;
       }
+      const progressTrackEl = sidebarElements?.progressTrackEl;
+      if (progressTrackEl instanceof HTMLElement) {
+        progressTrackEl.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+        progressTrackEl.setAttribute("aria-valuetext", `${currentTimeLabel} of ${durationLabel}`);
+        progressTrackEl.setAttribute("aria-disabled", String(!canSeek));
+      }
+    }
+    function clearSidebarCurrentlyPlayingScrubPreview() {
+      sidebarCurrentlyPlayingScrubState = null;
+    }
+    function bindSidebarCurrentlyPlayingScrubber() {
+      sidebarCurrentlyPlayingScrubCleanup?.();
+      sidebarCurrentlyPlayingScrubCleanup = null;
+      const sidebarElements = readSidebarCurrentlyPlayingElements();
+      const panel = sidebarElements?.panel;
+      if (!(panel instanceof HTMLElement)) return;
+      if ((panel.getAttribute("data-sidebar-shuffle-mode") || "mobile") !== "desktop") return;
+      const progressTrackEl = sidebarElements?.progressTrackEl;
+      if (!(progressTrackEl instanceof HTMLElement)) return;
+      let activePointerId = null;
+      const readDuration = () => {
+        const state = shufflePlayerController.getState();
+        return clamp2(Number(state?.duration) || 0, 0, Number.MAX_SAFE_INTEGER);
+      };
+      const canScrub = () => {
+        const state = shufflePlayerController.getState();
+        return Boolean(state?.hasTrack && readDuration() > 0);
+      };
+      const readProgressFromEvent = (event) => {
+        const rect = progressTrackEl.getBoundingClientRect();
+        if (!(rect.width > 0)) return 0;
+        return clamp2((event.clientX - rect.left) / rect.width, 0, 1);
+      };
+      const updatePreview = (progress) => {
+        const duration = readDuration();
+        const previewTime = duration > 0 ? duration * progress : 0;
+        sidebarCurrentlyPlayingScrubState = {
+          active: true,
+          progress,
+          currentTime: previewTime,
+          currentTimeLabel: formatAudioTime(previewTime),
+          durationLabel: duration > 0 ? formatAudioTime(duration) : "--:--"
+        };
+        syncSidebarCurrentlyPlaying();
+      };
+      const finishScrub = async (event, commit = true) => {
+        if (activePointerId === null) return;
+        if (event instanceof PointerEvent && event.pointerId !== activePointerId) return;
+        const previewState = sidebarCurrentlyPlayingScrubState;
+        const releasePointerId = activePointerId;
+        activePointerId = null;
+        try {
+          progressTrackEl.releasePointerCapture?.(releasePointerId);
+        } catch {
+        }
+        window.removeEventListener("pointermove", onPointerMove, true);
+        window.removeEventListener("pointerup", onPointerUp, true);
+        window.removeEventListener("pointercancel", onPointerCancel, true);
+        if (commit && previewState?.active) {
+          await shufflePlayerController.seekToDisplayTime?.(previewState.currentTime);
+        }
+        clearSidebarCurrentlyPlayingScrubPreview();
+        syncSidebarCurrentlyPlaying();
+      };
+      const onPointerMove = (event) => {
+        if (!(event instanceof PointerEvent) || event.pointerId !== activePointerId) return;
+        updatePreview(readProgressFromEvent(event));
+      };
+      const onPointerUp = (event) => {
+        void finishScrub(event, true);
+      };
+      const onPointerCancel = (event) => {
+        void finishScrub(event, false);
+      };
+      const onPointerDown = (event) => {
+        if (!(event instanceof PointerEvent) || event.button !== 0 || !canScrub()) return;
+        event.preventDefault();
+        activePointerId = event.pointerId;
+        try {
+          progressTrackEl.setPointerCapture?.(event.pointerId);
+        } catch {
+        }
+        updatePreview(readProgressFromEvent(event));
+        window.addEventListener("pointermove", onPointerMove, true);
+        window.addEventListener("pointerup", onPointerUp, true);
+        window.addEventListener("pointercancel", onPointerCancel, true);
+      };
+      const onKeyDown = (event) => {
+        if (!(event instanceof KeyboardEvent) || !canScrub()) return;
+        const state = shufflePlayerController.getState();
+        const duration = readDuration();
+        if (!(duration > 0)) return;
+        const stepSeconds = event.shiftKey ? 15 : 5;
+        let nextTime = Number(state?.currentTime) || 0;
+        if (event.key === "ArrowLeft") {
+          nextTime -= stepSeconds;
+        } else if (event.key === "ArrowRight") {
+          nextTime += stepSeconds;
+        } else if (event.key === "Home") {
+          nextTime = 0;
+        } else if (event.key === "End") {
+          nextTime = duration;
+        } else {
+          return;
+        }
+        event.preventDefault();
+        void shufflePlayerController.seekToDisplayTime?.(clamp2(nextTime, 0, duration));
+      };
+      progressTrackEl.addEventListener("pointerdown", onPointerDown);
+      progressTrackEl.addEventListener("keydown", onKeyDown);
+      sidebarCurrentlyPlayingScrubCleanup = () => {
+        progressTrackEl.removeEventListener("pointerdown", onPointerDown);
+        progressTrackEl.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("pointermove", onPointerMove, true);
+        window.removeEventListener("pointerup", onPointerUp, true);
+        window.removeEventListener("pointercancel", onPointerCancel, true);
+        clearSidebarCurrentlyPlayingScrubPreview();
+      };
+    }
+    function syncSidebarCurrentlyPlaying(state = shufflePlayerController.getState()) {
+      const sidebarElements = readSidebarCurrentlyPlayingElements();
+      const panel = sidebarElements?.panel;
+      if (!(panel instanceof HTMLElement)) return;
+      const safeState = state && typeof state === "object" ? state : shufflePlayerController.getState();
+      const panelMode = panel.getAttribute("data-sidebar-shuffle-mode") || "mobile";
+      const playbackState = !safeState?.hasTrack ? "loading" : safeState?.blocked ? "blocked" : safeState?.playing ? "playing" : "paused";
+      const title = firstNonEmpty(safeState?.title, "Loading Shuffle...");
+      const artist = firstNonEmpty(safeState?.artist, "Unknown Artist");
+      const scrubPreview = panelMode === "desktop" && sidebarCurrentlyPlayingScrubState?.active ? sidebarCurrentlyPlayingScrubState : null;
+      const canSeek = panelMode === "desktop" && Number(safeState?.duration) > 0;
+      const progress = clamp2(Number(scrubPreview?.progress ?? safeState?.progress) || 0, 0, 1);
+      const currentTimeLabel = firstNonEmpty(scrubPreview?.currentTimeLabel, safeState?.currentTimeLabel, "0:00");
+      const durationLabel = firstNonEmpty(scrubPreview?.durationLabel, safeState?.durationLabel, "--:--");
+      if (panelMode === "desktop") {
+        const revealState = safeState?.copyState === "hidden" ? "visible" : "hidden";
+        panel.setAttribute("data-sidebar-shuffle-reveal", revealState);
+        panel.setAttribute("aria-hidden", revealState === "visible" ? "false" : "true");
+      }
+      panel.classList.toggle("is-playing", playbackState === "playing");
+      panel.classList.toggle("is-blocked", playbackState === "blocked");
+      panel.classList.toggle("is-scrubbing", Boolean(scrubPreview));
+      panel.setAttribute("data-sidebar-shuffle-state", playbackState);
+      const titleEl = sidebarElements?.titleEl;
+      if (titleEl instanceof HTMLElement) {
+        titleEl.textContent = title;
+      }
+      const artistEl = sidebarElements?.artistEl;
+      if (artistEl instanceof HTMLElement) {
+        artistEl.textContent = artist;
+      }
+      applySidebarCurrentlyPlayingProgress(sidebarElements, progress, currentTimeLabel, durationLabel, canSeek);
     }
     async function onMobileSpeakerToggleClick(event) {
       if (!(event.currentTarget instanceof HTMLButtonElement)) return;
@@ -8256,11 +9060,16 @@
       const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
       shufflePlayerController?.attach(shuffleRoot);
       const shuffleState = shufflePlayerController.getState();
+      sidebarCurrentlyPlayingScrubCleanup?.();
+      sidebarCurrentlyPlayingScrubCleanup = null;
+      sidebarCurrentlyPlayingElements = null;
       sidebar.innerHTML = renderSidebar(payloadById, sites, {
         compact: compactMobile,
         mobileLinksRevealState: compactMobile ? mobileLinksRevealPlayed ? "visible" : "pending" : "",
         shuffleState
       });
+      readSidebarCurrentlyPlayingElements();
+      bindSidebarCurrentlyPlayingScrubber();
       if (compactMobile) {
         syncMobileLinkSelectedState();
         scheduleMobileDiscordReveal();
@@ -8608,6 +9417,10 @@
     let flares = [];
     let shootingStars = [];
     let activeShootingStarFields = [];
+    let activeWaveformRepulsionFields = [];
+    let lastWaveformRepulsionRevision = -1;
+    let lastWaveformRepulsionScaleX = 0;
+    let lastWaveformRepulsionScaleY = 0;
     let pointerTargetX = 0;
     let pointerTargetY = 0;
     let pointerCurrentX = 0;
@@ -8732,13 +9545,16 @@
       if (pointerStrength < 0.002) {
         return { offsetX: 0, offsetY: 0, influence: 0 };
       }
+      const cursorRepelRadius = Math.max(12 * dpr, 16 * dpr);
+      const boostedRadius = cursorRepelRadius * (1 + pointerStrength * 0.1);
+      const boostedShift = shift * (0.9 + pointerStrength * 0.24);
       const repulsion = resolveRadialRepulsion(
         x,
         y,
         pointerCurrentX,
         pointerCurrentY,
-        radius,
-        shift,
+        boostedRadius,
+        boostedShift,
         seed
       );
       if (repulsion.influence <= 0.001) {
@@ -8771,6 +9587,59 @@
         influence: clamp(radial.influence * headWeight, 0, 1)
       };
     }
+    function resolveSegmentProximity(x, y, startX, startY, endX, endY, seed) {
+      const segmentDx = endX - startX;
+      const segmentDy = endY - startY;
+      const segmentLengthSq = segmentDx * segmentDx + segmentDy * segmentDy;
+      if (segmentLengthSq < 1e-3) {
+        const dx = x - endX;
+        const dy = y - endY;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 1e-3) {
+          return {
+            nearestX: endX,
+            nearestY: endY,
+            distance,
+            dirX: dx / distance,
+            dirY: dy / distance
+          };
+        }
+        const angle = ((seed % 360) / 360) * TAU;
+        return {
+          nearestX: endX,
+          nearestY: endY,
+          distance: 0,
+          dirX: Math.cos(angle),
+          dirY: Math.sin(angle)
+        };
+      }
+      const segmentT = clamp(((x - startX) * segmentDx + (y - startY) * segmentDy) / segmentLengthSq, 0, 1);
+      const nearestX = startX + segmentDx * segmentT;
+      const nearestY = startY + segmentDy * segmentT;
+      const dx = x - nearestX;
+      const dy = y - nearestY;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 1e-3) {
+        return {
+          nearestX,
+          nearestY,
+          distance,
+          dirX: dx / distance,
+          dirY: dy / distance
+        };
+      }
+      const segmentLength = Math.sqrt(segmentLengthSq);
+      const normalX = -segmentDy / segmentLength;
+      const normalY = segmentDx / segmentLength;
+      const orientation = y <= nearestY ? -1 : 1;
+      return {
+        nearestX,
+        nearestY,
+        distance: 0,
+        dirX: normalX * orientation,
+        dirY: normalY * orientation
+      };
+    }
     function resolveShootingStarRepulsion(x, y, field, seed) {
       const repelRadius = field.repelRadius * 2;
       const laneRepulsion = resolveLineRepulsion(
@@ -8799,6 +9668,138 @@
         influence: Math.max(laneRepulsion.influence * 0.82, headRepulsion.influence)
       };
     }
+    function readWaveformRepulsionFields() {
+      const waveformState = typeof window === "object" ? window.__internetAngelShuffleWaveformAvoidance : null;
+      if (!waveformState?.active || !Array.isArray(waveformState.points) || waveformState.points.length < 2) {
+        activeWaveformRepulsionFields.length = 0;
+        lastWaveformRepulsionRevision = Number(waveformState?.revision) || -1;
+        return activeWaveformRepulsionFields;
+      }
+      const scaleX = renderWidth / Math.max(1, cssWidth);
+      const scaleY = renderHeight / Math.max(1, cssHeight);
+      const revision = Number(waveformState.revision) || 0;
+      if (
+        revision === lastWaveformRepulsionRevision
+        && Math.abs(scaleX - lastWaveformRepulsionScaleX) < 1e-4
+        && Math.abs(scaleY - lastWaveformRepulsionScaleY) < 1e-4
+      ) {
+        return activeWaveformRepulsionFields;
+      }
+      lastWaveformRepulsionRevision = revision;
+      lastWaveformRepulsionScaleX = scaleX;
+      lastWaveformRepulsionScaleY = scaleY;
+      const pointCount = waveformState.points.length;
+      const scaleMax = Math.max(scaleX, scaleY);
+      let fieldCount = 0;
+      for (let index = 0; index < pointCount - 1; index += 1) {
+        const currentPoint = waveformState.points[index];
+        const nextPoint = waveformState.points[index + 1];
+        if (
+          !currentPoint
+          || !nextPoint
+          || !Number.isFinite(currentPoint.x)
+          || !Number.isFinite(currentPoint.y)
+          || !Number.isFinite(nextPoint.x)
+          || !Number.isFinite(nextPoint.y)
+        ) {
+          continue;
+        }
+        const weight = clamp(
+          Math.max(
+            Number(currentPoint.weight) || 0,
+            Number(nextPoint.weight) || 0
+          ),
+          0,
+          1
+        );
+        const repelRadius = (Number(waveformState.repelRadius) || 0) * scaleMax * (0.78 + weight * 0.18);
+        const field = activeWaveformRepulsionFields[fieldCount] || (activeWaveformRepulsionFields[fieldCount] = {
+          startX: 0,
+          startY: 0,
+          endX: 0,
+          endY: 0,
+          repelRadius: 0,
+          repelShift: 0,
+          minX: 0,
+          maxX: 0,
+          minY: 0,
+          maxY: 0,
+          seed: 0
+        });
+        field.startX = currentPoint.x * scaleX;
+        field.startY = currentPoint.y * scaleY;
+        field.endX = nextPoint.x * scaleX;
+        field.endY = nextPoint.y * scaleY;
+        field.repelRadius = repelRadius;
+        field.repelShift = (Number(waveformState.repelShift) || 0) * scaleMax * (0.82 + weight * 0.16);
+        field.minX = Math.min(field.startX, field.endX) - repelRadius;
+        field.maxX = Math.max(field.startX, field.endX) + repelRadius;
+        field.minY = Math.min(field.startY, field.endY) - repelRadius;
+        field.maxY = Math.max(field.startY, field.endY) + repelRadius;
+        field.seed = Math.imul(index + 1, 2246822519) >>> 0;
+        fieldCount += 1;
+      }
+      activeWaveformRepulsionFields.length = fieldCount;
+      return activeWaveformRepulsionFields;
+    }
+    function resolveWaveformRepulsion(x, y, field, seed) {
+      if (x < field.minX || x > field.maxX || y < field.minY || y > field.maxY) {
+        return { offsetX: 0, offsetY: 0, influence: 0 };
+      }
+      const laneRepulsion = resolveLineRepulsion(
+        x,
+        y,
+        field.startX,
+        field.startY,
+        field.endX,
+        field.endY,
+        field.repelRadius,
+        field.repelShift,
+        field.seed ^ seed
+      );
+      if (laneRepulsion.influence <= 0.001) {
+        return laneRepulsion;
+      }
+      const endCapRepulsion = resolveRadialRepulsion(
+        x,
+        y,
+        field.endX,
+        field.endY,
+        field.repelRadius * 0.36,
+        field.repelShift * 0.16,
+        field.seed + seed
+      );
+      return {
+        offsetX: laneRepulsion.offsetX + endCapRepulsion.offsetX,
+        offsetY: laneRepulsion.offsetY + endCapRepulsion.offsetY,
+        influence: Math.max(laneRepulsion.influence, endCapRepulsion.influence * 0.22)
+      };
+    }
+    function resolveWaveformCollisionSeparation(x, y, field, seed) {
+      if (x < field.minX || x > field.maxX || y < field.minY || y > field.maxY) {
+        return { offsetX: 0, offsetY: 0, penetration: 0 };
+      }
+      const proximity = resolveSegmentProximity(
+        x,
+        y,
+        field.startX,
+        field.startY,
+        field.endX,
+        field.endY,
+        field.seed ^ seed
+      );
+      const collisionRadius = Math.max(2 * dpr, field.repelRadius);
+      if (proximity.distance >= collisionRadius) {
+        return { offsetX: 0, offsetY: 0, penetration: 0 };
+      }
+      const boundaryPad = Math.max(1.25 * dpr, 1);
+      const separation = collisionRadius - proximity.distance + boundaryPad;
+      return {
+        offsetX: proximity.dirX * separation,
+        offsetY: proximity.dirY * separation,
+        penetration: separation
+      };
+    }
     function createAmbientMotionState(rng, options) {
       return {
         offsetX: 0,
@@ -8819,6 +9820,18 @@
       let targetOffsetX = repulsion.offsetX;
       let targetOffsetY = repulsion.offsetY;
       let strongestInfluence = repulsion.influence;
+      for (let index = 0; index < activeWaveformRepulsionFields.length; index += 1) {
+        const waveformField = activeWaveformRepulsionFields[index];
+        const waveformRepulsion = resolveWaveformRepulsion(
+          anchorX + motion.offsetX,
+          anchorY + motion.offsetY,
+          waveformField,
+          seed
+        );
+        targetOffsetX += waveformRepulsion.offsetX;
+        targetOffsetY += waveformRepulsion.offsetY;
+        strongestInfluence = Math.max(strongestInfluence, waveformRepulsion.influence);
+      }
       for (const shootingStarField of activeShootingStarFields) {
         const shootingStarRepulsion = resolveShootingStarRepulsion(
           anchorX + motion.offsetX,
@@ -8834,6 +9847,28 @@
       const blend = 1 - Math.exp(-ambientDeltaSec * easePerSecond);
       motion.offsetX += (targetOffsetX - motion.offsetX) * blend;
       motion.offsetY += (targetOffsetY - motion.offsetY) * blend;
+      for (let pass = 0; pass < 2; pass += 1) {
+        let adjusted = false;
+        for (let index = 0; index < activeWaveformRepulsionFields.length; index += 1) {
+          const waveformField = activeWaveformRepulsionFields[index];
+          const collisionSeparation = resolveWaveformCollisionSeparation(
+            anchorX + motion.offsetX,
+            anchorY + motion.offsetY,
+            waveformField,
+            seed + pass
+          );
+          if (collisionSeparation.penetration <= 0.001) {
+            continue;
+          }
+          motion.offsetX += collisionSeparation.offsetX;
+          motion.offsetY += collisionSeparation.offsetY;
+          strongestInfluence = Math.max(strongestInfluence, 1);
+          adjusted = true;
+        }
+        if (!adjusted) {
+          break;
+        }
+      }
       return {
         x: anchorX + motion.offsetX,
         y: anchorY + motion.offsetY,
@@ -9120,6 +10155,10 @@
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
       shootingStars = Array.from({ length: shootingStarCount }, (_, index) => buildShootingStarPrototype(rng, index));
       activeShootingStarFields = [];
+      activeWaveformRepulsionFields = [];
+      lastWaveformRepulsionRevision = -1;
+      lastWaveformRepulsionScaleX = 0;
+      lastWaveformRepulsionScaleY = 0;
       pointerTargetX = renderWidth * 0.5;
       pointerTargetY = renderHeight * 0.5;
       pointerCurrentX = pointerTargetX;
@@ -9365,6 +10404,7 @@
       updateAmbientScrollState();
       stepAmbientScrollState();
       updatePointerState();
+      activeWaveformRepulsionFields = allowShootingStars ? readWaveformRepulsionFields() : [];
       activeShootingStarFields = allowShootingStars
         ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
         : [];

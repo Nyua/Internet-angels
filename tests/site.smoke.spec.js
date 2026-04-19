@@ -667,7 +667,20 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    });
+  }, { timeout: 5_000 }).toBeGreaterThan(0);
   const visualizerLayout = await page.evaluate(() => {
     const layer = document.querySelector("#os-shuffle-visualizer-layer");
     const surface = document.querySelector("#os-shuffle-visualizer-surface");
@@ -680,12 +693,7 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
       if (!(canvas instanceof HTMLCanvasElement)) return null;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!(ctx instanceof CanvasRenderingContext2D)) return null;
-      const sampleArea = ctx.getImageData(
-        Math.max(0, Math.floor(canvas.width * 0.35)),
-        Math.max(0, Math.floor(canvas.height * 0.45)),
-        Math.max(1, Math.floor(canvas.width * 0.3)),
-        Math.max(1, Math.floor(canvas.height * 0.35))
-      ).data;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       let alpha = 0;
       for (let index = 3; index < sampleArea.length; index += 4) {
         alpha = Math.max(alpha, sampleArea[index]);
@@ -694,12 +702,13 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
     };
     return {
       pointerEvents: styleOf(layer)?.pointerEvents || "",
-      portalOpacity: styleOf(portal)?.opacity || "",
+      portalOpacity: Number.parseFloat(styleOf(portal)?.opacity || "0"),
       surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
       surfaceAsciiOverlay: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-ascii-overlay") || "" : "",
       canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
       canvasAsciiOverlay: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-ascii-overlay") || "" : "",
       canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
+      canvasFilter: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).filter : "",
       surfaceRect: rectOf(surface),
       canvasRect: rectOf(canvas),
       copyRect: rectOf(copy),
@@ -710,12 +719,13 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   });
 
   expect(visualizerLayout.pointerEvents).toBe("none");
-  expect(visualizerLayout.portalOpacity).toBe("0.4");
+  expect(visualizerLayout.portalOpacity).toBeGreaterThanOrEqual(0.55);
   expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
   expect(visualizerLayout.surfaceAsciiOverlay).toBe("glyph");
   expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
   expect(visualizerLayout.canvasAsciiOverlay).toBe("glyph");
   expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
+  expect(visualizerLayout.canvasFilter).toBe("none");
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
   expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
@@ -872,7 +882,21 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("trinket [full album]");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("tsubi club");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    });
+  }, { timeout: 5_000 }).toBeGreaterThan(0);
   await page.waitForFunction(() => {
     const copy = document.querySelector("#os-shuffle-visualizer-copy");
     if (!(copy instanceof HTMLElement)) return false;
@@ -926,7 +950,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
         && currentTrackId === baseline.trackId;
     }, firstVisualizerTrackState);
   }
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel]")).toHaveCount(0);
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction((expectedState) => {
@@ -1014,25 +1038,16 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const firstShowcaseTitle = document.querySelector(".social-hub-showcases article h3, .social-hub-showcases article h4");
     const rectOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect() : null;
     const styleOf = (node) => node instanceof HTMLElement ? window.getComputedStyle(node) : null;
-    const canvasEdgeAlpha = () => {
+    const canvasRegionAlpha = () => {
       if (!(canvas instanceof HTMLCanvasElement)) return null;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!(ctx instanceof CanvasRenderingContext2D)) return null;
-      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round(canvas.height / 2)));
-      const leftPixels = ctx.getImageData(0, sampleY, Math.min(8, canvas.width), 1).data;
-      const rightWidth = Math.min(8, canvas.width);
-      const rightPixels = ctx.getImageData(Math.max(0, canvas.width - rightWidth), sampleY, rightWidth, 1).data;
-      const maxAlpha = (pixels) => {
-        let alpha = 0;
-        for (let index = 3; index < pixels.length; index += 4) {
-          alpha = Math.max(alpha, pixels[index]);
-        }
-        return alpha;
-      };
-      return {
-        left: maxAlpha(leftPixels),
-        right: maxAlpha(rightPixels)
-      };
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
     };
     const initialSurfaceRect = rectOf(surface);
     const initialCanvasRect = rectOf(canvas);
@@ -1046,26 +1061,28 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       frameZ: styleOf(frame)?.zIndex || "",
       backdropZ: styleOf(backdrop)?.zIndex || "",
       pointerEvents: styleOf(layer)?.pointerEvents || "",
-      portalOpacity: styleOf(portal)?.opacity || "",
+      portalOpacity: Number.parseFloat(styleOf(portal)?.opacity || "0"),
       surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
       canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
       canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
+      canvasFilter: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).filter : "",
       surfaceRect: initialSurfaceRect,
       canvasRect: initialCanvasRect,
       copyRect: rectOf(copy),
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       firstShowcaseTitle: firstShowcaseTitle instanceof HTMLElement ? firstShowcaseTitle.textContent.trim() : "",
-      edgeAlpha: canvasEdgeAlpha(),
+      regionAlpha: canvasRegionAlpha(),
       scrolledSurfaceTop: scrolledSurfaceRect?.top ?? null,
       scrolledCanvasTop: scrolledCanvasRect?.top ?? null
     };
   });
   expect(visualizerLayout.pointerEvents).toBe("none");
-  expect(visualizerLayout.portalOpacity).toBe("0.4");
+  expect(visualizerLayout.portalOpacity).toBeGreaterThanOrEqual(0.55);
   expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
   expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
   expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
+  expect(visualizerLayout.canvasFilter).toBe("none");
   expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
   expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
@@ -1077,8 +1094,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
   expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
   expect(visualizerLayout.firstShowcaseTitle).toBe("Recent Activity");
-  expect(visualizerLayout.edgeAlpha.left).toBeGreaterThan(0);
-  expect(visualizerLayout.edgeAlpha.right).toBeGreaterThan(0);
+  expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
   const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
   expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
   const smallCopyStyles = await page.locator(".steam-sidebar-row-title").first().evaluate((node) => {
