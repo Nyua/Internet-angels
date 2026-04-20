@@ -97,8 +97,13 @@
     state.tier = nextTier;
     state.reason = nextReason;
     if (state.eligible) {
-      writeSessionItem(TIER_STORAGE_KEY, nextTier);
-      writeSessionItem(REASON_STORAGE_KEY, nextReason);
+      if (nextReason === "override") {
+        writeSessionItem(TIER_STORAGE_KEY, nextTier);
+        writeSessionItem(REASON_STORAGE_KEY, nextReason);
+      } else {
+        writeSessionItem(TIER_STORAGE_KEY, null);
+        writeSessionItem(REASON_STORAGE_KEY, null);
+      }
     }
     applyBodyState();
     updateWindowGlobal();
@@ -188,9 +193,13 @@
     }
     const storedTier = readSessionItem(TIER_STORAGE_KEY);
     const storedReason = readSessionItem(REASON_STORAGE_KEY);
-    if (storedTier === "degraded" || storedTier === "full") {
+    if ((storedTier === "degraded" || storedTier === "full") && storedReason === "override") {
       finalizeTier(storedTier, storedReason || "boot-probe");
       return true;
+    }
+    if (storedTier != null || storedReason != null) {
+      writeSessionItem(TIER_STORAGE_KEY, null);
+      writeSessionItem(REASON_STORAGE_KEY, null);
     }
     return false;
   }

@@ -1897,6 +1897,7 @@
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
+    const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
     const SHUFFLE_MAX_VOLUME = 0.077;
@@ -2751,25 +2752,29 @@
       });
     }
     function syncReactiveVisuals(rawBeat = 0, rawFlash = 0, rawBass = 0, rawBassFlash = 0) {
-      const targetBeat = clamp2(performanceDegraded ? 0 : rawBeat, 0, 1);
+      const targetBeat = clamp2(rawBeat, 0, 1);
       const beatAttack = targetBeat > reactiveBeat ? 0.34 : 0.14;
       reactiveBeat = clamp2(reactiveBeat + (targetBeat - reactiveBeat) * beatAttack, 0, 1);
       reactiveBeat *= targetBeat > 0.008 ? 0.998 : 0.948;
-      reactiveFlash = clamp2(Math.max(performanceDegraded ? 0 : rawFlash, reactiveFlash * 0.86), 0, 1);
-      const targetBass = clamp2(performanceDegraded ? 0 : rawBass, 0, 1);
+      reactiveFlash = clamp2(Math.max(rawFlash, reactiveFlash * 0.86), 0, 1);
+      const targetBass = clamp2(rawBass, 0, 1);
       const bassAttack = targetBass > reactiveBass ? 0.54 : 0.16;
       reactiveBass = clamp2(reactiveBass + (targetBass - reactiveBass) * bassAttack, 0, 1);
       reactiveBass *= targetBass > 0.012 ? 0.9985 : 0.954;
-      reactiveBassFlash = clamp2(Math.max(performanceDegraded ? 0 : rawBassFlash, reactiveBassFlash * 0.9), 0, 1);
-      setInternetAngelReactivePulse(reactiveBeat, reactiveFlash, reactiveBeat > 0.004 || reactiveFlash > 0.004);
-      const glowOpacity = Math.min(0.58, 0.16 + reactiveBeat * 0.18 + reactiveFlash * 0.05 + reactiveBass * 0.16 + reactiveBassFlash * 0.09);
-      const frostOpacity = Math.min(0.98, 0.76 + reactiveBeat * 0.12 + reactiveFlash * 0.03 + reactiveBass * 0.1);
-      const auraBlur = 30 + reactiveBeat * 16 + reactiveFlash * 12 + reactiveBass * 18 + reactiveBassFlash * 14;
-      const drift = reactiveBeat * 10 + reactiveFlash * 6 + reactiveBass * 8;
-      const beatValue = reactiveBeat.toFixed(2);
-      const flashValue = reactiveFlash.toFixed(2);
-      const bassValue = reactiveBass.toFixed(2);
-      const bassFlashValue = reactiveBassFlash.toFixed(2);
+      reactiveBassFlash = clamp2(Math.max(rawBassFlash, reactiveBassFlash * 0.9), 0, 1);
+      const exportedBeat = performanceDegraded ? 0 : reactiveBeat;
+      const exportedFlash = performanceDegraded ? 0 : reactiveFlash;
+      const exportedBass = performanceDegraded ? 0 : reactiveBass;
+      const exportedBassFlash = performanceDegraded ? 0 : reactiveBassFlash;
+      setInternetAngelReactivePulse(exportedBeat, exportedFlash, exportedBeat > 0.004 || exportedFlash > 0.004);
+      const glowOpacity = Math.min(0.58, 0.16 + exportedBeat * 0.18 + exportedFlash * 0.05 + exportedBass * 0.16 + exportedBassFlash * 0.09);
+      const frostOpacity = Math.min(0.98, 0.76 + exportedBeat * 0.12 + exportedFlash * 0.03 + exportedBass * 0.1);
+      const auraBlur = 30 + exportedBeat * 16 + exportedFlash * 12 + exportedBass * 18 + exportedBassFlash * 14;
+      const drift = exportedBeat * 10 + exportedFlash * 6 + exportedBass * 8;
+      const beatValue = exportedBeat.toFixed(2);
+      const flashValue = exportedFlash.toFixed(2);
+      const bassValue = exportedBass.toFixed(2);
+      const bassFlashValue = exportedBassFlash.toFixed(2);
       const glowOpacityValue = glowOpacity.toFixed(2);
       const frostOpacityValue = frostOpacity.toFixed(2);
       const auraBlurValue = `${auraBlur.toFixed(0)}px`;
@@ -2990,10 +2995,6 @@
       return;
     }
     function ensureWavePortal() {
-      if (performanceDegraded) {
-        hideWavePortal();
-        return null;
-      }
       const layerHost = document.getElementById("os-shuffle-visualizer-layer");
       if (!(layerHost instanceof HTMLDivElement)) return null;
       if (!(wavePortal instanceof HTMLDivElement) || wavePortal.parentElement !== layerHost) {
@@ -3158,8 +3159,9 @@
     function renderLoop(nowMs) {
       if (disposed) return;
       maybeAdvanceSegmentTrack(nowMs);
-      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !performanceDegraded);
-      const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? SHUFFLE_ACTIVE_FRAME_INTERVAL_MS : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
+      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden);
+      const activeFrameIntervalMs = performanceDegraded ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
+      const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
         rafId = window.requestAnimationFrame(renderLoop);
         return;
@@ -3187,7 +3189,6 @@
       traceSampleIndexLookup = new Uint16Array(0);
       traceSampleLookupSourceLength = 0;
       traceSampleLookupPointCount = 0;
-      hideWavePortal();
       syncReactiveVisuals(0, 0);
       syncVisualizerPerformanceMode();
       syncUi();
@@ -4224,6 +4225,7 @@
         </div>
         <div class="steam-sidebar-currently-playing-progress-track${canSeek ? " steam-sidebar-currently-playing-progress-track--scrubbable" : ""}" data-sidebar-shuffle-progress-track${canSeek ? ` role="slider" tabindex="0" aria-label="Seek current track" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}" aria-valuetext="${escapeHtml(`${currentTimeLabel} of ${durationLabel}`)}"` : ""}>
           <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
+          <span class="steam-sidebar-currently-playing-progress-thumb" data-sidebar-shuffle-progress-thumb style="left: ${(progress * 100).toFixed(2)}%"></span>
         </div>
         <div class="steam-sidebar-currently-playing-time">
           <span class="steam-sidebar-currently-playing-time-elapsed" data-sidebar-shuffle-current-time>${escapeHtml(currentTimeLabel)}</span>
@@ -6319,6 +6321,7 @@
         titleEl: panel.querySelector("[data-sidebar-shuffle-title]"),
         artistEl: panel.querySelector("[data-sidebar-shuffle-artist]"),
         fillEl: panel.querySelector("[data-sidebar-shuffle-progress-fill]"),
+        thumbEl: panel.querySelector("[data-sidebar-shuffle-progress-thumb]"),
         currentTimeEl: panel.querySelector("[data-sidebar-shuffle-current-time]"),
         durationEl: panel.querySelector("[data-sidebar-shuffle-duration]"),
         progressTrackEl: panel.querySelector("[data-sidebar-shuffle-progress-track]")
@@ -6329,6 +6332,10 @@
       const fillEl = sidebarElements?.fillEl;
       if (fillEl instanceof HTMLElement) {
         fillEl.style.transform = `scaleX(${progress.toFixed(4)})`;
+      }
+      const thumbEl = sidebarElements?.thumbEl;
+      if (thumbEl instanceof HTMLElement) {
+        thumbEl.style.left = `${(progress * 100).toFixed(2)}%`;
       }
       const currentTimeEl = sidebarElements?.currentTimeEl;
       if (currentTimeEl instanceof HTMLElement) {

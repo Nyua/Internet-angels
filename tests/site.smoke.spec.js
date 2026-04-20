@@ -631,17 +631,31 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
     const layer = document.querySelector("#os-shuffle-visualizer-layer");
     const title = document.querySelector("[data-shuffle-title]");
     const artist = document.querySelector("[data-shuffle-artist]");
+    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const readAlpha = () => {
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    };
     return {
       layerMode: layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-mode") : "",
       wavePortal: document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer") instanceof HTMLElement,
-      waveCanvas: document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave") instanceof HTMLCanvasElement,
+      waveCanvas: canvas instanceof HTMLCanvasElement,
+      regionAlpha: readAlpha(),
       title: title?.textContent?.trim() || "",
       artist: artist?.textContent?.trim() || ""
     };
   });
   expect(degradedVisualizerState.layerMode).toBe("degraded");
-  expect(degradedVisualizerState.wavePortal).toBe(false);
-  expect(degradedVisualizerState.waveCanvas).toBe(false);
+  expect(degradedVisualizerState.wavePortal).toBe(true);
+  expect(degradedVisualizerState.waveCanvas).toBe(true);
+  expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
   expect(degradedVisualizerState.title).toBe("trinket [full album]");
   expect(degradedVisualizerState.artist).toBe("tsubi club");
 });
@@ -890,6 +904,30 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("trinket [full album]");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("tsubi club");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
+  const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
+    const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
+    const title = panel?.querySelector("[data-sidebar-shuffle-title]");
+    const artist = panel?.querySelector("[data-sidebar-shuffle-artist]");
+    const timeRow = panel?.querySelector(".steam-sidebar-currently-playing-time");
+    const thumb = panel?.querySelector("[data-sidebar-shuffle-progress-thumb]");
+    const progressTrack = panel?.querySelector("[data-sidebar-shuffle-progress-track]");
+    const readPx = (node) => node instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(node).fontSize || "0") : 0;
+    const readBoxPx = (node, property) => node instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(node)[property] || "0") : 0;
+    return {
+      titleFontSize: readPx(title),
+      artistFontSize: readPx(artist),
+      timeFontSize: readPx(timeRow),
+      thumbVisible: thumb instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(thumb).opacity || "0") > 0.9,
+      thumbWidth: readBoxPx(thumb, "width"),
+      trackHeight: readBoxPx(progressTrack, "height")
+    };
+  });
+  expect(desktopCurrentlyPlayingLayout.titleFontSize).toBeGreaterThanOrEqual(14);
+  expect(desktopCurrentlyPlayingLayout.artistFontSize).toBeGreaterThanOrEqual(11);
+  expect(desktopCurrentlyPlayingLayout.timeFontSize).toBeGreaterThanOrEqual(10);
+  expect(desktopCurrentlyPlayingLayout.thumbVisible).toBe(true);
+  expect(desktopCurrentlyPlayingLayout.thumbWidth).toBeGreaterThanOrEqual(7.5);
+  expect(desktopCurrentlyPlayingLayout.trackHeight).toBeGreaterThanOrEqual(3.5);
   await expect.poll(async () => {
     return page.evaluate(() => {
       const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
