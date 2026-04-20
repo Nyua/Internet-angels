@@ -467,6 +467,10 @@ test("root skips the BloomToDeath video when the user clicks during playback", a
 
   await page.locator("#introVideo").click({ position: { x: 24, y: 24 } });
 
+  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    paused: node.paused,
+    muted: node.muted
+  }))).toEqual({ paused: true, muted: true });
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
   await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
   await expect(page).toHaveTitle("Josie");

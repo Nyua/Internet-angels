@@ -415,6 +415,13 @@
         introStartWrap?.classList.remove("is-visible");
       }
 
+      function stopIntroPlayback() {
+        if (!(introVideo instanceof HTMLVideoElement)) return;
+        introVideo.pause();
+        introVideo.muted = true;
+        introVideo.defaultMuted = true;
+      }
+
       function updateTopLevelUrlForJosie() {
         const url = resolveJosieUrl();
         window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
@@ -484,6 +491,7 @@
         clearMonitorLoop();
         clearRepeatVisitTimer();
         clearIntroEndHandoffTimer();
+        stopIntroPlayback();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
         introVideo?.classList.add("is-hidden");
@@ -504,6 +512,7 @@
         clearMonitorLoop();
         clearRepeatVisitTimer();
         clearIntroEndHandoffTimer();
+        stopIntroPlayback();
         window.location.replace(resolveJosieDocumentUrl().toString());
       }
 
@@ -576,6 +585,7 @@
         if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
         if (state !== "playing_intro" && state !== "handoff_pending" && state !== "handoff_visible") return;
         repeatVisitClickArmed = true;
+        stopIntroPlayback();
         if (handoffVisible) {
           completeHandoff();
           return;
@@ -645,7 +655,7 @@
         performFallbackNavigation();
       });
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && introStarted && introVideo.paused && !introVideo.ended) {
+        if (!document.hidden && introStarted && introVideo.paused && !introVideo.ended && !shouldExpediteHandoff()) {
           void tryPlayIntro();
         }
       });
