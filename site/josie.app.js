@@ -1883,11 +1883,13 @@
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_VISUAL_STYLE = "ascii";
     const SHUFFLE_MAX_CANVAS_DPR = 2;
+    const SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR = 1.25;
     const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
     const SHUFFLE_ASCII_MAX_CELL_PX = 2;
+    const SHUFFLE_TOUCH_ASCII_MAX_CELL_PX = 3;
     const SHUFFLE_BAR_MIN_COUNT = 40;
     const SHUFFLE_BAR_MAX_COUNT = 88;
     const SHUFFLE_BAR_MIN_WIDTH_PX = 3;
@@ -2169,9 +2171,20 @@
       }
       return fillStyle;
     }
+    function usesTouchMobileVisualizerProfile() {
+      return isCompactMobileLayout() && hasCompactMobileInput();
+    }
+    function getShuffleVisualizerDeviceProfile() {
+      return usesTouchMobileVisualizerProfile() ? "touch-mobile" : "default";
+    }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
-      const asciiCellWidth = clamp2(Math.round(width / 208), SHUFFLE_ASCII_MIN_CELL_PX, SHUFFLE_ASCII_MAX_CELL_PX);
+      const touchMobileProfile = usesTouchMobileVisualizerProfile();
+      const asciiCellWidth = clamp2(
+        Math.round(width / (touchMobileProfile ? 172 : 208)),
+        SHUFFLE_ASCII_MIN_CELL_PX,
+        touchMobileProfile ? SHUFFLE_TOUCH_ASCII_MAX_CELL_PX : SHUFFLE_ASCII_MAX_CELL_PX
+      );
       const asciiCellHeight = Math.max(2, Math.round(asciiCellWidth * 1.42));
       const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
@@ -2252,6 +2265,12 @@
           0,
           1
         );
+        if (touchMobileProfile) {
+          bassBodyDrive = clamp2(bassBodyDrive * 0.72, 0, 1);
+          detailPresenceDrive = clamp2(detailPresenceDrive * 0.84, 0, 1);
+          textureRecovery = clamp2(textureRecovery * 0.9, 0, 1);
+          mudSuppression = clamp2(mudSuppression * 0.78, 0, 1);
+        }
       }
       let peak = 0;
       let transientPeak = 0;
@@ -2331,13 +2350,13 @@
         Math.max(0, transientPeak - 0.32) * 0.28,
         0,
         1
-      );
+      ) * (touchMobileProfile ? 0.7 : 1);
       const absolutePeakSurge = clamp2(
         Math.max(0, peak - 0.68) * 3.15 +
         Math.max(0, transientPeak - 0.44) * 0.52,
         0,
         1
-      );
+      ) * (touchMobileProfile ? 0.64 : 1);
       const bassDrive = clamp2(
         reactiveBass * 1.22 +
         reactiveBassFlash * 0.92 +
@@ -2352,10 +2371,26 @@
         0,
         1
       );
-      const traceAttackMix = clamp2(0.44 + reactiveBeat * 0.14 + peakSurge * 0.08 + bassDrive * 0.12, 0.44, 0.82);
-      const traceReleaseMix = clamp2(0.2 + structureHold * 0.1 + absolutePeakSurge * 0.05 + bassDrive * 0.03, 0.2, 0.46);
-      const detailAttackMix = clamp2(0.54 + detailDrive * 0.18 + reactiveFlash * 0.08, 0.54, 0.88);
-      const detailReleaseMix = clamp2(0.28 + textureRecovery * 0.14 + detailPresenceDrive * 0.08, 0.28, 0.56);
+      const traceAttackMix = clamp2(
+        (0.44 + reactiveBeat * 0.14 + peakSurge * 0.08 + bassDrive * 0.12) * (touchMobileProfile ? 0.74 : 1),
+        touchMobileProfile ? 0.32 : 0.44,
+        touchMobileProfile ? 0.7 : 0.82
+      );
+      const traceReleaseMix = clamp2(
+        (0.2 + structureHold * 0.1 + absolutePeakSurge * 0.05 + bassDrive * 0.03) * (touchMobileProfile ? 1.08 : 1),
+        touchMobileProfile ? 0.22 : 0.2,
+        touchMobileProfile ? 0.5 : 0.46
+      );
+      const detailAttackMix = clamp2(
+        (0.54 + detailDrive * 0.18 + reactiveFlash * 0.08) * (touchMobileProfile ? 0.78 : 1),
+        touchMobileProfile ? 0.44 : 0.54,
+        touchMobileProfile ? 0.82 : 0.88
+      );
+      const detailReleaseMix = clamp2(
+        (0.28 + textureRecovery * 0.14 + detailPresenceDrive * 0.08) * (touchMobileProfile ? 1.06 : 1),
+        touchMobileProfile ? 0.3 : 0.28,
+        touchMobileProfile ? 0.6 : 0.56
+      );
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
         const targetValue = traceValues[pointIndex] || 0;
         const previousValue = traceDisplayValues[pointIndex] || 0;
@@ -2416,7 +2451,7 @@
             bassDrive * 0.2 +
             detailDrive * 0.08
           )
-        ),
+        ) * (touchMobileProfile ? 0.76 : 1),
         2,
         Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
       );
@@ -2428,7 +2463,7 @@
             textureRecovery * 0.24 +
             bassDrive * 0.08
           )
-        ),
+        ) * (touchMobileProfile ? 0.82 : 1),
         1,
         Math.max(1, amplitudeRows + 2)
       );
@@ -2570,12 +2605,15 @@
       }
       if (layerHost instanceof HTMLElement) {
         layerHost.setAttribute("data-visualizer-mode", mode);
+        layerHost.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.setAttribute("data-visualizer-mode", mode);
+        playerRoot.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       }
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-visualizer-mode", mode);
+        waveSurface.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       }
       appliedVisualizerMode = mode;
       appliedVisualizerModePlayerRoot = playerRoot;
@@ -2997,6 +3035,7 @@
     function ensureWavePortal() {
       const layerHost = document.getElementById("os-shuffle-visualizer-layer");
       if (!(layerHost instanceof HTMLDivElement)) return null;
+      layerHost.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       if (!(wavePortal instanceof HTMLDivElement) || wavePortal.parentElement !== layerHost) {
         wavePortal = document.createElement("div");
         wavePortal.className = "josie-audio-player-bleed-layer";
@@ -3012,6 +3051,7 @@
         waveCanvas.setAttribute("data-shuffle-ascii-overlay", "glyph");
         wavePortal.appendChild(waveCanvas);
       }
+      waveCanvas.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
         waveCtx = getCanvas2DContext(waveCanvas);
       }
@@ -3077,7 +3117,8 @@
       }
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
-      const dpr = Math.min(SHUFFLE_MAX_CANVAS_DPR, Math.max(1, window.devicePixelRatio || 1));
+      const maxCanvasDpr = usesTouchMobileVisualizerProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
+      const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
       if (waveCanvas.width !== pixelWidth || waveCanvas.height !== pixelHeight) {
@@ -3266,6 +3307,7 @@
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
         waveSurface.setAttribute("data-shuffle-ascii-overlay", "glyph");
+        waveSurface.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
           if (!currentTrack) {
@@ -5520,7 +5562,7 @@
     `;
     }).join("");
     return `
-    <section class="steam-sidebar-panel${compact ? " steam-sidebar-panel--mobile-home" : ""}">
+    <section class="steam-sidebar-panel${compact ? " steam-sidebar-panel--mobile-home" : " steam-sidebar-panel--desktop-home"}">
       ${compact ? "" : '<h3 class="steam-sidebar-title">Profile Links:</h3>'}
       <ul class="steam-sidebar-list${compact ? " steam-sidebar-list--mobile-icons" : ""}"${compact ? ` data-mobile-links-reveal="${escapeHtml(mobileLinksRevealState)}"` : ""}>
         ${rows}
@@ -6912,6 +6954,84 @@
       fallback.textContent = firstNonEmpty(mediaSource?.textContent, "♪").trim() || "♪";
       return fallback;
     }
+    function readLastFmTrackPanelArtworkCloneOriginRect(clone) {
+      if (!(clone instanceof HTMLElement)) return null;
+      const left = Number.parseFloat(clone.dataset.launchOriginLeft || "");
+      const top = Number.parseFloat(clone.dataset.launchOriginTop || "");
+      const width = Number.parseFloat(clone.dataset.launchOriginWidth || "");
+      const height = Number.parseFloat(clone.dataset.launchOriginHeight || "");
+      if (![left, top, width, height].every((value) => Number.isFinite(value) && value > 0)) {
+        return null;
+      }
+      return { left, top, width, height };
+    }
+    function applyLastFmTrackPanelArtworkCloneTarget(clone, originRect, targetRect, targetStyle, useTargetGridStyle) {
+      if (!(clone instanceof HTMLElement) || !originRect || !targetRect || !targetStyle) return;
+      const deltaX = targetRect.left - originRect.left;
+      const deltaY = targetRect.top - originRect.top;
+      const scaleX = targetRect.width / Math.max(1, originRect.width);
+      const scaleY = targetRect.height / Math.max(1, originRect.height);
+      clone.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`;
+      clone.style.borderRadius = useTargetGridStyle ? "0px" : targetStyle.borderRadius;
+      clone.style.boxShadow = useTargetGridStyle
+        ? "0 20px 40px rgba(0, 0, 0, 0.24)"
+        : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
+      clone.style.filter = "brightness(1.03)";
+    }
+    function retargetLastFmTrackPanelArtworkLaunch(targetState, options = {}) {
+      const clone = lastFmTrackPanelArtworkLaunchElement;
+      if (!(clone instanceof HTMLElement) || !(targetState?.anchor instanceof HTMLElement)) {
+        return Promise.resolve(false);
+      }
+      const originRect = readLastFmTrackPanelArtworkCloneOriginRect(clone);
+      const targetRect = targetState.rect;
+      if (!originRect || targetRect.width < 1 || targetRect.height < 1) {
+        return Promise.resolve(false);
+      }
+      const targetSurface = targetState.surface instanceof HTMLElement ? targetState.surface : targetState.anchor;
+      const targetStyle = window.getComputedStyle(targetSurface);
+      const useTargetGridStyle = options.useTargetGridStyle ?? isLastFmTrackPanelGridArtworkShell(targetSurface);
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      if (options.immediate || reducedMotion) {
+        const previousTransition = clone.style.transition;
+        clone.style.transition = "none";
+        applyLastFmTrackPanelArtworkCloneTarget(clone, originRect, targetRect, targetStyle, useTargetGridStyle);
+        clone.getBoundingClientRect();
+        clone.style.transition = previousTransition;
+        return Promise.resolve(true);
+      }
+      const durationMs = Math.max(120, Number(options.durationMs) || 180);
+      const easing = "cubic-bezier(0.22, 1, 0.36, 1)";
+      return new Promise((resolve) => {
+        let settled = false;
+        const previousTransition = clone.style.transition;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
+          clone.removeEventListener("transitionend", handleTransitionEnd);
+          clone.style.transition = previousTransition;
+          resolve(true);
+        };
+        const handleTransitionEnd = (event) => {
+          if (event.target !== clone || event.propertyName !== "transform") return;
+          finish();
+        };
+        const timeoutId = window.setTimeout(finish, durationMs + 140);
+        clone.style.transition = [
+          `transform ${durationMs}ms ${easing}`,
+          `border-radius ${durationMs}ms ${easing}`,
+          `box-shadow ${durationMs}ms ${easing}`,
+          `filter ${durationMs}ms ${easing}`,
+          "opacity 140ms ease"
+        ].join(", ");
+        clone.addEventListener("transitionend", handleTransitionEnd);
+        clone.getBoundingClientRect();
+        window.requestAnimationFrame(() => {
+          applyLastFmTrackPanelArtworkCloneTarget(clone, originRect, targetRect, targetStyle, useTargetGridStyle);
+        });
+      });
+    }
     function releaseLastFmTrackPanelArtworkLaunch(options = {}) {
       const clone = lastFmTrackPanelArtworkLaunchElement;
       const cleanup = lastFmTrackPanelArtworkLaunchCleanup;
@@ -7089,6 +7209,10 @@
     }
     function getLastFmTrackPanelArtworkSurface(anchor) {
       if (!(anchor instanceof HTMLElement)) return null;
+      const anchorRect = anchor.getBoundingClientRect();
+      if (anchorRect.width > 1 && anchorRect.height > 1) {
+        return anchor;
+      }
       const selectors = [
         ".lastfm-track-panel-art-face--front .lastfm-track-panel-art-image",
         ".lastfm-track-panel-art-face--front .lastfm-track-panel-art-fallback",
@@ -7180,6 +7304,10 @@
       clone.style.top = `${startRect.top}px`;
       clone.style.width = `${startRect.width}px`;
       clone.style.height = `${startRect.height}px`;
+      clone.dataset.launchOriginLeft = String(startRect.left);
+      clone.dataset.launchOriginTop = String(startRect.top);
+      clone.dataset.launchOriginWidth = String(startRect.width);
+      clone.dataset.launchOriginHeight = String(startRect.height);
       clone.style.border = useSourceGridStyle ? "0" : startStyle.border;
       clone.style.borderRadius = useSourceGridStyle ? "0px" : startStyle.borderRadius;
       clone.style.background = useSourceGridStyle ? "transparent" : startStyle.background;
@@ -7219,10 +7347,6 @@
         cleanup();
         return Promise.resolve({ held: false });
       }
-      const deltaX = targetRect.left - startRect.left;
-      const deltaY = targetRect.top - startRect.top;
-      const scaleX = targetRect.width / Math.max(1, startRect.width);
-      const scaleY = targetRect.height / Math.max(1, startRect.height);
       clone.getBoundingClientRect();
       return new Promise((resolve) => {
         let settled = false;
@@ -7244,12 +7368,7 @@
           finish();
         }, { once: true });
         window.requestAnimationFrame(() => {
-          clone.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`;
-          clone.style.borderRadius = useTargetGridStyle ? "0px" : targetStyle.borderRadius;
-          clone.style.boxShadow = useTargetGridStyle
-            ? "0 20px 40px rgba(0, 0, 0, 0.24)"
-            : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
-          clone.style.filter = "brightness(1.03)";
+          applyLastFmTrackPanelArtworkCloneTarget(clone, startRect, targetRect, targetStyle, useTargetGridStyle);
         });
       });
     }
@@ -7396,6 +7515,14 @@
           return true;
         }
         await artworkLaunchPromise;
+        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
+          return true;
+        }
+        if (settledTargetAnchor) {
+          await retargetLastFmTrackPanelArtworkLaunch(settledTargetAnchor, {
+            durationMs: 160
+          });
+        }
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }

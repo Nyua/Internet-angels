@@ -3752,6 +3752,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   padding: 0;
 }
 
+.steam-sidebar-panel--desktop-home {
+  border-radius: 0 !important;
+  overflow: visible;
+  clip-path: none !important;
+}
+
 .steam-sidebar-title {
   margin: 0 0 8px;
   padding-left: 1rem;
@@ -3786,6 +3792,9 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-currently-playing-panel--desktop {
   border-radius: 0 !important;
+  overflow: visible;
+  clip-path: none !important;
+  padding-bottom: 4px;
 }
 
 .steam-sidebar-currently-playing-label,

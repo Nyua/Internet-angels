@@ -910,6 +910,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
     const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
+    const shell = panel?.closest(".steam-sidebar-panel");
     const title = panel?.querySelector("[data-sidebar-shuffle-title]");
     const artist = panel?.querySelector("[data-sidebar-shuffle-artist]");
     const timeRow = panel?.querySelector(".steam-sidebar-currently-playing-time");
@@ -923,7 +924,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       timeFontSize: readPx(timeRow),
       thumbVisible: thumb instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(thumb).opacity || "0") > 0.9,
       thumbWidth: readBoxPx(thumb, "width"),
-      trackHeight: readBoxPx(progressTrack, "height")
+      trackHeight: readBoxPx(progressTrack, "height"),
+      panelBottomLeftRadius: readBoxPx(panel, "borderBottomLeftRadius"),
+      shellBottomLeftRadius: readBoxPx(shell, "borderBottomLeftRadius"),
+      shellOverflow: shell instanceof HTMLElement ? window.getComputedStyle(shell).overflow : ""
     };
   });
   expect(desktopCurrentlyPlayingLayout.titleFontSize).toBeGreaterThanOrEqual(14);
@@ -932,6 +936,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopCurrentlyPlayingLayout.thumbVisible).toBe(true);
   expect(desktopCurrentlyPlayingLayout.thumbWidth).toBeGreaterThanOrEqual(7.5);
   expect(desktopCurrentlyPlayingLayout.trackHeight).toBeGreaterThanOrEqual(3.5);
+  expect(desktopCurrentlyPlayingLayout.panelBottomLeftRadius).toBe(0);
+  expect(desktopCurrentlyPlayingLayout.shellBottomLeftRadius).toBe(0);
+  expect(desktopCurrentlyPlayingLayout.shellOverflow).toBe("visible");
   await expect.poll(async () => {
     return page.evaluate(() => {
       const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
@@ -2184,6 +2191,14 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
 test("josie mobile uses the speaker toggle, icon row links, and cinna over the Discord card", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      get() {
+        return 3;
+      }
+    });
+  });
+  await page.addInitScript(() => {
     const originalMatchMedia = window.matchMedia.bind(window);
     window.matchMedia = (query) => {
       const media = String(query || "");
@@ -2325,6 +2340,22 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
       return alpha;
     });
   }, { timeout: 5_000 }).toBeGreaterThan(0);
+  const mobileVisualizerProfile = await page.evaluate(() => {
+    const layer = document.querySelector("#os-shuffle-visualizer-layer");
+    const surface = document.querySelector("#os-shuffle-visualizer-surface");
+    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const canvasRect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null;
+    return {
+      layerProfile: layer instanceof HTMLElement ? layer.getAttribute("data-shuffle-device-profile") || "" : "",
+      surfaceProfile: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-device-profile") || "" : "",
+      canvasProfile: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-device-profile") || "" : "",
+      canvasDpr: canvas instanceof HTMLCanvasElement && canvasRect && canvasRect.width > 0 ? canvas.width / canvasRect.width : 0
+    };
+  });
+  expect(mobileVisualizerProfile.layerProfile).toBe("touch-mobile");
+  expect(mobileVisualizerProfile.surfaceProfile).toBe("touch-mobile");
+  expect(mobileVisualizerProfile.canvasProfile).toBe("touch-mobile");
+  expect(mobileVisualizerProfile.canvasDpr).toBeLessThanOrEqual(1.35);
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const track = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-progress-track");
@@ -2889,6 +2920,22 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await page.waitForFunction(() => {
+    const clone = document.querySelector(".lastfm-track-panel-art-launch");
+    const panelArt = document.querySelector(".lastfm-track-panel-art");
+    if (!(clone instanceof HTMLElement) || !(panelArt instanceof HTMLElement)) {
+      return false;
+    }
+    const cloneRect = clone.getBoundingClientRect();
+    const panelRect = panelArt.getBoundingClientRect();
+    const cloneRadius = window.getComputedStyle(clone).borderRadius;
+    const panelRadius = window.getComputedStyle(panelArt).borderRadius;
+    return Math.abs(cloneRect.left - panelRect.left) <= 2
+      && Math.abs(cloneRect.top - panelRect.top) <= 2
+      && Math.abs(cloneRect.width - panelRect.width) <= 2
+      && Math.abs(cloneRect.height - panelRect.height) <= 2
+      && cloneRadius === panelRadius;
+  }, { timeout: 2_000 });
   await page.waitForTimeout(900);
   await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "hidden", {
     panelVisibility: "visible",
