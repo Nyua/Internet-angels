@@ -2498,8 +2498,6 @@
           }
         }
       };
-      let avoidancePointCount = 0;
-      const avoidanceStep = Math.max(1, Math.ceil(pointCount / SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT));
       let previousBodyTargetRow = null;
       let previousDetailTargetRow = null;
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
@@ -2514,38 +2512,9 @@
           rowCount - 1
         );
         if (magnitude < 0.014 && detailMagnitude < 0.018) {
-          if (pointIndex === 0 || pointIndex === pointCount - 1 || pointIndex % avoidanceStep === 0) {
-            const avoidancePoint = waveformAvoidancePoints[avoidancePointCount] || (waveformAvoidancePoints[avoidancePointCount] = {
-              x: 0,
-              y: 0,
-              weight: 0
-            });
-            avoidancePoint.x = x;
-            avoidancePoint.y = originY + verticalInset + bodyTargetRow * asciiCellHeight + asciiCellHeight * 0.5;
-            avoidancePoint.weight = clamp2(0.14 + impact * 0.08 + bassDrive * 0.06, 0.14, 0.34);
-            avoidancePointCount += 1;
-          }
           previousBodyTargetRow = null;
           previousDetailTargetRow = null;
           continue;
-        }
-        if (pointIndex === 0 || pointIndex === pointCount - 1 || pointIndex % avoidanceStep === 0) {
-          const avoidancePoint = waveformAvoidancePoints[avoidancePointCount] || (waveformAvoidancePoints[avoidancePointCount] = {
-            x: 0,
-            y: 0,
-            weight: 0
-          });
-          avoidancePoint.x = x;
-          avoidancePoint.y = originY + verticalInset + bodyTargetRow * asciiCellHeight + asciiCellHeight * 0.5;
-          avoidancePoint.weight = clamp2(
-            magnitude * 0.84 +
-            detailMagnitude * 0.34 +
-            impact * 0.28 +
-            bassDrive * 0.24,
-            0,
-            1
-          );
-          avoidancePointCount += 1;
         }
         paintRibbon(previousBodyTargetRow, bodyTargetRow, x, magnitude, bodyRibbonConfig);
         if (detailMagnitude >= 0.018) {
@@ -2567,41 +2536,6 @@
       waveCtx.fillRect(originX, edgeMarkerTop, 1, edgeMarkerHeight);
       waveCtx.fillRect(originX + width - 1, edgeMarkerTop, 1, edgeMarkerHeight);
       waveCtx.restore();
-      const waveformViewportLeft = Number(cachedWaveLayout?.viewportLeft) || 0;
-      const waveformViewportTop = Number(cachedWaveLayout?.viewportTop) || 0;
-      if (avoidancePointCount > 1) {
-        syncWaveformAvoidanceState({
-          active: true,
-          viewportLeft: waveformViewportLeft + originX,
-          viewportTop: waveformViewportTop,
-          drawWidth: width,
-          drawHeight: height,
-          repelRadius: clamp2(
-            asciiCellHeight * 2.1 +
-            amplitudeRows * asciiCellHeight * 0.12 +
-            impact * 4.4 +
-            bassDrive * 5.2 +
-            detailDrive * 1.6,
-            14,
-            Math.max(22, height * 0.11)
-          ),
-          repelShift: clamp2(
-            1.1 +
-            impact * 1.2 +
-            bassDrive * 0.9 +
-            reactiveBassFlash * 0.42 +
-            detailDrive * 0.2,
-            1.1,
-            3.4
-          ),
-          points: waveformAvoidancePoints,
-          pointCount: avoidancePointCount,
-          viewportOffsetX: waveformViewportLeft,
-          viewportOffsetY: waveformViewportTop
-        });
-      } else {
-        clearWaveformAvoidanceState();
-      }
     }
     function getReactiveTargets() {
       const primaryTarget = playerRoot instanceof HTMLElement ? playerRoot : null;
@@ -3050,49 +2984,10 @@
       }
     }
     function syncWaveformAvoidanceState(nextState) {
-      if (typeof window !== "object") return;
-      const safeState = nextState && typeof nextState === "object" ? nextState : null;
-      const safePoints = Array.isArray(safeState?.points) ? safeState.points : [];
-      const pointCount = clamp2(
-        Math.floor(Number(safeState?.pointCount) || safePoints.length),
-        0,
-        safePoints.length
-      );
-      const offsetX = Number(safeState?.viewportOffsetX) || 0;
-      const offsetY = Number(safeState?.viewportOffsetY) || 0;
-      waveformAvoidanceState.active = Boolean(safeState?.active);
-      waveformAvoidanceState.viewportLeft = Number(safeState?.viewportLeft) || 0;
-      waveformAvoidanceState.viewportTop = Number(safeState?.viewportTop) || 0;
-      waveformAvoidanceState.drawWidth = Number(safeState?.drawWidth) || 0;
-      waveformAvoidanceState.drawHeight = Number(safeState?.drawHeight) || 0;
-      waveformAvoidanceState.repelRadius = Number(safeState?.repelRadius) || 0;
-      waveformAvoidanceState.repelShift = Number(safeState?.repelShift) || 0;
-      const targetPoints = waveformAvoidanceState.points;
-      targetPoints.length = pointCount;
-      for (let index = 0; index < pointCount; index += 1) {
-        const sourcePoint = safePoints[index] || {};
-        const targetPoint = targetPoints[index] || (targetPoints[index] = {
-          x: 0,
-          y: 0,
-          weight: 0
-        });
-        targetPoint.x = offsetX + (Number(sourcePoint.x) || 0);
-        targetPoint.y = offsetY + (Number(sourcePoint.y) || 0);
-        targetPoint.weight = Number(sourcePoint.weight) || 0;
-      }
-      waveformAvoidanceState.revision += 1;
-      window.__internetAngelShuffleWaveformAvoidance = waveformAvoidanceState;
+      return nextState;
     }
     function clearWaveformAvoidanceState() {
-      syncWaveformAvoidanceState({
-        active: false,
-        drawWidth: 0,
-        drawHeight: 0,
-        repelRadius: 0,
-        repelShift: 0,
-        pointCount: 0,
-        points: waveformAvoidancePoints
-      });
+      return;
     }
     function ensureWavePortal() {
       if (performanceDegraded) {
@@ -4198,28 +4093,28 @@
   }
   function renderLastFmAngelFooter() {
     return `
-              <div class="lastfm-angel-footer" data-angels-footer data-angels-dagger-state="idle">
-                <button class="lastfm-angel-trigger" type="button" data-angels-footer-trigger>
-                  <span class="lastfm-angel-trigger-first-letter" data-angels-footer-first-letter>A</span><span class="lastfm-angel-trigger-rest">ngels</span>
-                </button>
-                <span class="lastfm-angel-dagger" aria-hidden="true">
-                  <span class="lastfm-angel-dagger-flight">
-                    <span class="lastfm-angel-dagger-geometry">
-                      <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--rear"></span>
-                      <span class="lastfm-angel-dagger-connectors">
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 12%;"></span>
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 23%;"></span>
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 36%;"></span>
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 52%;"></span>
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 71%;"></span>
-                        <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 88%;"></span>
-                      </span>
-                      <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--front"></span>
-                      <span class="lastfm-angel-dagger-tip" data-angels-footer-dagger-tip></span>
-                    </span>
-                  </span>
+      <div class="lastfm-angel-footer" data-angels-footer data-angels-dagger-state="idle">
+        <button class="lastfm-angel-trigger" type="button" data-angels-footer-trigger>
+          <span class="lastfm-angel-trigger-first-letter" data-angels-footer-first-letter>I</span><span class="lastfm-angel-trigger-rest">nternet-angel.net</span>
+          <span class="lastfm-angel-dagger" aria-hidden="true">
+            <span class="lastfm-angel-dagger-flight">
+              <span class="lastfm-angel-dagger-geometry">
+                <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--rear"></span>
+                <span class="lastfm-angel-dagger-connectors">
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 12%;"></span>
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 23%;"></span>
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 36%;"></span>
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 52%;"></span>
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 71%;"></span>
+                  <span class="lastfm-angel-dagger-connector" style="--angels-dagger-line-x: 88%;"></span>
                 </span>
-              </div>
+                <span class="lastfm-angel-dagger-plane lastfm-angel-dagger-plane--front"></span>
+                <span class="lastfm-angel-dagger-tip" data-angels-footer-dagger-tip></span>
+              </span>
+            </span>
+          </span>
+        </button>
+      </div>
     `;
   }
   function renderLastFmShowcase(site, payload, options = {}) {
@@ -5670,6 +5565,7 @@
     let lastFmTrackPanelActiveKey = "";
     let lastFmTrackPanelOriginTrigger = null;
     let lastFmTrackPanelAbortController = null;
+    let lastFmTrackPanelIsClosing = false;
     const lastFmTrackDetailsCache = /* @__PURE__ */ new Map();
     let lastFmTrackPreviewAudio = null;
     let lastFmTrackPreviewPausedShuffle = false;
@@ -5678,6 +5574,7 @@
     let lastFmTrackPanelFitRaf = 0;
     let lastFmTrackPanelSceneTimer = 0;
     let lastFmTrackPanelArtworkLaunchCleanup = null;
+    let lastFmTrackPanelArtworkLaunchElement = null;
     let lastFmTrackPanelArtworkSourceElement = null;
     let lastFmTrackPanelArtworkSourceRetireRaf = 0;
     let lastFmTrackPanelArtworkSourceRetireTimer = 0;
@@ -5705,8 +5602,8 @@
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
-    const ANGELS_FOOTER_LUNGE_MS = 760;
-    const ANGELS_FOOTER_COLLISION_DELAY_MS = 470;
+    const ANGELS_FOOTER_LUNGE_MS = 720;
+    const ANGELS_FOOTER_COLLISION_HOLD_MS = 180;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
@@ -5913,9 +5810,9 @@
       const firstLetterRect = firstLetter.getBoundingClientRect();
       const daggerTipRect = daggerTip.getBoundingClientRect();
       if (!firstLetterRect.width || !daggerTipRect.width) return;
-      const collisionX = firstLetterRect.left + Math.min(firstLetterRect.width * 0.5, 8);
+      const collisionX = firstLetterRect.left + Math.min(firstLetterRect.width * 0.12, 2);
       const tipX = daggerTipRect.left + daggerTipRect.width * 0.5;
-      const lungeDistance = Math.max(10, Math.round(collisionX - tipX));
+      const lungeDistance = Math.max(6, Math.round(collisionX - tipX));
       footer.style.setProperty("--angels-dagger-lunge-x", `${lungeDistance}px`);
     }
     function resolveAngelsFooterDestination(footer) {
@@ -5930,7 +5827,7 @@
       if (!(footer instanceof HTMLElement) || !(trigger instanceof HTMLElement)) return;
       const destinationUrl = resolveAngelsFooterDestination(footer);
       const detail = {
-        label: trigger.textContent?.trim() || "Angels",
+        label: trigger.textContent?.trim() || "Internet-angel.net",
         source: "angelsFooter",
         collisionTarget: "first-letter",
         destinationUrl: destinationUrl || ""
@@ -5965,7 +5862,7 @@
           return;
         }
         dispatchAngelsFooterCollision(footer, trigger);
-      }, prefersReducedMotion ? 120 : ANGELS_FOOTER_COLLISION_DELAY_MS);
+      }, prefersReducedMotion ? 120 : ANGELS_FOOTER_LUNGE_MS);
       angelsFooterLungeTimer = window.setTimeout(() => {
         angelsFooterLungeTimer = 0;
         if (!(activeAngelsFooter instanceof HTMLElement) || activeAngelsFooter !== footer) {
@@ -5973,7 +5870,7 @@
         }
         activeAngelsFooter.dataset.angelsDaggerState = "idle";
         activeAngelsFooter = null;
-      }, ANGELS_FOOTER_LUNGE_MS);
+      }, prefersReducedMotion ? 240 : ANGELS_FOOTER_LUNGE_MS + ANGELS_FOOTER_COLLISION_HOLD_MS);
     }
     function getMobileCurrentlyPlayingPanel() {
       if (!(sidebar instanceof HTMLElement)) return null;
@@ -6957,6 +6854,7 @@
         lastFmTrackPanelArtworkLaunchCleanup();
       }
       lastFmTrackPanelArtworkLaunchCleanup = null;
+      lastFmTrackPanelArtworkLaunchElement = null;
       if (lastFmTrackPanelRoot instanceof HTMLElement) {
         lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
       }
@@ -6975,40 +6873,74 @@
       }
       lastFmTrackPanelArtworkSourceElement = null;
     }
+    function setLastFmTrackPanelArtworkSourceState(shell, state) {
+      if (!(shell instanceof HTMLElement) || !state) return;
+      lastFmTrackPanelArtworkSourceElement = shell;
+      shell.dataset.lastfmArtSourceState = state;
+    }
     function setLastFmTrackPanelArtworkSourceLaunching(shell) {
       clearLastFmTrackPanelArtworkSourceState();
       if (!(shell instanceof HTMLElement)) return;
-      lastFmTrackPanelArtworkSourceElement = shell;
-      shell.dataset.lastfmArtSourceState = "launching";
+      setLastFmTrackPanelArtworkSourceState(shell, "launching");
     }
-    function queueLastFmTrackPanelArtworkSourceRetireAfterReveal() {
-      if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement)) return;
-      const sourceElement = lastFmTrackPanelArtworkSourceElement;
-      if (lastFmTrackPanelArtworkSourceRetireRaf) {
-        window.cancelAnimationFrame(lastFmTrackPanelArtworkSourceRetireRaf);
-        lastFmTrackPanelArtworkSourceRetireRaf = 0;
+    function setLastFmTrackPanelArtworkSourceHidden(shell) {
+      setLastFmTrackPanelArtworkSourceState(shell, "hidden");
+    }
+    function setLastFmTrackPanelArtworkSourceReturning(shell) {
+      setLastFmTrackPanelArtworkSourceState(shell, "returning");
+    }
+    function isLastFmTrackPanelGridArtworkShell(shell) {
+      return shell instanceof HTMLElement && (shell.classList.contains("lastfm-recent-art") || shell.classList.contains("lastfm-media-image-wrap"));
+    }
+    function getLastFmTrackPanelArtworkCloneMedia(mediaSource) {
+      if (mediaSource instanceof HTMLImageElement) {
+        const image = mediaSource.cloneNode(true);
+        image.className = "lastfm-track-panel-art-launch-media";
+        image.removeAttribute("srcset");
+        image.removeAttribute("sizes");
+        return image;
       }
-      lastFmTrackPanelArtworkSourceRetireRaf = window.requestAnimationFrame(() => {
-        lastFmTrackPanelArtworkSourceRetireRaf = window.requestAnimationFrame(() => {
-          lastFmTrackPanelArtworkSourceRetireRaf = 0;
-          if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
-          if (lastFmTrackPanelRoot.dataset.panelVisibility !== "visible" || lastFmTrackPanelRoot.getAttribute("aria-hidden") !== "false") {
-            return;
+      const fallback = document.createElement("span");
+      fallback.className = "lastfm-track-panel-art-launch-fallback";
+      fallback.textContent = firstNonEmpty(mediaSource?.textContent, "♪").trim() || "♪";
+      return fallback;
+    }
+    function releaseLastFmTrackPanelArtworkLaunch(options = {}) {
+      const clone = lastFmTrackPanelArtworkLaunchElement;
+      const cleanup = lastFmTrackPanelArtworkLaunchCleanup;
+      if (!(clone instanceof HTMLElement) || typeof cleanup !== "function") {
+        if (lastFmTrackPanelRoot instanceof HTMLElement) {
+          lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
+        }
+        return Promise.resolve(false);
+      }
+      if (options.immediate || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+        cleanup();
+        if (lastFmTrackPanelRoot instanceof HTMLElement) {
+          lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
+        }
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (lastFmTrackPanelRoot instanceof HTMLElement) {
+            lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
           }
-          if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement) || lastFmTrackPanelArtworkSourceElement !== sourceElement) {
-            return;
-          }
-          lastFmTrackPanelArtworkSourceRetireTimer = window.setTimeout(() => {
-            lastFmTrackPanelArtworkSourceRetireTimer = 0;
-            if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
-            if (lastFmTrackPanelRoot.dataset.panelVisibility !== "visible" || lastFmTrackPanelRoot.getAttribute("aria-hidden") !== "false") {
-              return;
-            }
-            if (!(lastFmTrackPanelArtworkSourceElement instanceof HTMLElement) || lastFmTrackPanelArtworkSourceElement !== sourceElement) {
-              return;
-            }
-            sourceElement.dataset.lastfmArtSourceState = "retiring";
-          }, LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS);
+          resolve(true);
+        };
+        const timeoutId = window.setTimeout(finish, 220);
+        clone.addEventListener("transitionend", (event) => {
+          if (event.target !== clone || event.propertyName !== "opacity") return;
+          window.clearTimeout(timeoutId);
+          finish();
+        }, { once: true });
+        window.requestAnimationFrame(() => {
+          clone.style.opacity = "0";
+          clone.style.filter = "brightness(1)";
         });
       });
     }
@@ -7209,13 +7141,12 @@
       panel.dataset.panelVisibility = "visible";
       panel.dataset.artworkLaunchState = "idle";
       scheduleLastFmTrackPanelFit();
-      queueLastFmTrackPanelArtworkSourceRetireAfterReveal();
       playInteractionSfx("open_soft", openSoundSource);
     }
-    function animateLastFmTrackPanelArtworkLaunch(sourceState, targetState) {
+    function animateLastFmTrackPanelArtworkClone(sourceState, targetState, options = {}) {
       clearLastFmTrackPanelArtworkLaunch();
       if (!(sourceState?.shell instanceof HTMLElement) || !(targetState?.anchor instanceof HTMLElement)) {
-        return Promise.resolve(false);
+        return Promise.resolve({ held: false });
       }
       const liveSourceRect = sourceState.shell.isConnected ? sourceState.shell.getBoundingClientRect() : null;
       const startRect = liveSourceRect && liveSourceRect.width > 0 && liveSourceRect.height > 0
@@ -7223,62 +7154,63 @@
         : sourceState.rect;
       const targetRect = targetState.rect;
       if (startRect.width < 1 || startRect.height < 1 || targetRect.width < 1 || targetRect.height < 1) {
-        return Promise.resolve(false);
+        return Promise.resolve({ held: false });
       }
+      const preserveAtDestination = Boolean(options.preserveAtDestination);
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
       const startStyle = window.getComputedStyle(sourceState.shell);
       const targetSurface = targetState.surface instanceof HTMLElement ? targetState.surface : targetState.anchor;
       const targetStyle = window.getComputedStyle(targetSurface);
-      const useMediaGridLaunchStyle = sourceState.shell.classList.contains("lastfm-recent-art");
+      const useSourceGridStyle = options.useSourceGridStyle ?? isLastFmTrackPanelGridArtworkShell(sourceState.shell);
+      const useTargetGridStyle = options.useTargetGridStyle ?? isLastFmTrackPanelGridArtworkShell(targetSurface);
       const clone = document.createElement("div");
       clone.className = "lastfm-track-panel-art-launch";
       clone.setAttribute("aria-hidden", "true");
-      if (useMediaGridLaunchStyle) {
+      if (useSourceGridStyle || useTargetGridStyle) {
         clone.dataset.launchStyle = "media-grid";
       }
       clone.style.left = `${startRect.left}px`;
       clone.style.top = `${startRect.top}px`;
       clone.style.width = `${startRect.width}px`;
       clone.style.height = `${startRect.height}px`;
-      clone.style.border = useMediaGridLaunchStyle ? "0" : startStyle.border;
-      clone.style.borderRadius = useMediaGridLaunchStyle ? "0px" : startStyle.borderRadius;
-      clone.style.background = useMediaGridLaunchStyle ? "transparent" : startStyle.background;
-      clone.style.boxShadow = useMediaGridLaunchStyle
+      clone.style.border = useSourceGridStyle ? "0" : startStyle.border;
+      clone.style.borderRadius = useSourceGridStyle ? "0px" : startStyle.borderRadius;
+      clone.style.background = useSourceGridStyle ? "transparent" : startStyle.background;
+      clone.style.boxShadow = useSourceGridStyle
         ? "0 18px 34px rgba(0, 0, 0, 0.22)"
         : startStyle.boxShadow === "none" ? "0 10px 24px rgba(0, 0, 0, 0.18)" : startStyle.boxShadow;
-      const sourceMedia = sourceState.media;
-      if (sourceMedia instanceof HTMLImageElement) {
-        const image = sourceMedia.cloneNode(true);
-        image.className = "lastfm-track-panel-art-launch-media";
-        image.removeAttribute("srcset");
-        image.removeAttribute("sizes");
-        clone.appendChild(image);
-      } else {
-        const fallback = document.createElement("span");
-        fallback.className = "lastfm-track-panel-art-launch-fallback";
-        fallback.textContent = firstNonEmpty(sourceMedia?.textContent, "♪").trim() || "♪";
-        clone.appendChild(fallback);
-      }
+      clone.appendChild(getLastFmTrackPanelArtworkCloneMedia(sourceState.media));
       const cleanup = () => {
         if (clone.isConnected) {
           clone.remove();
+        }
+        if (lastFmTrackPanelArtworkLaunchElement === clone) {
+          lastFmTrackPanelArtworkLaunchElement = null;
         }
         if (lastFmTrackPanelArtworkLaunchCleanup === cleanup) {
           lastFmTrackPanelArtworkLaunchCleanup = null;
         }
       };
+      lastFmTrackPanelArtworkLaunchElement = clone;
       lastFmTrackPanelArtworkLaunchCleanup = cleanup;
-      setLastFmTrackPanelArtworkSourceLaunching(sourceState.shell);
       document.body.appendChild(clone);
       if (lastFmTrackPanelRoot instanceof HTMLElement) {
         lastFmTrackPanelRoot.dataset.artworkLaunchState = "animating";
       }
       if (reducedMotion) {
-        cleanup();
         if (lastFmTrackPanelRoot instanceof HTMLElement) {
-          lastFmTrackPanelRoot.dataset.artworkLaunchState = "ready";
+          lastFmTrackPanelRoot.dataset.artworkLaunchState = preserveAtDestination ? "parked" : "ready";
         }
-        return Promise.resolve(false);
+        if (preserveAtDestination) {
+          clone.style.left = `${targetRect.left}px`;
+          clone.style.top = `${targetRect.top}px`;
+          clone.style.width = `${targetRect.width}px`;
+          clone.style.height = `${targetRect.height}px`;
+          clone.style.borderRadius = useTargetGridStyle ? "0px" : targetStyle.borderRadius;
+          return Promise.resolve({ held: true });
+        }
+        cleanup();
+        return Promise.resolve({ held: false });
       }
       const deltaX = targetRect.left - startRect.left;
       const deltaY = targetRect.top - startRect.top;
@@ -7290,11 +7222,13 @@
         const finish = () => {
           if (settled) return;
           settled = true;
-          cleanup();
           if (lastFmTrackPanelRoot instanceof HTMLElement) {
-            lastFmTrackPanelRoot.dataset.artworkLaunchState = "ready";
+            lastFmTrackPanelRoot.dataset.artworkLaunchState = preserveAtDestination ? "parked" : "ready";
           }
-          resolve(true);
+          if (!preserveAtDestination) {
+            cleanup();
+          }
+          resolve({ held: preserveAtDestination });
         };
         const timeoutId = window.setTimeout(finish, LASTFM_PANEL_ARTWORK_LAUNCH_MS + 160);
         clone.addEventListener("transitionend", (event) => {
@@ -7304,12 +7238,27 @@
         }, { once: true });
         window.requestAnimationFrame(() => {
           clone.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`;
-          clone.style.borderRadius = useMediaGridLaunchStyle ? "0px" : targetStyle.borderRadius;
-          clone.style.boxShadow = useMediaGridLaunchStyle
+          clone.style.borderRadius = useTargetGridStyle ? "0px" : targetStyle.borderRadius;
+          clone.style.boxShadow = useTargetGridStyle
             ? "0 20px 40px rgba(0, 0, 0, 0.24)"
             : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
           clone.style.filter = "brightness(1.03)";
         });
+      });
+    }
+    function animateLastFmTrackPanelArtworkLaunch(sourceState, targetState, options = {}) {
+      if (!(sourceState?.shell instanceof HTMLElement)) {
+        return Promise.resolve({ held: false });
+      }
+      setLastFmTrackPanelArtworkSourceLaunching(sourceState.shell);
+      return animateLastFmTrackPanelArtworkClone(sourceState, targetState, {
+        preserveAtDestination: options.preserveAtDestination ?? false,
+        useSourceGridStyle: isLastFmTrackPanelGridArtworkShell(sourceState.shell)
+      }).then((result) => {
+        if (lastFmTrackPanelArtworkSourceElement === sourceState.shell) {
+          setLastFmTrackPanelArtworkSourceHidden(sourceState.shell);
+        }
+        return result;
       });
     }
     function waitForImageElementReady(image) {
@@ -7344,6 +7293,33 @@
       await waitForAnimationFrames(2);
       return getLastFmTrackPanelArtworkLaunchTarget(layerName);
     }
+    function getLastFmTrackPanelArtworkPanelSource(layerName = "current") {
+      const target = getLastFmTrackPanelArtworkLaunchTarget(layerName);
+      if (!target) return null;
+      const shell = target.surface instanceof HTMLElement ? target.surface : target.anchor;
+      if (!(shell instanceof HTMLElement)) return null;
+      const media = shell.matches(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle, .lastfm-track-panel-art-back")
+        ? shell
+        : shell.querySelector(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle, .lastfm-track-panel-art-back");
+      return {
+        shell,
+        media: media instanceof Element ? media : shell,
+        rect: target.rect
+      };
+    }
+    async function animateLastFmTrackPanelArtworkReturn(trigger) {
+      const targetState = getLastFmTrackPanelArtworkSource(trigger);
+      const panelSourceState = getLastFmTrackPanelArtworkPanelSource("current");
+      if (!(targetState?.shell instanceof HTMLElement) || !(panelSourceState?.shell instanceof HTMLElement)) {
+        return false;
+      }
+      setLastFmTrackPanelArtworkSourceReturning(targetState.shell);
+      await animateLastFmTrackPanelArtworkClone(panelSourceState, targetState, {
+        useTargetGridStyle: isLastFmTrackPanelGridArtworkShell(targetState.shell)
+      });
+      clearLastFmTrackPanelArtworkSourceState();
+      return true;
+    }
     async function renderLastFmPanelLoadStateIntoCurrentScene(definition, loadState) {
       if (!definition || !loadState) return false;
       const contentMarkup = definition.renderContent(loadState.payload);
@@ -7377,7 +7353,7 @@
       }
       const panel = ensureLastFmTrackDetailsOverlay();
       const sourceState = getLastFmTrackPanelArtworkSource(trigger);
-      if (!(panel instanceof HTMLElement) || !sourceState || panel.contains(trigger) || panel.classList.contains("is-open")) {
+      if (!(panel instanceof HTMLElement) || !sourceState || panel.contains(trigger) || panel.classList.contains("is-open") || lastFmTrackPanelIsClosing) {
         return false;
       }
       const cacheKey = definition.buildCacheKey(normalizedQuery);
@@ -7393,6 +7369,10 @@
       });
       stageLastFmTrackPanelOverlay(panel);
       await waitForAnimationFrames(2);
+      const stagedTargetAnchor = getLastFmTrackPanelArtworkLaunchTarget("current");
+      const artworkLaunchPromise = stagedTargetAnchor
+        ? animateLastFmTrackPanelArtworkLaunch(sourceState, stagedTargetAnchor, { preserveAtDestination: true })
+        : Promise.resolve({ held: false });
       try {
         const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
@@ -7408,11 +7388,12 @@
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
-        await animateLastFmTrackPanelArtworkLaunch(sourceState, settledTargetAnchor);
+        await artworkLaunchPromise;
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
         revealLastFmTrackPanelOverlay(panel, definition.openSoundSource);
+        await releaseLastFmTrackPanelArtworkLaunch();
         const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (focusTarget instanceof HTMLElement) {
           focusTarget.focus({ preventScroll: true });
@@ -7430,7 +7411,9 @@
       if (lastFmTrackPanelActiveKey !== cacheKey) {
         return true;
       }
+      await artworkLaunchPromise;
       revealLastFmTrackPanelOverlay(panel, definition.openSoundSource);
+      await releaseLastFmTrackPanelArtworkLaunch();
       const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
       if (focusTarget instanceof HTMLElement) {
         focusTarget.focus({ preventScroll: true });
@@ -8721,13 +8704,24 @@
     function setLastFmTrackDetailsContent(markup) {
       setLastFmTrackPanelSceneMarkup(markup);
     }
-    function hideLastFmTrackDetails(reason = "close") {
+    async function hideLastFmTrackDetails(reason = "close") {
+      if (lastFmTrackPanelIsClosing) {
+        return;
+      }
+      lastFmTrackPanelIsClosing = true;
+      const panel = lastFmTrackPanelRoot instanceof HTMLElement ? lastFmTrackPanelRoot : null;
+      const shouldAnimateReturn = reason === "close"
+        && panel instanceof HTMLElement
+        && panel.classList.contains("is-open")
+        && lastFmTrackPanelOriginTrigger instanceof HTMLElement;
+      let returnAnimation = Promise.resolve(false);
+      if (shouldAnimateReturn) {
+        returnAnimation = animateLastFmTrackPanelArtworkReturn(lastFmTrackPanelOriginTrigger);
+      }
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
       clearLastFmTrackPanelSceneTimer();
       clearLastFmTrackPanelSceneSettleTimer();
-      clearLastFmTrackPanelArtworkLaunch();
-      clearLastFmTrackPanelArtworkSourceState();
       clearLastFmTrackPanelBuildReveal();
       if (lastFmTrackPanelFitRaf) {
         cancelAnimationFrame(lastFmTrackPanelFitRaf);
@@ -8735,17 +8729,34 @@
       }
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
-      if (!(lastFmTrackPanelRoot instanceof HTMLElement)) return;
+      if (!(lastFmTrackPanelRoot instanceof HTMLElement)) {
+        clearLastFmTrackPanelArtworkLaunch();
+        clearLastFmTrackPanelArtworkSourceState();
+        lastFmTrackPanelIsClosing = false;
+        return;
+      }
       if (lastFmTrackPanelRoot.classList.contains("is-open") && reason === "close") {
         playInteractionSfx("close_soft", "lastfmTrackPanelClose");
       }
       lastFmTrackPanelActiveKey = "";
+      if (reason === "close") {
+        lastFmTrackPanelRoot.dataset.panelVisibility = "closing";
+      }
       lastFmTrackPanelRoot.classList.remove("is-open");
+      lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
+      if (!shouldAnimateReturn) {
+        clearLastFmTrackPanelArtworkLaunch();
+        clearLastFmTrackPanelArtworkSourceState();
+      } else {
+        const returnAnimationPlayed = await returnAnimation;
+        if (!returnAnimationPlayed) {
+          clearLastFmTrackPanelArtworkSourceState();
+        }
+      }
       lastFmTrackPanelRoot.dataset.panelExplosionState = "idle";
       delete lastFmTrackPanelRoot.dataset.panelVisibility;
       delete lastFmTrackPanelRoot.dataset.artworkLaunchState;
       lastFmTrackPanelRoot.hidden = true;
-      lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
       if (lastFmTrackPanelContent instanceof HTMLElement) {
         Array.from(lastFmTrackPanelContent.querySelectorAll(".lastfm-track-panel-scene")).forEach((scene) => {
           if (scene instanceof HTMLElement) {
@@ -8759,6 +8770,7 @@
         lastFmTrackPanelOriginTrigger.focus({ preventScroll: true });
       }
       lastFmTrackPanelOriginTrigger = null;
+      lastFmTrackPanelIsClosing = false;
     }
     async function loadLastFmPanelDetails(panelType, query) {
       const definition = getLastFmPanelDefinition(panelType);
@@ -8792,6 +8804,7 @@
     async function showLastFmPanel(panelType, query, trigger = null) {
       const definition = getLastFmPanelDefinition(panelType);
       if (!definition) return;
+      if (lastFmTrackPanelIsClosing) return;
       const normalizedQuery = definition.normalizeQuery(query);
       if (!definition.hasRequiredQuery(normalizedQuery)) return;
       if (await launchLastFmPanelWithArtworkTransition(panelType, definition, normalizedQuery, trigger)) {
@@ -8995,7 +9008,11 @@
       if (!(showcases instanceof HTMLElement)) return;
       if (!(profile instanceof HTMLElement)) return;
       if (!(sidebar instanceof HTMLElement)) return;
-      clearAngelsFooterLungeState();
+      if (activeAngelsFooter instanceof HTMLElement && activeAngelsFooter.isConnected) {
+        updateAngelsFooterStrikeMetrics(activeAngelsFooter);
+      } else {
+        clearAngelsFooterLungeState();
+      }
       const compactMobile = isCompactMobileLayout();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
@@ -9055,9 +9072,12 @@
         showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
       if (desktopShuffleVisualizerLayer instanceof HTMLElement) {
-        desktopShuffleVisualizerLayer.hidden = compactMobile;
+        desktopShuffleVisualizerLayer.hidden = false;
+        desktopShuffleVisualizerLayer.setAttribute("data-mobile-visualizer", compactMobile ? "true" : "false");
       }
-      const shuffleRoot = compactMobile ? (syncMobileAudioDock(false), null) : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
+      const shuffleRoot = compactMobile
+        ? (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null)
+        : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
       shufflePlayerController?.attach(shuffleRoot);
       const shuffleState = shufflePlayerController.getState();
       sidebarCurrentlyPlayingScrubCleanup?.();
@@ -9820,18 +9840,6 @@
       let targetOffsetX = repulsion.offsetX;
       let targetOffsetY = repulsion.offsetY;
       let strongestInfluence = repulsion.influence;
-      for (let index = 0; index < activeWaveformRepulsionFields.length; index += 1) {
-        const waveformField = activeWaveformRepulsionFields[index];
-        const waveformRepulsion = resolveWaveformRepulsion(
-          anchorX + motion.offsetX,
-          anchorY + motion.offsetY,
-          waveformField,
-          seed
-        );
-        targetOffsetX += waveformRepulsion.offsetX;
-        targetOffsetY += waveformRepulsion.offsetY;
-        strongestInfluence = Math.max(strongestInfluence, waveformRepulsion.influence);
-      }
       for (const shootingStarField of activeShootingStarFields) {
         const shootingStarRepulsion = resolveShootingStarRepulsion(
           anchorX + motion.offsetX,
@@ -9847,28 +9855,6 @@
       const blend = 1 - Math.exp(-ambientDeltaSec * easePerSecond);
       motion.offsetX += (targetOffsetX - motion.offsetX) * blend;
       motion.offsetY += (targetOffsetY - motion.offsetY) * blend;
-      for (let pass = 0; pass < 2; pass += 1) {
-        let adjusted = false;
-        for (let index = 0; index < activeWaveformRepulsionFields.length; index += 1) {
-          const waveformField = activeWaveformRepulsionFields[index];
-          const collisionSeparation = resolveWaveformCollisionSeparation(
-            anchorX + motion.offsetX,
-            anchorY + motion.offsetY,
-            waveformField,
-            seed + pass
-          );
-          if (collisionSeparation.penetration <= 0.001) {
-            continue;
-          }
-          motion.offsetX += collisionSeparation.offsetX;
-          motion.offsetY += collisionSeparation.offsetY;
-          strongestInfluence = Math.max(strongestInfluence, 1);
-          adjusted = true;
-        }
-        if (!adjusted) {
-          break;
-        }
-      }
       return {
         x: anchorX + motion.offsetX,
         y: anchorY + motion.offsetY,
@@ -10155,10 +10141,6 @@
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
       shootingStars = Array.from({ length: shootingStarCount }, (_, index) => buildShootingStarPrototype(rng, index));
       activeShootingStarFields = [];
-      activeWaveformRepulsionFields = [];
-      lastWaveformRepulsionRevision = -1;
-      lastWaveformRepulsionScaleX = 0;
-      lastWaveformRepulsionScaleY = 0;
       pointerTargetX = renderWidth * 0.5;
       pointerTargetY = renderHeight * 0.5;
       pointerCurrentX = pointerTargetX;
@@ -10404,7 +10386,6 @@
       updateAmbientScrollState();
       stepAmbientScrollState();
       updatePointerState();
-      activeWaveformRepulsionFields = allowShootingStars ? readWaveformRepulsionFields() : [];
       activeShootingStarFields = allowShootingStars
         ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
         : [];

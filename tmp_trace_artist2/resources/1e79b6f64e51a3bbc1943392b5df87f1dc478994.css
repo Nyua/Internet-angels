@@ -5165,12 +5165,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     position: static;
   }
 }
-/*
+
 @media (max-width: 820px) {
   .os-stage {
     overflow: hidden;
   }
-*/
+
   .social-hub-scale-frame {
     width: 100%;
     max-width: 390px;

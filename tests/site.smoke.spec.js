@@ -217,6 +217,13 @@ async function waitForLastFmPanelSourceArtState(page, sourceSelector, expectedSt
   }, { timeout: options.timeout ?? 8_000 });
 }
 
+async function waitForLastFmPanelSourceArtStateCleared(page, sourceSelector, options = {}) {
+  await page.waitForFunction((selector) => {
+    const source = document.querySelector(selector);
+    return source instanceof HTMLElement && !source.hasAttribute("data-lastfm-art-source-state");
+  }, sourceSelector, { timeout: options.timeout ?? 8_000 });
+}
+
 async function emitCustomCursorHover(page, selector) {
   await page.evaluate((targetSelector) => {
     const target = document.querySelector(targetSelector);
@@ -1257,15 +1264,37 @@ test("josie animates the Angels footer dagger on click", async ({ page }) => {
   await angelsTrigger.scrollIntoViewIfNeeded();
   await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "idle");
   await expect(angelsDagger).toBeHidden();
-  await expect(angelsTrigger).toHaveText("Angels");
+  await expect(angelsTrigger).toHaveText("Internet-angel.net");
   await angelsTrigger.hover();
   await expect(angelsDagger).toBeVisible();
+  const daggerHoverMetrics = await page.evaluate(() => {
+    const trigger = document.querySelector("[data-angels-footer-trigger]");
+    const dagger = document.querySelector(".lastfm-angel-dagger");
+    const connectors = document.querySelector(".lastfm-angel-dagger-connectors");
+    const frontPlane = document.querySelector(".lastfm-angel-dagger-plane--front");
+    if (!(trigger instanceof HTMLElement) || !(dagger instanceof HTMLElement) || !(connectors instanceof HTMLElement) || !(frontPlane instanceof HTMLElement)) {
+      return null;
+    }
+    const triggerRect = trigger.getBoundingClientRect();
+    const daggerRect = dagger.getBoundingClientRect();
+    const connectorsStyle = window.getComputedStyle(connectors);
+    const planeStyle = window.getComputedStyle(frontPlane);
+    return {
+      gap: Math.round(triggerRect.left - daggerRect.right),
+      connectorsDisplay: connectorsStyle.display,
+      backgroundImage: planeStyle.backgroundImage
+    };
+  });
+  expect(daggerHoverMetrics).not.toBeNull();
+  expect(daggerHoverMetrics.gap).toBeGreaterThanOrEqual(12);
+  expect(daggerHoverMetrics.connectorsDisplay).toBe("none");
+  expect(daggerHoverMetrics.backgroundImage).toBe("none");
   await angelsTrigger.click();
   await expect(angelsFooter).toHaveAttribute("data-angels-dagger-state", "lunging");
   await expect.poll(async () => page.evaluate(() => window.__angelsFooterCollisionEvents.length), { timeout: 2_000 }).toBe(1);
   const collisionEvent = await page.evaluate(() => window.__angelsFooterCollisionEvents[0]);
   expect(collisionEvent).toMatchObject({
-    label: "Angels",
+    label: "Internet-angel.net",
     source: "angelsFooter",
     collisionTarget: "first-letter",
     destinationUrl: ""
@@ -2228,7 +2257,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(new Set(mobileAuraVariables).size).toBe(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeHidden();
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
   await page.locator("[data-mobile-speaker-toggle]").click();
@@ -2240,6 +2269,20 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("trinket [full album]");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("tsubi club");
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    });
+  }, { timeout: 5_000 }).toBeGreaterThan(0);
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const track = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-progress-track");
@@ -2805,8 +2848,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await page.waitForTimeout(900);
-  await expect(page.locator(trackSourceArtSelector)).toHaveAttribute("data-lastfm-art-source-state", "launching");
-  await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "retiring", {
+  await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "hidden", {
     panelVisibility: "visible",
     ariaHidden: "false",
     minWindowOpacity: 0.05
@@ -3017,6 +3059,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await page.keyboard.press("Escape");
   await waitForInteractionSfx(page, { soundId: "close_soft", source: "lastfmTrackPanelClose", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+  await waitForLastFmPanelSourceArtStateCleared(page, trackSourceArtSelector);
   await expect(sourceRow).toBeFocused();
 
   expect(apiRequests.filter((url) => url.includes("/api/lastfm-track-details")).length).toBe(2);
@@ -3379,8 +3422,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await page.waitForTimeout(900);
-  await expect(page.locator(artistSourceArtSelector)).toHaveAttribute("data-lastfm-art-source-state", "launching");
-  await waitForLastFmPanelSourceArtState(page, artistSourceArtSelector, "retiring", {
+  await waitForLastFmPanelSourceArtState(page, artistSourceArtSelector, "hidden", {
     panelVisibility: "visible",
     ariaHidden: "false",
     minWindowOpacity: 0.05
@@ -3571,6 +3613,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+  await waitForLastFmPanelSourceArtStateCleared(page, artistSourceArtSelector);
 
   const albumSourceArtSelector = ".lastfm-media-grid--albums .lastfm-media-button [data-lastfm-art-source]";
   await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
@@ -3582,8 +3625,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await page.waitForTimeout(900);
-  await expect(page.locator(albumSourceArtSelector)).toHaveAttribute("data-lastfm-art-source-state", "launching");
-  await waitForLastFmPanelSourceArtState(page, albumSourceArtSelector, "retiring", {
+  await waitForLastFmPanelSourceArtState(page, albumSourceArtSelector, "hidden", {
     panelVisibility: "visible",
     ariaHidden: "false",
     minWindowOpacity: 0.05
@@ -3687,6 +3729,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   }).toEqual({ phase: "stable", type: "artist" });
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+  await waitForLastFmPanelSourceArtStateCleared(page, albumSourceArtSelector);
 
   await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
   const trackArtistLink = page.locator(".lastfm-track-panel-track-meta .lastfm-track-panel-inline-link").first();
