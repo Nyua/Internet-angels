@@ -101,6 +101,9 @@
   function isDesktopPerformanceDegraded() {
     return Boolean(getInternetAngelPerformanceState()?.isDegraded?.());
   }
+  function isInternetAngelBackgroundThrottled() {
+    return Boolean(getInternetAngelPerformanceState()?.isBackgroundThrottled?.());
+  }
   function getInternetAngelReactivePulse() {
     const pulse = internetAngelReactivePulseState;
     if (!pulse || typeof pulse !== "object") {
@@ -3200,7 +3203,14 @@
     function renderLoop(nowMs) {
       if (disposed) return;
       maybeAdvanceSegmentTrack(nowMs);
-      const shouldRenderDesktopWave = Boolean(playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden);
+      const backgroundThrottled = isInternetAngelBackgroundThrottled();
+      const shouldRenderDesktopWave = Boolean(
+        playerRoot
+        && playbackUnlocked
+        && !compactPlayerMode
+        && !document.hidden
+        && !backgroundThrottled
+      );
       const activeFrameIntervalMs = performanceDegraded ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
       const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
@@ -3208,7 +3218,9 @@
         return;
       }
       lastVisualizerFrameMs = nowMs;
-      const pulseMetrics = measureReactivePulse();
+      const pulseMetrics = shouldRenderDesktopWave
+        ? measureReactivePulse()
+        : { beat: 0, flash: 0, bass: 0, bassFlash: 0, sampled: false };
       syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash, pulseMetrics.bass, pulseMetrics.bassFlash);
       if (shouldRenderDesktopWave) {
         drawTrace(pulseMetrics.sampled);
@@ -3232,6 +3244,11 @@
       traceSampleLookupPointCount = 0;
       syncReactiveVisuals(0, 0);
       syncVisualizerPerformanceMode();
+      if (playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !isInternetAngelBackgroundThrottled()) {
+        ensureWaveCanvasSize();
+      } else {
+        hideWavePortal();
+      }
       syncUi();
     }
     async function attemptPlay() {

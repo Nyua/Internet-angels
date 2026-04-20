@@ -14,6 +14,7 @@
     monitoring: false,
     tier: "full",
     reason: "boot-probe",
+    backgroundThrottled: false,
     consecutiveBadWindows: 0
   };
   let frameWindow = [];
@@ -65,20 +66,31 @@
       body.removeAttribute("data-performance-reason");
       return;
     }
-    body.setAttribute("data-performance-tier", state.tier);
-    body.setAttribute("data-performance-reason", state.reason);
+    body.setAttribute("data-performance-tier", getEffectiveTier());
+    body.setAttribute("data-performance-reason", getEffectiveReason());
   }
   function emitChange() {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {
       detail: {
         eligible: state.eligible,
-        tier: state.tier,
-        reason: state.reason
+        tier: getEffectiveTier(),
+        reason: getEffectiveReason(),
+        backgroundThrottled: state.backgroundThrottled
       }
     }));
   }
   function updateWindowGlobal() {
     window.__internetAngelPerformanceState = api;
+  }
+  function getEffectiveTier() {
+    return state.backgroundThrottled && state.tier !== "degraded" ? "degraded" : state.tier;
+  }
+  function getEffectiveReason() {
+    return state.backgroundThrottled && state.tier !== "degraded" ? "background" : state.reason;
+  }
+  function computeBackgroundThrottle() {
+    const hasFocus = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+    return Boolean(document.hidden || !hasFocus);
   }
   function stopMonitor() {
     state.monitoring = false;
@@ -91,9 +103,10 @@
     lastMonitorFrameMs = 0;
   }
   function finalizeTier(tier, reason) {
+    const previousTier = getEffectiveTier();
+    const previousReason = getEffectiveReason();
     const nextTier = tier === "degraded" ? "degraded" : "full";
     const nextReason = reason === "frame-budget" || reason === "override" ? reason : "boot-probe";
-    const changed = state.tier !== nextTier || state.reason !== nextReason;
     state.tier = nextTier;
     state.reason = nextReason;
     if (state.eligible) {
@@ -107,10 +120,30 @@
     }
     applyBodyState();
     updateWindowGlobal();
-    if (state.tier === "degraded") {
+    if (getEffectiveTier() === "degraded") {
       stopMonitor();
+    } else if (state.ready) {
+      startMonitor();
     }
-    if (changed) {
+    if (previousTier !== getEffectiveTier() || previousReason !== getEffectiveReason()) {
+      emitChange();
+    }
+  }
+  function syncAttentionThrottle(options = {}) {
+    if (!state.eligible) return;
+    const nextBackgroundThrottled = computeBackgroundThrottle();
+    const previousTier = getEffectiveTier();
+    const previousReason = getEffectiveReason();
+    if (state.backgroundThrottled === nextBackgroundThrottled) return;
+    state.backgroundThrottled = nextBackgroundThrottled;
+    applyBodyState();
+    updateWindowGlobal();
+    if (getEffectiveTier() === "degraded") {
+      stopMonitor();
+    } else if (state.ready) {
+      startMonitor();
+    }
+    if (!options.silent && (previousTier !== getEffectiveTier() || previousReason !== getEffectiveReason())) {
       emitChange();
     }
   }
@@ -149,8 +182,8 @@
   }
   function monitorTick(nowMs) {
     monitorRafId = 0;
-    if (!state.monitoring || state.tier === "degraded") return;
-    if (!document.hidden) {
+    if (!state.monitoring || getEffectiveTier() === "degraded") return;
+    if (!document.hidden && !state.backgroundThrottled) {
       const deltaMs = lastMonitorFrameMs ? nowMs - lastMonitorFrameMs : 0;
       lastMonitorFrameMs = nowMs;
       ingestFrameDelta(deltaMs);
@@ -162,7 +195,7 @@
     }
   }
   function startMonitor() {
-    if (!state.eligible || !state.ready || state.monitoring || state.tier === "degraded") return;
+    if (!state.eligible || !state.ready || state.monitoring || getEffectiveTier() === "degraded") return;
     state.monitoring = true;
     lastMonitorFrameMs = 0;
     monitorRafId = window.requestAnimationFrame(monitorTick);
@@ -214,6 +247,7 @@
       return;
     }
     finalizeTier(probeBootCapability() ? "full" : "degraded", "boot-probe");
+    syncAttentionThrottle({ silent: true });
   }
   function handleStorage(event) {
     if (!event || event.storageArea !== window.sessionStorage) return;
@@ -221,14 +255,20 @@
     if (!state.eligible) return;
     syncFromStorage();
   }
+  function handleAttentionChange() {
+    syncAttentionThrottle();
+  }
   const api = {
     getState() {
       return {
         eligible: state.eligible,
         ready: state.ready,
         monitoring: state.monitoring,
-        tier: state.tier,
-        reason: state.reason,
+        tier: getEffectiveTier(),
+        reason: getEffectiveReason(),
+        baseTier: state.tier,
+        baseReason: state.reason,
+        backgroundThrottled: state.backgroundThrottled,
         consecutiveBadWindows: state.consecutiveBadWindows
       };
     },
@@ -236,7 +276,10 @@
       return state.eligible;
     },
     isDegraded() {
-      return state.eligible && state.tier === "degraded";
+      return state.eligible && getEffectiveTier() === "degraded";
+    },
+    isBackgroundThrottled() {
+      return state.eligible && state.backgroundThrottled;
     },
     markReady() {
       state.ready = true;
@@ -256,4 +299,7 @@
     applyBodyState();
   }
   window.addEventListener("storage", handleStorage);
+  window.addEventListener("blur", handleAttentionChange);
+  window.addEventListener("focus", handleAttentionChange);
+  document.addEventListener("visibilitychange", handleAttentionChange);
 })();

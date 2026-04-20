@@ -283,6 +283,24 @@ async function setDesktopPerformanceOverride(page, tier = "full") {
   }, tier);
 }
 
+async function installWindowFocusOverride(page) {
+  await page.addInitScript(() => {
+    const originalHasFocus = Document.prototype.hasFocus;
+    window.__codexWindowFocusState = true;
+    Document.prototype.hasFocus = function hasFocusOverride() {
+      if (typeof window.__codexWindowFocusState === "boolean") {
+        return window.__codexWindowFocusState;
+      }
+      return originalHasFocus.call(this);
+    };
+    window.__setCodexWindowFocus = (nextFocus) => {
+      window.__codexWindowFocusState = Boolean(nextFocus);
+      window.dispatchEvent(new Event(nextFocus ? "focus" : "blur"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
 });
@@ -683,6 +701,71 @@ test("desktop Josie can live-downgrade once on sustained bad frame windows", asy
     window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.(healthyWindow);
   });
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+});
+
+test("desktop Josie background-throttles intensive rendering when the window loses focus", async ({ page }) => {
+  await installWindowFocusOverride(page);
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    });
+  }, { timeout: 5_000 }).toBeGreaterThan(0);
+
+  await page.evaluate(() => {
+    window.__setCodexWindowFocus?.(false);
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "background");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
+  const backgroundState = await page.evaluate(() => {
+    const performanceState = window.__internetAngelPerformanceState?.getState?.() || null;
+    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
+    return {
+      performanceState,
+      portalHidden: portal instanceof HTMLElement ? portal.hidden : null
+    };
+  });
+  expect(backgroundState.performanceState?.backgroundThrottled).toBe(true);
+  expect(backgroundState.portalHidden).toBe(true);
+
+  await page.evaluate(() => {
+    window.__setCodexWindowFocus?.(true);
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
+  const resumedState = await page.evaluate(() => ({
+    performanceState: window.__internetAngelPerformanceState?.getState?.() || null,
+    layerMode: (() => {
+      const layer = document.querySelector("#os-shuffle-visualizer-layer");
+      return layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-mode") || "" : "";
+    })(),
+    portalHidden: (() => {
+      const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
+      return portal instanceof HTMLElement ? portal.hidden : null;
+    })()
+  }));
+  expect(resumedState.performanceState?.backgroundThrottled).toBe(false);
+  expect(resumedState.layerMode).toBe("full");
 });
 
 test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform layer", async ({ page }) => {
