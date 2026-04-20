@@ -1010,7 +1010,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       trackHeight: readBoxPx(progressTrack, "height"),
       panelBottomLeftRadius: readBoxPx(panel, "borderBottomLeftRadius"),
       shellBottomLeftRadius: readBoxPx(shell, "borderBottomLeftRadius"),
-      shellOverflow: shell instanceof HTMLElement ? window.getComputedStyle(shell).overflow : ""
+      shellOverflow: shell instanceof HTMLElement ? window.getComputedStyle(shell).overflow : "",
+      panelClipPath: panel instanceof HTMLElement ? window.getComputedStyle(panel).clipPath : "",
+      shellClipPath: shell instanceof HTMLElement ? window.getComputedStyle(shell).clipPath : ""
     };
   });
   expect(desktopCurrentlyPlayingLayout.titleFontSize).toBeGreaterThanOrEqual(14);
@@ -1022,6 +1024,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopCurrentlyPlayingLayout.panelBottomLeftRadius).toBe(0);
   expect(desktopCurrentlyPlayingLayout.shellBottomLeftRadius).toBe(0);
   expect(desktopCurrentlyPlayingLayout.shellOverflow).toBe("visible");
+  expect(desktopCurrentlyPlayingLayout.panelClipPath).not.toContain("round");
+  expect(desktopCurrentlyPlayingLayout.shellClipPath).toBe("none");
   await expect.poll(async () => {
     return page.evaluate(() => {
       const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
