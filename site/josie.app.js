@@ -122,6 +122,36 @@
       sampled: Boolean(sampled)
     };
   }
+  function shouldUseHighFidelityDesktopMotion(performanceDegraded = isDesktopPerformanceDegraded()) {
+    if (performanceDegraded) return false;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return false;
+    if (navigator.connection?.saveData) return false;
+    const deviceMemory = Number(navigator.deviceMemory) || 0;
+    const hardwareConcurrency = Number(navigator.hardwareConcurrency) || 0;
+    if (deviceMemory > 0 && deviceMemory <= 8) return false;
+    if (hardwareConcurrency > 0 && hardwareConcurrency <= 8) return false;
+    return true;
+  }
+  function getDesktopMotionBudget(performanceDegraded = isDesktopPerformanceDegraded()) {
+    if (performanceDegraded) return "degraded";
+    return shouldUseHighFidelityDesktopMotion(performanceDegraded) ? "high" : "balanced";
+  }
+  function getGsap() {
+    const gsap = window.gsap;
+    return gsap && typeof gsap.to === "function" && typeof gsap.timeline === "function" ? gsap : null;
+  }
+  function killGsapTweens(targets) {
+    const gsap = getGsap();
+    if (!gsap) return;
+    const queue = Array.isArray(targets) ? targets : [targets];
+    queue.forEach((target) => {
+      if (!target) return;
+      try {
+        gsap.killTweensOf(target);
+      } catch {
+      }
+    });
+  }
   function applyPermanentNightTheme() {
     if (!(document.body instanceof HTMLElement)) return;
     document.body.setAttribute("data-theme-resolved", "night");
@@ -1880,6 +1910,7 @@
     let lastUiState = null;
     let lastVisualizerFrameMs = 0;
     let performanceDegraded = isDesktopPerformanceDegraded();
+    let desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
     let pendingSegmentSeekTime = null;
     let segmentAdvanceCooldownUntilMs = 0;
     const stateSubscribers = /* @__PURE__ */ new Set();
@@ -1888,9 +1919,11 @@
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_VISUAL_STYLE = "ascii";
     const SHUFFLE_MAX_CANVAS_DPR = 2;
+    const SHUFFLE_BALANCED_MAX_CANVAS_DPR = 1.5;
     const SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR = 1.25;
     const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
+    const SHUFFLE_BALANCED_TRACE_POINT_LIMIT = 264;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
     const SHUFFLE_ASCII_MAX_CELL_PX = 2;
@@ -1903,6 +1936,7 @@
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
+    const SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 48;
     const SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 20;
     const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
@@ -2178,17 +2212,25 @@
     function getShuffleVisualizerDeviceProfile() {
       return usesTouchMobileVisualizerProfile() ? "touch-mobile" : "default";
     }
+    function usesBalancedDesktopVisualizerBudget() {
+      return !usesTouchMobileVisualizerProfile() && desktopMotionBudget === "balanced";
+    }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
       const visualizerMode = getCurrentVisualizerMode();
       const panelOptimized = visualizerMode === "panel";
+      const balancedDesktopVisualizer = usesBalancedDesktopVisualizerBudget();
       const asciiCellWidth = clamp2(
         Math.round(width / 208),
         SHUFFLE_ASCII_MIN_CELL_PX,
         SHUFFLE_ASCII_MAX_CELL_PX
       );
       const asciiCellHeight = Math.max(2, Math.round(asciiCellWidth * 1.42));
-      const pointLimit = panelOptimized ? SHUFFLE_PANEL_TRACE_POINT_LIMIT : SHUFFLE_TRACE_POINT_LIMIT;
+      const pointLimit = panelOptimized
+        ? SHUFFLE_PANEL_TRACE_POINT_LIMIT
+        : balancedDesktopVisualizer
+          ? SHUFFLE_BALANCED_TRACE_POINT_LIMIT
+          : SHUFFLE_TRACE_POINT_LIMIT;
       const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), pointLimit));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
@@ -3126,11 +3168,14 @@
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
       const visualizerMode = getCurrentVisualizerMode();
+      const balancedDesktopVisualizer = usesBalancedDesktopVisualizerBudget();
       const maxCanvasDpr = usesTouchMobileVisualizerProfile()
         ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR
         : visualizerMode === "panel"
           ? SHUFFLE_PANEL_MAX_CANVAS_DPR
-          : SHUFFLE_MAX_CANVAS_DPR;
+          : balancedDesktopVisualizer
+            ? SHUFFLE_BALANCED_MAX_CANVAS_DPR
+            : SHUFFLE_MAX_CANVAS_DPR;
       const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
@@ -3233,7 +3278,9 @@
         ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS
         : visualizerMode === "panel"
           ? SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS
-          : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
+          : usesBalancedDesktopVisualizerBudget()
+            ? SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS
+            : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
       const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
         rafId = window.requestAnimationFrame(renderLoop);
@@ -3253,6 +3300,7 @@
     }
     function onPerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
+      desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
       waveCanvasContextConfigured = false;
       lastWaveCanvasDpr = 0;
       barLevelValues = new Float32Array(0);
@@ -5939,6 +5987,7 @@
     let lastFmTrackPanelArtworkSourceRetireTimer = 0;
     let lastFmTrackPanelBuildAnimations = [];
     let lastFmTrackPanelBuildNonce = 0;
+    let lastFmTrackPanelOverlayAnimation = null;
     let lastFmTrackPanelDeferredHydrationToken = 0;
     let lastFmTrackPanelDeferredHydrationTimers = [];
     let spotifyIframeApiPromise = null;
@@ -5956,10 +6005,17 @@
     let mobileLastFmRevealTimer = 0;
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
+    let desktopUnfoldTimeline = null;
+    let desktopUnfoldPlayed = false;
+    let desktopUnfoldLastCompactMode = isCompactMobileLayout();
     let activeAngelsFooter = null;
     let angelsFooterCollisionTimer = 0;
     let angelsFooterLungeTimer = 0;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
+    const DESKTOP_UNFOLD_STEP_MS = 120;
+    const DESKTOP_UNFOLD_DURATION_MS = 560;
+    const DESKTOP_UNFOLD_AVATAR_OFFSET_MS = 32;
+    const DESKTOP_UNFOLD_COPY_OFFSET_MS = 56;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
@@ -5982,6 +6038,7 @@
     const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
     const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 420;
     const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 1500;
+    const LASTFM_PANEL_CLOSE_ANIMATION_TIMEOUT_MS = 900;
     const LASTFM_PANEL_BUILD_STEP_MS = 74;
     const LASTFM_PANEL_BUILD_DURATION_MS = 460;
     const LASTFM_PANEL_DEFERRED_SECTION_STEP_MS = 74;
@@ -6301,10 +6358,40 @@
     }
     function clearDesktopUnfoldOrdering() {
       if (!(root2 instanceof HTMLElement)) return;
+      try {
+        desktopUnfoldTimeline?.kill?.();
+      } catch {
+      }
+      desktopUnfoldTimeline = null;
       root2.querySelectorAll("[data-desktop-unfold]").forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
         node.removeAttribute("data-desktop-unfold");
+        node.removeAttribute("data-motion-engine");
         node.style.removeProperty("--desktop-unfold-order");
+        node.style.removeProperty("opacity");
+        node.style.removeProperty("transform");
+        node.style.removeProperty("clip-path");
+        node.style.removeProperty("filter");
+        node.style.removeProperty("transform-origin");
+        node.style.removeProperty("will-change");
+        if (node.matches(".steam-hero-shell")) {
+          const avatarWrap = node.querySelector(".steam-hero-avatar-wrap");
+          const heroCopy = node.querySelector(".steam-hero-copy");
+          if (avatarWrap instanceof HTMLElement) {
+            avatarWrap.style.removeProperty("opacity");
+            avatarWrap.style.removeProperty("transform");
+            avatarWrap.style.removeProperty("filter");
+            avatarWrap.style.removeProperty("will-change");
+          }
+          if (heroCopy instanceof HTMLElement) {
+            heroCopy.style.removeProperty("opacity");
+            heroCopy.style.removeProperty("transform");
+            heroCopy.style.removeProperty("clip-path");
+            heroCopy.style.removeProperty("filter");
+            heroCopy.style.removeProperty("transform-origin");
+            heroCopy.style.removeProperty("will-change");
+          }
+        }
       });
     }
     function getDesktopUnfoldTargets() {
@@ -6327,7 +6414,19 @@
     }
     function applyDesktopUnfoldOrdering(compactMobile = isCompactMobileLayout()) {
       clearDesktopUnfoldOrdering();
-      if (compactMobile) return;
+      if (desktopUnfoldLastCompactMode && !compactMobile) {
+        desktopUnfoldPlayed = false;
+      }
+      desktopUnfoldLastCompactMode = compactMobile;
+      if (compactMobile) {
+        desktopUnfoldPlayed = false;
+        return;
+      }
+      const gsap = getGsap();
+      const useGsapDesktopUnfold = Boolean(gsap && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+      if (useGsapDesktopUnfold && desktopUnfoldPlayed) {
+        return;
+      }
       const targets = getDesktopUnfoldTargets().sort((left, right) => {
         const leftRect = left.getBoundingClientRect();
         const rightRect = right.getBoundingClientRect();
@@ -6343,7 +6442,151 @@
       });
       targets.forEach((target, index) => {
         target.dataset.desktopUnfold = "true";
+        if (useGsapDesktopUnfold) {
+          target.dataset.motionEngine = "gsap";
+        }
         target.style.setProperty("--desktop-unfold-order", String(index));
+      });
+      if (!useGsapDesktopUnfold || !gsap) {
+        return;
+      }
+      desktopUnfoldPlayed = true;
+      const timeline = gsap.timeline({
+        defaults: {
+          overwrite: "auto"
+        },
+        onComplete() {
+          desktopUnfoldTimeline = null;
+          targets.forEach((target) => {
+            if (!(target instanceof HTMLElement) || !target.isConnected) return;
+            target.style.removeProperty("opacity");
+            target.style.removeProperty("transform");
+            target.style.removeProperty("clip-path");
+            target.style.removeProperty("filter");
+            target.style.removeProperty("transform-origin");
+            target.style.removeProperty("will-change");
+            if (target.matches(".steam-hero-shell")) {
+              const avatarWrap = target.querySelector(".steam-hero-avatar-wrap");
+              const heroCopy = target.querySelector(".steam-hero-copy");
+              if (avatarWrap instanceof HTMLElement) {
+                avatarWrap.style.removeProperty("opacity");
+                avatarWrap.style.removeProperty("transform");
+                avatarWrap.style.removeProperty("filter");
+                avatarWrap.style.removeProperty("will-change");
+              }
+              if (heroCopy instanceof HTMLElement) {
+                heroCopy.style.removeProperty("opacity");
+                heroCopy.style.removeProperty("transform");
+                heroCopy.style.removeProperty("clip-path");
+                heroCopy.style.removeProperty("filter");
+                heroCopy.style.removeProperty("transform-origin");
+                heroCopy.style.removeProperty("will-change");
+              }
+            }
+          });
+        }
+      });
+      desktopUnfoldTimeline = timeline;
+      targets.forEach((target, index) => {
+        if (!(target instanceof HTMLElement)) return;
+        const startAt = index * DESKTOP_UNFOLD_STEP_MS / 1e3;
+        if (target.matches("#social-hub-profile .steam-hero-shell")) {
+          const avatarWrap = target.querySelector(".steam-hero-avatar-wrap");
+          const heroCopy = target.querySelector(".steam-hero-copy");
+          target.style.willChange = "opacity, transform, filter";
+          gsap.set(target, {
+            opacity: 0,
+            y: -14,
+            filter: "blur(6px)"
+          });
+          timeline.to(target, {
+            opacity: 1,
+            y: 0,
+            filter: "blur(0px)",
+            duration: DESKTOP_UNFOLD_DURATION_MS / 1e3,
+            ease: "power3.out"
+          }, startAt);
+          if (avatarWrap instanceof HTMLElement) {
+            avatarWrap.style.willChange = "opacity, transform, filter";
+            gsap.set(avatarWrap, {
+              opacity: 0,
+              y: -32,
+              filter: "blur(8px)"
+            });
+            timeline.to(avatarWrap, {
+              opacity: 1,
+              keyframes: [
+                {
+                  y: 12,
+                  filter: "blur(1.5px)",
+                  duration: 0.34,
+                  ease: "power3.out"
+                },
+                {
+                  y: 0,
+                  filter: "blur(0px)",
+                  duration: 0.22,
+                  ease: "power2.out"
+                }
+              ]
+            }, startAt + DESKTOP_UNFOLD_AVATAR_OFFSET_MS / 1e3);
+          }
+          if (heroCopy instanceof HTMLElement) {
+            heroCopy.style.willChange = "opacity, transform, clip-path, filter";
+            gsap.set(heroCopy, {
+              opacity: 0,
+              y: -14,
+              scaleY: 0.26,
+              clipPath: "inset(-52px -56px 100% -56px round 28px)",
+              filter: "blur(6px)",
+              transformOrigin: "top center"
+            });
+            timeline.to(heroCopy, {
+              opacity: 1,
+              y: 0,
+              scaleY: 1,
+              clipPath: "inset(-52px -56px 0px -56px round 28px)",
+              filter: "blur(0px)",
+              duration: DESKTOP_UNFOLD_DURATION_MS / 1e3,
+              ease: "power3.out"
+            }, startAt + DESKTOP_UNFOLD_COPY_OFFSET_MS / 1e3);
+          }
+          return;
+        }
+        const isSidebarPanel = target.matches("#social-hub-sidebar .steam-sidebar-panel");
+        target.style.willChange = isSidebarPanel
+          ? "opacity, transform, filter"
+          : "opacity, transform, clip-path, filter";
+        gsap.set(target, isSidebarPanel ? {
+          opacity: 0,
+          y: -14,
+          scaleY: 0.26,
+          filter: "blur(6px)",
+          transformOrigin: "top center"
+        } : {
+          opacity: 0,
+          y: -14,
+          scaleY: 0.26,
+          clipPath: "inset(0 0 100% 0 round 28px)",
+          filter: "blur(6px)",
+          transformOrigin: "top center"
+        });
+        timeline.to(target, isSidebarPanel ? {
+          opacity: 1,
+          y: 0,
+          scaleY: 1,
+          filter: "blur(0px)",
+          duration: DESKTOP_UNFOLD_DURATION_MS / 1e3,
+          ease: "power3.out"
+        } : {
+          opacity: 1,
+          y: 0,
+          scaleY: 1,
+          clipPath: "inset(0 0 0 0 round 28px)",
+          filter: "blur(0px)",
+          duration: DESKTOP_UNFOLD_DURATION_MS / 1e3,
+          ease: "power3.out"
+        }, startAt);
       });
     }
     function animateMobileLastFmDropdown(dropdown) {
@@ -6353,81 +6596,82 @@
       if (!(panel instanceof HTMLElement)) return;
       const list = panel.querySelector(".lastfm-recent-list, .lastfm-media-grid");
       if (!(list instanceof HTMLElement)) return;
-      panel.getAnimations().forEach((animation) => animation.cancel());
-      list.getAnimations().forEach((animation) => animation.cancel());
-      window.requestAnimationFrame(() => {
-        panel.getAnimations().forEach((animation) => animation.cancel());
-        panel.animate([
-          {
-            opacity: 0,
-            transform: "translateY(-10px) scaleY(0.76)",
-            clipPath: "inset(0 0 100% 0 round 22px)",
-            filter: "blur(5px)"
-          },
-          {
-            opacity: 1,
-            transform: "translateY(0) scaleY(1)",
-            clipPath: "inset(0 0 0 0 round 22px)",
-            filter: "blur(0)"
-          }
-        ], {
-          duration: 320,
-          easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
-          fill: "both"
+      const gsap = getGsap();
+      const orderedItems = Array.from(list.children).filter((item) => item instanceof HTMLElement).sort((left, right) => {
+        const leftRect = left.getBoundingClientRect();
+        const rightRect = right.getBoundingClientRect();
+        const topDelta = leftRect.top - rightRect.top;
+        if (Math.abs(topDelta) > 4) {
+          return topDelta;
+        }
+        return leftRect.left - rightRect.left;
+      }).slice(0, 12);
+      if (!gsap) {
+        panel.style.opacity = "1";
+        panel.style.transform = "translateY(0) scaleY(1)";
+        panel.style.clipPath = "inset(0 0 0 0 round 22px)";
+        panel.style.filter = "blur(0px)";
+        list.style.opacity = "1";
+        orderedItems.forEach((item) => {
+          item.style.opacity = "1";
+          item.style.transform = "translateY(0)";
         });
-        list.getAnimations().forEach((animation) => animation.cancel());
-        list.animate([
-          {
-            opacity: 0
-          },
-          {
-            opacity: 1
-          }
-        ], {
-          duration: 180,
-          delay: 18,
-          easing: "linear",
-          fill: "both"
-        });
-        const orderedItems = Array.from(list.children).filter((item) => item instanceof HTMLElement).sort((left, right) => {
-          const leftRect = left.getBoundingClientRect();
-          const rightRect = right.getBoundingClientRect();
-          const topDelta = leftRect.top - rightRect.top;
-          if (Math.abs(topDelta) > 4) {
-            return topDelta;
-          }
-          return leftRect.left - rightRect.left;
-        });
-        let lastTop = Number.NEGATIVE_INFINITY;
-        let revealBand = -1;
-        let bandIndex = 0;
-        orderedItems.slice(0, 12).forEach((item) => {
-          const rect = item.getBoundingClientRect();
-          if (Math.abs(rect.top - lastTop) > 4) {
-            revealBand += 1;
-            bandIndex = 0;
-            lastTop = rect.top;
-          }
-          const delay = 58 + revealBand * 72 + bandIndex * 18;
-          bandIndex += 1;
-          item.getAnimations().forEach((animation) => animation.cancel());
-          item.animate([
-            {
-              opacity: 0,
-              transform: "translateY(-10px)"
-            },
-            {
-              opacity: 1,
-              transform: "translateY(0)"
-            }
-          ], {
-            duration: 250,
-            delay,
-            easing: "cubic-bezier(0.2, 0.85, 0.18, 1)",
-            fill: "both"
-          });
-        });
+        return;
+      }
+      killGsapTweens([panel, list, ...orderedItems]);
+      const timeline = gsap.timeline({
+        defaults: {
+          overwrite: "auto"
+        }
       });
+      gsap.set(panel, {
+        opacity: 0,
+        y: -10,
+        scaleY: 0.76,
+        clipPath: "inset(0 0 100% 0 round 22px)",
+        filter: "blur(5px)",
+        transformOrigin: "top center"
+      });
+      gsap.set(list, { opacity: 0 });
+      let lastTop = Number.NEGATIVE_INFINITY;
+      let revealBand = -1;
+      let bandIndex = 0;
+      orderedItems.forEach((item) => {
+        const rect = item.getBoundingClientRect();
+        if (Math.abs(rect.top - lastTop) > 4) {
+          revealBand += 1;
+          bandIndex = 0;
+          lastTop = rect.top;
+        }
+        const delay = 0.058 + revealBand * 0.072 + bandIndex * 0.018;
+        bandIndex += 1;
+        gsap.set(item, { opacity: 0, y: -10 });
+        timeline.to(item, {
+          opacity: 1,
+          y: 0,
+          duration: 0.25,
+          delay,
+          ease: "power3.out",
+          overwrite: "auto"
+        }, 0);
+      });
+      timeline.to(panel, {
+        opacity: 1,
+        y: 0,
+        scaleY: 1,
+        clipPath: "inset(0 0 0 0 round 22px)",
+        filter: "blur(0px)",
+        duration: 0.32,
+        ease: "power3.out",
+        overwrite: "auto"
+      }, 0);
+      timeline.to(list, {
+        opacity: 1,
+        duration: 0.18,
+        delay: 0.018,
+        ease: "none",
+        overwrite: "auto"
+      }, 0);
     }
     function scheduleMobileDiscordReveal() {
       if (!isCompactMobileLayout()) return;
@@ -7248,6 +7492,13 @@
       lastFmTrackPanelDeferredHydrationToken += 1;
       lastFmTrackPanelDeferredHydrationTimers.forEach((entry) => {
         if (!entry || !entry.id) return;
+        if (entry.kind === "gsap") {
+          try {
+            entry.id.kill?.();
+          } catch {
+          }
+          return;
+        }
         if (entry.kind === "raf") {
           window.cancelAnimationFrame(entry.id);
           return;
@@ -7283,6 +7534,14 @@
       const slot = currentLayer.querySelector(`[data-lastfm-panel-slot="${safeSlotName}"]`);
       return slot instanceof HTMLElement ? slot : null;
     }
+    function cleanupLastFmTrackPanelDeferredSlotAnimation(slot) {
+      if (!(slot instanceof HTMLElement)) return;
+      delete slot.dataset.lastfmPanelSlotState;
+      slot.style.removeProperty("opacity");
+      slot.style.removeProperty("transform");
+      slot.style.removeProperty("filter");
+      slot.style.removeProperty("will-change");
+    }
     function revealLastFmTrackPanelDeferredSlot(slotName, markup, options = {}) {
       const slot = getLastFmTrackPanelDeferredSlot(slotName);
       if (!(slot instanceof HTMLElement)) return null;
@@ -7295,6 +7554,32 @@
       if (!(inserted instanceof HTMLElement)) return null;
       const shouldAnimate = Boolean(options?.animate) && !(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
       if (shouldAnimate) {
+        const gsap = getGsap();
+        if (gsap) {
+          inserted.dataset.lastfmPanelSlotState = "visible";
+          inserted.style.willChange = "opacity, transform, filter";
+          const tween = gsap.fromTo(inserted, {
+            opacity: 0,
+            x: -26,
+            filter: "blur(12px)"
+          }, {
+            opacity: 1,
+            x: 0,
+            filter: "blur(0px)",
+            duration: LASTFM_PANEL_DEFERRED_REVEAL_DURATION_MS / 1e3,
+            ease: "power3.out",
+            overwrite: "auto",
+            onComplete() {
+              cleanupLastFmTrackPanelDeferredSlotAnimation(inserted);
+            },
+            onInterrupt() {
+              cleanupLastFmTrackPanelDeferredSlotAnimation(inserted);
+            }
+          });
+          trackLastFmTrackPanelDeferredHydrationTimer("gsap", tween);
+          hydrateLastFmTrackPanelScene(currentScene);
+          return inserted;
+        }
         inserted.getBoundingClientRect();
         trackLastFmTrackPanelDeferredHydrationTimer("raf", window.requestAnimationFrame(() => {
           if (!(inserted.isConnected && inserted.dataset.lastfmPanelSlot === slotName)) return;
@@ -7428,6 +7713,23 @@
         : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow;
       clone.style.filter = "brightness(1.03)";
     }
+    function getLastFmTrackPanelArtworkCloneTweenVars(originRect, targetRect, targetStyle, useTargetGridStyle, durationMs) {
+      return {
+        x: targetRect.left - originRect.left,
+        y: targetRect.top - originRect.top,
+        scaleX: targetRect.width / Math.max(1, originRect.width),
+        scaleY: targetRect.height / Math.max(1, originRect.height),
+        borderRadius: useTargetGridStyle ? "0px" : targetStyle.borderRadius,
+        boxShadow: useTargetGridStyle
+          ? "0 20px 40px rgba(0, 0, 0, 0.24)"
+          : targetStyle.boxShadow === "none" ? "0 18px 40px rgba(0, 0, 0, 0.28)" : targetStyle.boxShadow,
+        filter: "brightness(1.03)",
+        duration: durationMs / 1e3,
+        ease: "power3.out",
+        overwrite: "auto",
+        force3D: true
+      };
+    }
     function retargetLastFmTrackPanelArtworkLaunch(targetState, options = {}) {
       const clone = lastFmTrackPanelArtworkLaunchElement;
       if (!(clone instanceof HTMLElement) || !(targetState?.anchor instanceof HTMLElement)) {
@@ -7451,6 +7753,23 @@
         return Promise.resolve(true);
       }
       const durationMs = Math.max(120, Number(options.durationMs) || 180);
+      const gsap = getGsap();
+      if (gsap) {
+        killGsapTweens(clone);
+        return new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            resolve(true);
+          };
+          gsap.to(clone, {
+            ...getLastFmTrackPanelArtworkCloneTweenVars(originRect, targetRect, targetStyle, useTargetGridStyle, durationMs),
+            onComplete: finish,
+            onInterrupt: finish
+          });
+        });
+      }
       const easing = "cubic-bezier(0.22, 1, 0.36, 1)";
       return new Promise((resolve) => {
         let settled = false;
@@ -7498,6 +7817,31 @@
         }
         return Promise.resolve(true);
       }
+      const gsap = getGsap();
+      if (gsap) {
+        killGsapTweens(clone);
+        return new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (lastFmTrackPanelRoot instanceof HTMLElement) {
+              lastFmTrackPanelRoot.dataset.artworkLaunchState = "idle";
+            }
+            resolve(true);
+          };
+          gsap.to(clone, {
+            opacity: 0,
+            filter: "brightness(1)",
+            duration: 0.14,
+            ease: "power1.out",
+            overwrite: "auto",
+            onComplete: finish,
+            onInterrupt: finish
+          });
+        });
+      }
       return new Promise((resolve) => {
         let settled = false;
         const finish = () => {
@@ -7533,6 +7877,10 @@
     function clearLastFmTrackPanelBuildReveal() {
       lastFmTrackPanelBuildNonce += 1;
       lastFmTrackPanelBuildAnimations.forEach((animation) => {
+        try {
+          animation?.kill?.();
+        } catch {
+        }
         try {
           animation?.cancel?.();
         } catch {
@@ -7606,34 +7954,37 @@
       if (!targets.length) return;
       const nonce = ++lastFmTrackPanelBuildNonce;
       lastFmTrackPanelBuildAnimations = [];
-      targets.forEach((target) => {
-        const delay = Math.max(0, Number(target.dataset.lastfmPanelBuildDelay) || 0);
-        const animation = target.animate(
-          [
-            {
-              opacity: 0,
-              transform: "perspective(1200px) rotateX(-17deg) translateY(-20px) scaleY(0.9)",
-              filter: "blur(10px)"
-            },
-            {
-              opacity: 1,
-              transform: "perspective(1200px) rotateX(0deg) translateY(0) scaleY(1)",
-              filter: "blur(0px)"
-            }
-          ],
-          {
-            duration: LASTFM_PANEL_BUILD_DURATION_MS,
-            delay,
-            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-            fill: "both"
-          }
-        );
-        lastFmTrackPanelBuildAnimations.push(animation);
-        animation.finished.catch(() => {
-        }).then(() => {
-          if (lastFmTrackPanelBuildNonce !== nonce) return;
+      const gsap = getGsap();
+      if (!gsap) {
+        targets.forEach((target) => {
           cleanupLastFmTrackPanelBuildTarget(target);
         });
+        return;
+      }
+      targets.forEach((target) => {
+        const delay = Math.max(0, Number(target.dataset.lastfmPanelBuildDelay) || 0);
+        const tween = gsap.fromTo(target, {
+          opacity: 0,
+          transform: "perspective(1200px) rotateX(-17deg) translateY(-20px) scaleY(0.9)",
+          filter: "blur(10px)"
+        }, {
+          opacity: 1,
+          transform: "perspective(1200px) rotateX(0deg) translateY(0) scaleY(1)",
+          filter: "blur(0px)",
+          duration: LASTFM_PANEL_BUILD_DURATION_MS / 1e3,
+          delay: delay / 1e3,
+          ease: "power3.out",
+          overwrite: "auto",
+          onComplete() {
+            if (lastFmTrackPanelBuildNonce !== nonce) return;
+            cleanupLastFmTrackPanelBuildTarget(target);
+          },
+          onInterrupt() {
+            if (lastFmTrackPanelBuildNonce !== nonce) return;
+            cleanupLastFmTrackPanelBuildTarget(target);
+          }
+        });
+        lastFmTrackPanelBuildAnimations.push(tween);
       });
     }
     function getLastFmTrackPanelArtworkSource(trigger) {
@@ -7713,7 +8064,7 @@
       panel.style.removeProperty("--lastfm-track-panel-reveal-left");
     }
     function setLastFmTrackPanelRevealOrigin(panel, targetState = null) {
-      if (!(panel instanceof HTMLElement) || !(targetState?.rect)) {
+      if (!shouldUseHighFidelityDesktopMotion() || !(panel instanceof HTMLElement) || !(targetState?.rect)) {
         clearLastFmTrackPanelRevealOrigin(panel);
         return false;
       }
@@ -7739,28 +8090,227 @@
       panel.style.setProperty("--lastfm-track-panel-reveal-left", `${insetLeft.toFixed(2)}px`);
       return true;
     }
+    function getLastFmTrackPanelOverlayMotionElements(panel) {
+      if (!(panel instanceof HTMLElement)) {
+        return {
+          backdrop: null,
+          windowElement: null
+        };
+      }
+      const backdrop = panel.querySelector(".lastfm-track-panel-backdrop");
+      const currentScene = getLastFmTrackPanelCurrentScene();
+      const liveWindow = getLastFmTrackPanelSceneLayerWindow(currentScene, "current");
+      const windowElement = liveWindow instanceof HTMLElement ? liveWindow : panel.querySelector(".lastfm-track-panel-window");
+      return {
+        backdrop: backdrop instanceof HTMLElement ? backdrop : null,
+        windowElement: windowElement instanceof HTMLElement ? windowElement : null
+      };
+    }
+    function cleanupLastFmTrackPanelOverlayMotion(panel) {
+      const { backdrop, windowElement } = getLastFmTrackPanelOverlayMotionElements(panel);
+      panel?.style?.removeProperty("opacity");
+      if (backdrop instanceof HTMLElement) {
+        backdrop.style.removeProperty("background-color");
+        backdrop.style.removeProperty("backdrop-filter");
+        backdrop.style.removeProperty("-webkit-backdrop-filter");
+        backdrop.style.removeProperty("will-change");
+      }
+      if (windowElement instanceof HTMLElement) {
+        windowElement.style.removeProperty("opacity");
+        windowElement.style.removeProperty("transform");
+        windowElement.style.removeProperty("clip-path");
+        windowElement.style.removeProperty("will-change");
+      }
+    }
+    function clearLastFmTrackPanelOverlayAnimation(panel = lastFmTrackPanelRoot) {
+      try {
+        lastFmTrackPanelOverlayAnimation?.kill?.();
+      } catch {
+      }
+      lastFmTrackPanelOverlayAnimation = null;
+      const { backdrop, windowElement } = getLastFmTrackPanelOverlayMotionElements(panel);
+      killGsapTweens([panel, backdrop, windowElement]);
+    }
+    function readLastFmTrackPanelRevealClipPath(panel, windowElement) {
+      if (!(panel instanceof HTMLElement) || !(windowElement instanceof HTMLElement)) return null;
+      if (panel.dataset.panelRevealOrigin !== "artwork") return null;
+      const clipPath = window.getComputedStyle(windowElement).clipPath;
+      return clipPath && clipPath !== "none" ? clipPath : null;
+    }
     function stageLastFmTrackPanelOverlay(panel) {
       if (!(panel instanceof HTMLElement)) return;
       clearLastFmTrackPanelArtworkLaunch();
       clearLastFmTrackPanelBuildReveal();
       clearLastFmTrackPanelDeferredHydration();
+      clearLastFmTrackPanelOverlayAnimation(panel);
+      cleanupLastFmTrackPanelOverlayMotion(panel);
       clearLastFmTrackPanelRevealOrigin(panel);
       panel.hidden = false;
       panel.classList.add("is-open");
       panel.setAttribute("aria-hidden", "true");
       panel.dataset.panelVisibility = "staged";
       panel.dataset.artworkLaunchState = "preloading";
+      panel.dataset.panelMotion = getGsap() ? "gsap" : "native";
+      const gsap = getGsap();
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      const { backdrop, windowElement } = getLastFmTrackPanelOverlayMotionElements(panel);
+      if (gsap && !reducedMotion) {
+        gsap.set(panel, { opacity: 0 });
+        if (backdrop instanceof HTMLElement) {
+          gsap.set(backdrop, {
+            backgroundColor: "rgba(0,0,0,0)",
+            backdropFilter: "blur(0px)",
+            webkitBackdropFilter: "blur(0px)"
+          });
+        }
+        if (windowElement instanceof HTMLElement) {
+          gsap.set(windowElement, {
+            opacity: 0,
+            y: 14,
+            scale: 0.985,
+            transformOrigin: "center center"
+          });
+        }
+      }
       setTrackPanelOpenState(true);
     }
     function revealLastFmTrackPanelOverlay(panel, openSoundSource, revealTargetState = null) {
       if (!(panel instanceof HTMLElement)) return;
       setLastFmTrackPanelRevealOrigin(panel, revealTargetState);
+      clearLastFmTrackPanelOverlayAnimation(panel);
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
+      const gsap = getGsap();
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      const { backdrop, windowElement } = getLastFmTrackPanelOverlayMotionElements(panel);
+      const stagedClipPath = readLastFmTrackPanelRevealClipPath(panel, windowElement);
       panel.dataset.panelVisibility = "visible";
       panel.dataset.artworkLaunchState = "idle";
       scheduleLastFmTrackPanelFit();
+      if (gsap && !reducedMotion) {
+        const timeline = gsap.timeline({
+          defaults: {
+            overwrite: "auto"
+          },
+          onComplete() {
+            cleanupLastFmTrackPanelOverlayMotion(panel);
+            lastFmTrackPanelOverlayAnimation = null;
+          },
+          onInterrupt() {
+            cleanupLastFmTrackPanelOverlayMotion(panel);
+            lastFmTrackPanelOverlayAnimation = null;
+          }
+        });
+        lastFmTrackPanelOverlayAnimation = timeline;
+        gsap.set(panel, { opacity: 0 });
+        timeline.to(panel, {
+          opacity: 1,
+          duration: 0.16,
+          ease: "power1.out"
+        }, 0);
+        if (backdrop instanceof HTMLElement) {
+          backdrop.style.willChange = "background-color, backdrop-filter";
+          gsap.set(backdrop, {
+            backgroundColor: "rgba(0,0,0,0)",
+            backdropFilter: "blur(0px)",
+            webkitBackdropFilter: "blur(0px)"
+          });
+          timeline.to(backdrop, {
+            backgroundColor: "rgba(0,0,0,0.62)",
+            backdropFilter: "blur(18px)",
+            webkitBackdropFilter: "blur(18px)",
+            duration: 0.42,
+            ease: "power3.out"
+          }, 0);
+        }
+        if (windowElement instanceof HTMLElement) {
+          windowElement.style.willChange = stagedClipPath
+            ? "opacity, transform, clip-path"
+            : "opacity, transform";
+          if (stagedClipPath) {
+            gsap.set(windowElement, {
+              opacity: 0,
+              y: 14,
+              scale: 0.985,
+              clipPath: stagedClipPath,
+              transformOrigin: "center center"
+            });
+            timeline.to(windowElement, {
+              opacity: 1,
+              y: 0,
+              scale: 1,
+              clipPath: "inset(0px 0px 0px 0px round 18px)",
+              duration: 0.42,
+              ease: "power3.out"
+            }, 0);
+          } else {
+            gsap.set(windowElement, {
+              opacity: 0,
+              y: 14,
+              scale: 0.985,
+              transformOrigin: "center center"
+            });
+            timeline.to(windowElement, {
+              opacity: 1,
+              y: 0,
+              scale: 1,
+              duration: 0.36,
+              ease: "power3.out"
+            }, 0);
+          }
+        }
+      }
       playInteractionSfx("open_soft", openSoundSource);
+    }
+    function hideLastFmTrackPanelOverlay(panel, options = {}) {
+      if (!(panel instanceof HTMLElement)) return Promise.resolve(false);
+      panel.setAttribute("aria-hidden", "true");
+      const gsap = getGsap();
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      const { backdrop, windowElement } = getLastFmTrackPanelOverlayMotionElements(panel);
+      if (!gsap || reducedMotion || options.immediate || !(windowElement instanceof HTMLElement)) {
+        cleanupLastFmTrackPanelOverlayMotion(panel);
+        return Promise.resolve(false);
+      }
+      clearLastFmTrackPanelOverlayAnimation(panel);
+      return new Promise((resolve) => {
+        const finish = () => {
+          cleanupLastFmTrackPanelOverlayMotion(panel);
+          lastFmTrackPanelOverlayAnimation = null;
+          resolve(true);
+        };
+        const timeline = gsap.timeline({
+          defaults: {
+            overwrite: "auto"
+          },
+          onComplete: finish,
+          onInterrupt: finish
+        });
+        lastFmTrackPanelOverlayAnimation = timeline;
+        windowElement.style.willChange = "opacity, transform";
+        timeline.to(windowElement, {
+          opacity: 0,
+          y: 12,
+          scale: 0.985,
+          duration: 0.2,
+          ease: "power2.out"
+        }, 0);
+        if (backdrop instanceof HTMLElement) {
+          backdrop.style.willChange = "background-color, backdrop-filter";
+          timeline.to(backdrop, {
+            backgroundColor: "rgba(0,0,0,0)",
+            backdropFilter: "blur(0px)",
+            webkitBackdropFilter: "blur(0px)",
+            duration: 0.22,
+            ease: "power2.out"
+          }, 0);
+        }
+        timeline.to(panel, {
+          opacity: 0,
+          duration: 0.16,
+          ease: "power1.out"
+        }, 0.04);
+      });
     }
     function animateLastFmTrackPanelArtworkClone(sourceState, targetState, options = {}) {
       clearLastFmTrackPanelArtworkLaunch();
@@ -7785,6 +8335,9 @@
       const clone = document.createElement("div");
       clone.className = "lastfm-track-panel-art-launch";
       clone.setAttribute("aria-hidden", "true");
+      if (getGsap()) {
+        clone.dataset.motionEngine = "gsap";
+      }
       if (useSourceGridStyle || useTargetGridStyle) {
         clone.dataset.launchStyle = "media-grid";
       }
@@ -7804,6 +8357,7 @@
         : startStyle.boxShadow === "none" ? "0 10px 24px rgba(0, 0, 0, 0.18)" : startStyle.boxShadow;
       clone.appendChild(getLastFmTrackPanelArtworkCloneMedia(sourceState.media));
       const cleanup = () => {
+        killGsapTweens(clone);
         if (clone.isConnected) {
           clone.remove();
         }
@@ -7834,6 +8388,36 @@
         }
         cleanup();
         return Promise.resolve({ held: false });
+      }
+      const gsap = getGsap();
+      if (gsap) {
+        killGsapTweens(clone);
+        gsap.set(clone, {
+          x: 0,
+          y: 0,
+          scaleX: 1,
+          scaleY: 1,
+          transformOrigin: "top left"
+        });
+        return new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            if (lastFmTrackPanelRoot instanceof HTMLElement) {
+              lastFmTrackPanelRoot.dataset.artworkLaunchState = preserveAtDestination ? "parked" : "ready";
+            }
+            if (!preserveAtDestination) {
+              cleanup();
+            }
+            resolve({ held: preserveAtDestination });
+          };
+          gsap.to(clone, {
+            ...getLastFmTrackPanelArtworkCloneTweenVars(startRect, targetRect, targetStyle, useTargetGridStyle, LASTFM_PANEL_ARTWORK_LAUNCH_MS),
+            onComplete: finish,
+            onInterrupt: finish
+          });
+        });
       }
       clone.getBoundingClientRect();
       return new Promise((resolve) => {
@@ -9374,6 +9958,33 @@
     function setLastFmTrackDetailsContent(markup) {
       setLastFmTrackPanelSceneMarkup(markup);
     }
+    function waitForLastFmTrackPanelAnimation(promise, timeoutMs = LASTFM_PANEL_CLOSE_ANIMATION_TIMEOUT_MS, fallbackValue = false) {
+      if (!promise || typeof promise.then !== "function") {
+        return Promise.resolve(fallbackValue);
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        const safeTimeoutMs = Math.max(0, Number(timeoutMs) || 0);
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          if (timeoutId) {
+            window.clearTimeout(timeoutId);
+          }
+          resolve(value);
+        };
+        const timeoutId = safeTimeoutMs > 0
+          ? window.setTimeout(() => {
+            finish(fallbackValue);
+          }, safeTimeoutMs)
+          : 0;
+        promise.then((value) => {
+          finish(value);
+        }).catch(() => {
+          finish(fallbackValue);
+        });
+      });
+    }
     async function hideLastFmTrackDetails(reason = "close") {
       if (lastFmTrackPanelIsClosing) {
         return;
@@ -9386,8 +9997,11 @@
         && lastFmTrackPanelOriginTrigger instanceof HTMLElement;
       let returnAnimation = Promise.resolve(false);
       if (shouldAnimateReturn) {
-        returnAnimation = animateLastFmTrackPanelArtworkReturn(lastFmTrackPanelOriginTrigger);
+        returnAnimation = waitForLastFmTrackPanelAnimation(
+          animateLastFmTrackPanelArtworkReturn(lastFmTrackPanelOriginTrigger)
+        );
       }
+      let overlayHideAnimation = Promise.resolve(false);
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
       clearLastFmTrackPanelSceneTimer();
@@ -9413,8 +10027,10 @@
       if (reason === "close") {
         lastFmTrackPanelRoot.dataset.panelVisibility = "closing";
       }
-      lastFmTrackPanelRoot.classList.remove("is-open");
-      lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
+      overlayHideAnimation = hideLastFmTrackPanelOverlay(lastFmTrackPanelRoot, {
+        immediate: reason !== "close"
+      });
+      overlayHideAnimation = waitForLastFmTrackPanelAnimation(overlayHideAnimation);
       if (!shouldAnimateReturn) {
         clearLastFmTrackPanelArtworkLaunch();
         clearLastFmTrackPanelArtworkSourceState();
@@ -9424,9 +10040,15 @@
           clearLastFmTrackPanelArtworkSourceState();
         }
       }
+      await overlayHideAnimation;
+      clearLastFmTrackPanelOverlayAnimation(lastFmTrackPanelRoot);
+      cleanupLastFmTrackPanelOverlayMotion(lastFmTrackPanelRoot);
+      lastFmTrackPanelRoot.classList.remove("is-open");
+      lastFmTrackPanelRoot.setAttribute("aria-hidden", "true");
       lastFmTrackPanelRoot.dataset.panelExplosionState = "idle";
       delete lastFmTrackPanelRoot.dataset.panelVisibility;
       delete lastFmTrackPanelRoot.dataset.artworkLaunchState;
+      delete lastFmTrackPanelRoot.dataset.panelMotion;
       clearLastFmTrackPanelRevealOrigin(lastFmTrackPanelRoot);
       lastFmTrackPanelRoot.hidden = true;
       if (lastFmTrackPanelContent instanceof HTMLElement) {
@@ -9821,6 +10443,7 @@
     }
     if (root2 instanceof HTMLElement) {
       root2.setAttribute("data-social-hub-ready", "true");
+      root2.setAttribute("data-motion-library", getGsap() ? "gsap" : "native");
       getInternetAngelPerformanceState()?.markReady?.();
     }
     if (mobileSpeakerButton instanceof HTMLButtonElement) {
@@ -10163,6 +10786,9 @@
     const coarsePointerLayout = Boolean(window.matchMedia?.("(pointer: coarse)")?.matches || window.matchMedia?.("(hover: none)")?.matches);
     const enableAmbientPointerResponse = !coarsePointerLayout && Boolean(window.matchMedia?.("(pointer: fine)")?.matches && window.matchMedia?.("(hover: hover)")?.matches);
     let performanceDegraded = isDesktopPerformanceDegraded();
+    let desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
+    let highFidelityDesktopMotion = desktopMotionBudget === "high";
+    let enableBackdropParallax = enableAmbientPointerResponse && highFidelityDesktopMotion;
     let scrollTargetOffsetY = 0;
     let scrollCurrentOffsetY = 0;
     let backdropParallaxTargetX = 0;
@@ -10174,6 +10800,9 @@
     const ambientScrollParallaxFactor = 0.26;
     const ambientPointerParallaxMaxOffsetX = 8;
     const ambientPointerParallaxMaxOffsetY = 10;
+    const AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
+    const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 48;
+    const AMBIENT_BALANCED_DESKTOP_MAX_DPR = 1.5;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -10212,9 +10841,18 @@
       if (!(osAmbientBackdrop instanceof HTMLElement)) {
         return;
       }
+      if (!enableBackdropParallax) {
+        if (force || appliedBackdropParallaxX !== 0 || appliedBackdropParallaxY !== 0) {
+          appliedBackdropParallaxX = 0;
+          appliedBackdropParallaxY = 0;
+          osAmbientBackdrop.style.setProperty("--ambient-pointer-parallax-x", "0px");
+          osAmbientBackdrop.style.setProperty("--ambient-pointer-parallax-y", "0px");
+        }
+        return;
+      }
       const nextX = Math.abs(backdropParallaxCurrentX) < 0.01 ? 0 : backdropParallaxCurrentX;
       const nextY = Math.abs(backdropParallaxCurrentY) < 0.01 ? 0 : backdropParallaxCurrentY;
-      if (!force && Math.abs(nextX - appliedBackdropParallaxX) < 0.05 && Math.abs(nextY - appliedBackdropParallaxY) < 0.05) {
+      if (!force && Math.abs(nextX - appliedBackdropParallaxX) < 0.25 && Math.abs(nextY - appliedBackdropParallaxY) < 0.25) {
         return;
       }
       appliedBackdropParallaxX = nextX;
@@ -10285,8 +10923,13 @@
         pointerStrength = 0;
         backdropParallaxTargetX = 0;
         backdropParallaxTargetY = 0;
-        backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.18;
-        backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.18;
+        if (enableBackdropParallax) {
+          backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.18;
+          backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.18;
+        } else {
+          backdropParallaxCurrentX = 0;
+          backdropParallaxCurrentY = 0;
+        }
         applyBackdropParallax();
         return;
       }
@@ -10295,10 +10938,17 @@
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
       const normalizedX = renderWidth > 0 ? pointerCurrentX / renderWidth - 0.5 : 0;
       const normalizedY = renderHeight > 0 ? pointerCurrentY / renderHeight - 0.5 : 0;
-      backdropParallaxTargetX = -normalizedX * ambientPointerParallaxMaxOffsetX * 2 * pointerStrength;
-      backdropParallaxTargetY = -normalizedY * ambientPointerParallaxMaxOffsetY * 2 * pointerStrength;
-      backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.14;
-      backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.14;
+      if (enableBackdropParallax) {
+        backdropParallaxTargetX = -normalizedX * ambientPointerParallaxMaxOffsetX * 2 * pointerStrength;
+        backdropParallaxTargetY = -normalizedY * ambientPointerParallaxMaxOffsetY * 2 * pointerStrength;
+        backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.14;
+        backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.14;
+      } else {
+        backdropParallaxTargetX = 0;
+        backdropParallaxTargetY = 0;
+        backdropParallaxCurrentX = 0;
+        backdropParallaxCurrentY = 0;
+      }
       applyBackdropParallax();
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
@@ -10782,10 +11432,23 @@
     function rebuildField() {
       const area = cssWidth * cssHeight;
       const rng = createSeededRandom((cssWidth * 73856093 ^ cssHeight * 19349663 ^ 2654435761) >>> 0);
-      const starCount = compactMobileLayout ? Math.max(34, Math.min(72, Math.round(area / 42e3))) : Math.max(54, Math.min(168, Math.round(area / 28e3)));
-      const glintCount = compactMobileLayout ? Math.max(0, Math.min(4, Math.round(area / 34e4))) : Math.max(7, Math.min(16, Math.round(area / 19e4)));
-      const flareCount = compactMobileLayout ? 0 : Math.max(1, Math.min(2, Math.round(area / 14e5)));
-      const shootingStarCount = compactMobileLayout ? 1 : 2;
+      const balancedDesktopField = !compactMobileLayout && !highFidelityDesktopMotion;
+      const starCount = compactMobileLayout
+        ? Math.max(34, Math.min(72, Math.round(area / 42e3)))
+        : balancedDesktopField
+          ? Math.max(48, Math.min(132, Math.round(area / 34e3)))
+          : Math.max(54, Math.min(168, Math.round(area / 28e3)));
+      const glintCount = compactMobileLayout
+        ? Math.max(0, Math.min(4, Math.round(area / 34e4)))
+        : balancedDesktopField
+          ? Math.max(5, Math.min(10, Math.round(area / 24e4)))
+          : Math.max(7, Math.min(16, Math.round(area / 19e4)));
+      const flareCount = compactMobileLayout
+        ? 0
+        : balancedDesktopField
+          ? 1
+          : Math.max(1, Math.min(2, Math.round(area / 14e5)));
+      const shootingStarCount = compactMobileLayout ? 1 : balancedDesktopField ? 1 : 2;
       stars = Array.from({ length: starCount }, (_, index) => buildStarPrototype(rng, index));
       glints = Array.from({ length: glintCount }, (_, index) => buildGlintPrototype(rng, index));
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
@@ -10806,7 +11469,13 @@
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
-      dpr = Math.max(1, Math.min(compactMobileLayout ? 1.25 : 2, window.devicePixelRatio || 1));
+      dpr = Math.max(
+        1,
+        Math.min(
+          compactMobileLayout ? 1.25 : highFidelityDesktopMotion ? 2 : AMBIENT_BALANCED_DESKTOP_MAX_DPR,
+          window.devicePixelRatio || 1
+        )
+      );
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
       if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
@@ -11115,12 +11784,17 @@
     function renderFrame(timeMs) {
       rafId = 0;
       if (disposed) return;
-      ambientDeltaSec = lastAmbientFrameMs ? Math.min(0.05, Math.max(1 / 240, (timeMs - lastAmbientFrameMs) * 0.001)) : 1 / 60;
-      lastAmbientFrameMs = timeMs;
       if (!shouldAnimate()) {
         drawStaticFrame(0);
         return;
       }
+      const frameIntervalMs = highFidelityDesktopMotion ? AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS : AMBIENT_BALANCED_FRAME_INTERVAL_MS;
+      if (lastAmbientFrameMs && timeMs - lastAmbientFrameMs < frameIntervalMs) {
+        rafId = window.requestAnimationFrame(renderFrame);
+        return;
+      }
+      ambientDeltaSec = lastAmbientFrameMs ? Math.min(0.05, Math.max(1 / 240, (timeMs - lastAmbientFrameMs) * 0.001)) : 1 / 60;
+      lastAmbientFrameMs = timeMs;
       if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
         resize();
       }
@@ -11146,6 +11820,9 @@
     }
     function sync() {
       if (disposed) return;
+      desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
+      highFidelityDesktopMotion = desktopMotionBudget === "high";
+      enableBackdropParallax = enableAmbientPointerResponse && highFidelityDesktopMotion;
       if (shouldAnimate()) {
         start();
       } else {
@@ -11160,9 +11837,9 @@
       );
       osAmbientBackdrop.setAttribute(
         "data-ambient-pointer-parallax",
-        enableAmbientPointerResponse && !prefersReducedMotion && !performanceDegraded ? "active" : "idle"
+        enableBackdropParallax ? "active" : "idle"
       );
-      if (performanceDegraded || !enableAmbientPointerResponse) {
+      if (performanceDegraded || !enableAmbientPointerResponse || !enableBackdropParallax) {
         backdropParallaxTargetX = 0;
         backdropParallaxTargetY = 0;
         backdropParallaxCurrentX = 0;
@@ -11172,6 +11849,9 @@
     }
     function handlePerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
+      desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
+      highFidelityDesktopMotion = desktopMotionBudget === "high";
+      resize();
       sync();
     }
     window.addEventListener("resize", resize, { passive: true });
@@ -12290,6 +12970,11 @@
     const trailSubdivisionCount = 1;
     const scrollMorphHoldMs = 170;
     const selectionAnimationDurationMs = 180;
+    const CURSOR_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
+    const CURSOR_BALANCED_FRAME_INTERVAL_MS = 1e3 / 48;
+    const CURSOR_BALANCED_TAIL_POINT_COUNT = 8;
+    const CURSOR_BALANCED_MAX_TRAIL_SEGMENTS = 3;
+    const CURSOR_BALANCED_TRAIL_CANVAS_DPR = 1.1;
     const cursorEl = document.createElement("div");
     cursorEl.className = "site-pointer";
     cursorEl.setAttribute("aria-hidden", "true");
@@ -12327,9 +13012,15 @@
       cursorEl.remove();
       return null;
     }
+    let performanceDegraded = isDesktopPerformanceDegraded();
+    let desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
+    let highFidelityDesktopMotion = desktopMotionBudget === "high";
     let trailCanvasDpr = 1;
     function resizeTrailCanvas() {
-      trailCanvasDpr = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
+      trailCanvasDpr = Math.min(
+        highFidelityDesktopMotion ? 1.5 : CURSOR_BALANCED_TRAIL_CANVAS_DPR,
+        Math.max(1, window.devicePixelRatio || 1)
+      );
       trailCanvas.width = Math.round(trailCanvasSize * trailCanvasDpr);
       trailCanvas.height = Math.round(trailCanvasSize * trailCanvasDpr);
       trailCanvas.style.width = `${trailCanvasSize}px`;
@@ -12373,7 +13064,6 @@
     let currentContrastMode = "light";
     let selectionAnimationTimer = 0;
     let lastSelectionAnimationAt = 0;
-    let performanceDegraded = isDesktopPerformanceDegraded();
     const trailHistory = [];
     const relativeTrailPoints = [];
     const sampledTrailPoints = [];
@@ -12444,7 +13134,8 @@
       cursorEl.dataset.cursorMorph = safeToken;
     }
     function trimTrailHistory(nowMs = performance.now()) {
-      while (trailHistory.length > tailPointCount) {
+      const maxTailPointCount = highFidelityDesktopMotion ? tailPointCount : CURSOR_BALANCED_TAIL_POINT_COUNT;
+      while (trailHistory.length > maxTailPointCount) {
         trailHistory.pop();
       }
       while (trailHistory.length > 2) {
@@ -12472,7 +13163,8 @@
         latestPoint.t = nowMs;
         return;
       }
-      const segmentCount = Math.min(maxTrailSegmentsPerMove, Math.max(1, Math.ceil(distance / trailSegmentSizePx)));
+      const maxSegmentsPerMove = highFidelityDesktopMotion ? maxTrailSegmentsPerMove : CURSOR_BALANCED_MAX_TRAIL_SEGMENTS;
+      const segmentCount = Math.min(maxSegmentsPerMove, Math.max(1, Math.ceil(distance / trailSegmentSizePx)));
       const inserts = [];
       for (let step = 1; step <= segmentCount; step += 1) {
         const t = step / segmentCount;
@@ -12586,6 +13278,8 @@
       }, selectionAnimationDurationMs);
     }
     function applyPerformanceMode() {
+      desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
+      highFidelityDesktopMotion = desktopMotionBudget === "high";
       cursorEl.classList.toggle("is-degraded", performanceDegraded);
       if (performanceDegraded) {
         scrollDirection = 0;
@@ -12597,6 +13291,7 @@
         stopRenderLoop();
         return;
       }
+      resizeTrailCanvas();
       startRenderLoop();
     }
     function syncPosition(x, y) {
@@ -12617,6 +13312,7 @@
       headY = y;
       if (!performanceDegraded) {
         pushTrailPoint(x, y, now, true);
+        startRenderLoop();
       }
       cursorEl.style.setProperty("--cursor-x", `${headX.toFixed(2)}px`);
       cursorEl.style.setProperty("--cursor-y", `${headY.toFixed(2)}px`);
@@ -12669,6 +13365,7 @@
       scrollUntilMs = performance.now() + scrollMorphHoldMs;
       pointerEnergy = Math.max(pointerEnergy, 0.48);
       syncScrollState();
+      startRenderLoop();
     }
     function renderTrail(nowMs, deltaMs) {
       headX = targetX;
@@ -12679,7 +13376,7 @@
         cursorEl.style.setProperty("--cursor-tail-opacity", "0");
         clearTrailCanvas();
         syncScrollState(nowMs);
-        return;
+        return false;
       }
       pointerEnergy *= Math.exp(-deltaMs * 0.018);
       syncScrollState(nowMs);
@@ -12691,7 +13388,7 @@
       if (suppressTail || tailOpacity <= 0.003) {
         cursorEl.style.setProperty("--cursor-tail-opacity", "0");
         clearTrailCanvas();
-        return;
+        return pressed || scrollDirection !== 0 || pointerEnergy > 0.01;
       }
       if (trailHistory.length > 0) {
         trailHistory[0].x = headX;
@@ -12714,15 +13411,22 @@
       clearTrailCanvas();
       drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.28, 11 + motionStrength * 4, 0.24);
       drawTrailRibbon(sampledPoints, coreWidth, tailOpacity * 0.72, 5 + motionStrength * 2, 0.12);
+      return true;
     }
     function tick(nowMs) {
       if (disposed) return;
+      const frameIntervalMs = highFidelityDesktopMotion ? CURSOR_HIGH_FIDELITY_FRAME_INTERVAL_MS : CURSOR_BALANCED_FRAME_INTERVAL_MS;
+      if (nowMs - lastFrameMs < frameIntervalMs) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
       const deltaMs = Math.min(34, Math.max(10, nowMs - lastFrameMs || 16.67));
       lastFrameMs = nowMs;
+      let keepAnimating = false;
       if (visible) {
-        renderTrail(nowMs, deltaMs);
+        keepAnimating = renderTrail(nowMs, deltaMs);
       }
-      if (!performanceDegraded) {
+      if (!performanceDegraded && keepAnimating) {
         rafId = requestAnimationFrame(tick);
       } else {
         rafId = 0;

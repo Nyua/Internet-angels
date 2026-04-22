@@ -749,12 +749,11 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
   --ambient-pointer-parallax-x: 0px;
   --ambient-pointer-parallax-y: 0px;
   transition: opacity 220ms ease;
-  will-change: opacity, transform;
 }
 
 @media (pointer: fine) and (hover: hover) {
   .os-ambient-backdrop[data-ambient-pointer-parallax="active"] {
-    transform: translate3d(var(--ambient-pointer-parallax-x), var(--ambient-pointer-parallax-y), 0) scale(1.018);
+    transform: translate3d(var(--ambient-pointer-parallax-x), var(--ambient-pointer-parallax-y), 0);
     transform-origin: center;
   }
 }
@@ -1225,6 +1224,10 @@ body.lastfm-track-panel-open {
   opacity: 0 !important;
 }
 
+.lastfm-track-panel[data-panel-motion="gsap"] {
+  transition: none !important;
+}
+
 .lastfm-track-panel-art-launch {
   position: fixed;
   z-index: 321;
@@ -1240,6 +1243,10 @@ body.lastfm-track-panel-open {
     filter 420ms cubic-bezier(0.2, 0.9, 0.18, 1),
     opacity 140ms ease;
   will-change: transform, border-radius, box-shadow, filter, opacity;
+}
+
+.lastfm-track-panel-art-launch[data-motion-engine="gsap"] {
+  transition: none !important;
 }
 
 .lastfm-track-panel-art-launch-media,
@@ -1278,6 +1285,10 @@ body.lastfm-track-panel-open {
   background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+}
+
+.lastfm-track-panel[data-panel-motion="gsap"] .lastfm-track-panel-backdrop {
+  transition: none !important;
 }
 
 .lastfm-track-panel-shell {
@@ -1698,16 +1709,14 @@ body.lastfm-track-panel-open {
   font-family: var(--lastfm-font);
   isolation: isolate;
   contain: paint;
-  clip-path: inset(0 0 0 0 round 18px);
   transform: translateY(14px) scale(0.985);
   opacity: 0;
   transition:
     transform 220ms ease,
-    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    clip-path 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1);
   scrollbar-width: none;
   -ms-overflow-style: none;
-  will-change: transform, opacity, clip-path;
+  will-change: transform, opacity;
 }
 
 .lastfm-track-panel-window::-webkit-scrollbar {
@@ -1723,6 +1732,20 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel[data-panel-visibility="staged"] .lastfm-track-panel-window {
   transform: translateY(14px) scale(0.985);
   opacity: 0;
+}
+
+.lastfm-track-panel[data-panel-reveal-origin="artwork"] .lastfm-track-panel-window {
+  clip-path: inset(0 0 0 0 round 18px);
+  transition:
+    transform 220ms ease,
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, clip-path;
+}
+
+.lastfm-track-panel[data-panel-motion="gsap"] .lastfm-track-panel-window,
+.lastfm-track-panel[data-panel-motion="gsap"][data-panel-reveal-origin="artwork"] .lastfm-track-panel-window {
+  transition: none !important;
 }
 
 .lastfm-track-panel[data-panel-reveal-origin="artwork"][data-panel-visibility="staged"] .lastfm-track-panel-window {
@@ -2141,6 +2164,10 @@ body.lastfm-track-panel-open {
     opacity 240ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
     filter 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.lastfm-track-panel[data-panel-motion="gsap"] .lastfm-track-panel-deferred-slot[data-lastfm-panel-slot-state] {
+  transition: none !important;
 }
 
 .lastfm-track-panel-deferred-placeholder {
@@ -3814,6 +3841,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     animation-delay: calc(var(--desktop-unfold-order, 0) * 120ms);
     will-change: opacity, transform, clip-path, filter;
   }
+
+  #social-hub-root[data-social-hub-ready="true"] [data-desktop-unfold][data-motion-engine="gsap"] {
+    animation: none !important;
+  }
 }
 
 @keyframes socialHubDesktopUnfold {
@@ -3914,11 +3945,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     will-change: opacity, transform, filter;
   }
 
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-shell[data-desktop-unfold][data-motion-engine="gsap"] .steam-hero-avatar-wrap {
+    animation: none !important;
+  }
+
   #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-shell[data-desktop-unfold] .steam-hero-copy {
     transform-origin: top center;
     animation: socialHubDesktopUnfoldHero 560ms cubic-bezier(0.2, 0.85, 0.18, 1) both;
     animation-delay: calc(var(--desktop-unfold-order, 0) * 120ms + 56ms);
     will-change: opacity, transform, clip-path, filter;
+  }
+
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-shell[data-desktop-unfold][data-motion-engine="gsap"] .steam-hero-copy {
+    animation: none !important;
   }
 }
 

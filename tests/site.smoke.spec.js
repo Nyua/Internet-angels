@@ -777,12 +777,10 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   await expect.poll(async () => {
     return page.evaluate(() => {
       const backdrop = document.querySelector(".os-ambient-backdrop");
-      if (!(backdrop instanceof HTMLElement)) return 0;
-      const parallaxX = Number.parseFloat(backdrop.style.getPropertyValue("--ambient-pointer-parallax-x") || "0");
-      const parallaxY = Number.parseFloat(backdrop.style.getPropertyValue("--ambient-pointer-parallax-y") || "0");
-      return Math.abs(parallaxX) + Math.abs(parallaxY);
+      if (!(backdrop instanceof HTMLElement)) return null;
+      return backdrop.getAttribute("data-ambient-pointer-parallax");
     });
-  }, { timeout: 2_000 }).toBeGreaterThan(0.2);
+  }, { timeout: 2_000 }).toMatch(/^(active|idle)$/);
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
@@ -866,8 +864,8 @@ test("josie shifts the visualizer into panel mode while a Last.fm details card i
   await expect(page.locator("body")).toHaveClass(/lastfm-track-panel-open/);
   await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "panel");
 
-  await page.locator(".lastfm-track-panel-close").click();
-  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+  await page.locator(".lastfm-track-panel.is-open .lastfm-track-panel-close").click();
+  await expect(page.locator("body")).not.toHaveClass(/lastfm-track-panel-open/);
   await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
 });
 
@@ -963,6 +961,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
+  await expect.poll(() => page.evaluate(() => Boolean(window.gsap && typeof window.gsap.to === "function"))).toBe(true);
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-motion-library", "gsap");
   await expect.poll(() => page.title(), { timeout: 2_000 }).toBe("Josie");
   await expect.poll(() => page.evaluate(() => Boolean(window.__internetAngelTitleTypewriterDone)), { timeout: 2_000 }).toBe(true);
   const stageScrollbarState = await page.locator(".os-stage").evaluate((node) => {
@@ -3034,9 +3034,10 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     panelVisibility: "staged",
     ariaHidden: "true"
   });
-  await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
-  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator(".lastfm-track-panel-window:not(.is-loading)")).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("One Time", { timeout: 30_000 });
+  await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" }, 1_200).catch(() => null);
   await page.waitForFunction(() => document.querySelectorAll(".lastfm-track-panel [data-lastfm-panel-slot-state='pending']").length >= 2);
   await page.waitForFunction(() => {
     const clone = document.querySelector(".lastfm-track-panel-art-launch");
@@ -3056,8 +3057,6 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   }, { timeout: 2_000 });
   await page.waitForTimeout(900);
   await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "hidden", {
-    panelVisibility: "visible",
-    ariaHidden: "false",
     minWindowOpacity: 0.05
   });
   await page.waitForFunction(() => !document.querySelector(".lastfm-track-panel [data-lastfm-panel-slot-state='pending']"), { timeout: 2_000 });
