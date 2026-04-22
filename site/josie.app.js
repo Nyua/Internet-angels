@@ -75,6 +75,37 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
+  var ANIMATION_FRAME_PACING_TOLERANCE_MS = 1.25;
+  function createAnimationFrameGate(initialIntervalMs = 1e3 / 60) {
+    const fallbackIntervalMs = Math.max(1, Number(initialIntervalMs) || 1e3 / 60);
+    let lastSampleMs = 0;
+    let carryMs = 0;
+    return {
+      shouldRender(nowMs, nextIntervalMs = fallbackIntervalMs) {
+        const intervalMs = Math.max(1, Number(nextIntervalMs) || fallbackIntervalMs);
+        if (!Number.isFinite(nowMs) || nowMs <= 0) {
+          return true;
+        }
+        if (!lastSampleMs) {
+          lastSampleMs = nowMs;
+          carryMs = intervalMs;
+          return true;
+        }
+        const deltaMs = Math.max(0, Math.min(intervalMs * 4, nowMs - lastSampleMs));
+        lastSampleMs = nowMs;
+        carryMs = Math.min(intervalMs * 2, carryMs + deltaMs);
+        if (carryMs + ANIMATION_FRAME_PACING_TOLERANCE_MS < intervalMs) {
+          return false;
+        }
+        carryMs = Math.max(0, carryMs - intervalMs);
+        return true;
+      },
+      reset() {
+        lastSampleMs = 0;
+        carryMs = 0;
+      }
+    };
+  }
   function getCanvas2DContext(canvas, options = null) {
     if (!(canvas instanceof HTMLCanvasElement)) return null;
     if (options && typeof options === "object") {
@@ -1934,6 +1965,11 @@
     const SHUFFLE_BAR_MAX_GAP_PX = 0;
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
+    const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
+    const SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
+    const SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 20;
+    const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
+    const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_PANEL_MAX_CANVAS_DPR = 1.15;
     const SHUFFLE_PANEL_TRACE_POINT_LIMIT = 176;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -1988,6 +2024,7 @@
       alphaMax: 0.84
     });
     const asciiAlphaStyleCache = [];
+    const visualizerFrameGate = createAnimationFrameGate(SHUFFLE_ACTIVE_FRAME_INTERVAL_MS);
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -3267,6 +3304,19 @@
         && !document.hidden
         && !backgroundThrottled
       );
+      const visualizerMode = getCurrentVisualizerMode();
+      const activeFrameIntervalMs = visualizerMode === "degraded"
+        ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS
+        : visualizerMode === "panel"
+          ? SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS
+          : usesBalancedDesktopVisualizerBudget()
+            ? SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS
+            : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
+      const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
+      if (!visualizerFrameGate.shouldRender(nowMs, frameIntervalMs)) {
+        rafId = window.requestAnimationFrame(renderLoop);
+        return;
+      }
       const pulseMetrics = shouldRenderDesktopWave
         ? measureReactivePulse()
         : { beat: 0, flash: 0, bass: 0, bassFlash: 0, sampled: false };
@@ -3294,6 +3344,7 @@
       traceSampleIndexLookup = new Uint16Array(0);
       traceSampleLookupSourceLength = 0;
       traceSampleLookupPointCount = 0;
+      visualizerFrameGate.reset();
       syncReactiveVisuals(0, 0);
       syncVisualizerPerformanceMode();
       if (playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !isInternetAngelBackgroundThrottled()) {
@@ -10780,7 +10831,10 @@
     const ambientScrollParallaxFactor = 0.26;
     const ambientPointerParallaxMaxOffsetX = 8;
     const ambientPointerParallaxMaxOffsetY = 10;
+    const AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
+    const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 60;
     const AMBIENT_BALANCED_DESKTOP_MAX_DPR = 1.5;
+    const ambientFrameGate = createAnimationFrameGate(AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS);
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -11766,6 +11820,11 @@
         drawStaticFrame(0);
         return;
       }
+      const frameIntervalMs = highFidelityDesktopMotion ? AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS : AMBIENT_BALANCED_FRAME_INTERVAL_MS;
+      if (!ambientFrameGate.shouldRender(timeMs, frameIntervalMs)) {
+        rafId = window.requestAnimationFrame(renderFrame);
+        return;
+      }
       ambientDeltaSec = lastAmbientFrameMs ? Math.min(0.05, Math.max(1 / 240, (timeMs - lastAmbientFrameMs) * 0.001)) : 1 / 60;
       lastAmbientFrameMs = timeMs;
       if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
@@ -11784,6 +11843,7 @@
       backdropParallaxTargetY = 0;
       backdropParallaxCurrentX = 0;
       backdropParallaxCurrentY = 0;
+      ambientFrameGate.reset();
       applyBackdropParallax(true);
       clearCanvas();
     }
@@ -11824,6 +11884,7 @@
       performanceDegraded = isDesktopPerformanceDegraded();
       desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
       highFidelityDesktopMotion = desktopMotionBudget === "high";
+      ambientFrameGate.reset();
       resize();
       sync();
     }
