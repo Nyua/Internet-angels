@@ -1908,7 +1908,6 @@
     let appliedVisualizerModePlayerRoot = null;
     let appliedVisualizerModeWaveSurface = null;
     let lastUiState = null;
-    let lastVisualizerFrameMs = 0;
     let performanceDegraded = isDesktopPerformanceDegraded();
     let desktopMotionBudget = getDesktopMotionBudget(performanceDegraded);
     let pendingSegmentSeekTime = null;
@@ -1935,11 +1934,6 @@
     const SHUFFLE_BAR_MAX_GAP_PX = 0;
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
-    const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
-    const SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
-    const SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 20;
-    const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
-    const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_PANEL_MAX_CANVAS_DPR = 1.15;
     const SHUFFLE_PANEL_TRACE_POINT_LIMIT = 176;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
@@ -3273,20 +3267,6 @@
         && !document.hidden
         && !backgroundThrottled
       );
-      const visualizerMode = getCurrentVisualizerMode();
-      const activeFrameIntervalMs = visualizerMode === "degraded"
-        ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS
-        : visualizerMode === "panel"
-          ? SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS
-          : usesBalancedDesktopVisualizerBudget()
-            ? SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS
-            : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
-      const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
-      if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
-        rafId = window.requestAnimationFrame(renderLoop);
-        return;
-      }
-      lastVisualizerFrameMs = nowMs;
       const pulseMetrics = shouldRenderDesktopWave
         ? measureReactivePulse()
         : { beat: 0, flash: 0, bass: 0, bassFlash: 0, sampled: false };
@@ -10800,8 +10780,6 @@
     const ambientScrollParallaxFactor = 0.26;
     const ambientPointerParallaxMaxOffsetX = 8;
     const ambientPointerParallaxMaxOffsetY = 10;
-    const AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
-    const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 60;
     const AMBIENT_BALANCED_DESKTOP_MAX_DPR = 1.5;
     const bodyObserver = new MutationObserver(() => {
       sync();
@@ -11786,11 +11764,6 @@
       if (disposed) return;
       if (!shouldAnimate()) {
         drawStaticFrame(0);
-        return;
-      }
-      const frameIntervalMs = highFidelityDesktopMotion ? AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS : AMBIENT_BALANCED_FRAME_INTERVAL_MS;
-      if (lastAmbientFrameMs && timeMs - lastAmbientFrameMs < frameIntervalMs) {
-        rafId = window.requestAnimationFrame(renderFrame);
         return;
       }
       ambientDeltaSec = lastAmbientFrameMs ? Math.min(0.05, Math.max(1 / 240, (timeMs - lastAmbientFrameMs) * 0.001)) : 1 / 60;
