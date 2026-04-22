@@ -263,6 +263,7 @@
       const handoffLeadSeconds = 2;
       const introEndHandoffDelayMs = 180;
       const repeatVisitHandoffDelayMs = 160;
+      const defaultHandoffReadyTimeoutMs = 12_000;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Wings.mp4";
       const introReadyMessageType = "josie-handoff-ready";
@@ -287,6 +288,7 @@
       let skipMovieMode = false;
       let repeatVisitClickArmed = false;
       let repeatVisitHandoffTimer = 0;
+      let handoffReadyFallbackTimer = 0;
       let introEndHandoffTimer = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
@@ -295,6 +297,13 @@
       const titleTypewriterStartDelayMs = 180 * titleTypewriterTimingScale;
       const titleTypewriterStepDelayMs = 95 * titleTypewriterTimingScale;
       const titleTypewriterHoldDelayMs = 900 * titleTypewriterTimingScale;
+      const handoffReadyTimeoutMs = (() => {
+        const override = Number(window.__internetAngelBootTimeoutMs);
+        if (Number.isFinite(override) && override >= 0) {
+          return override;
+        }
+        return defaultHandoffReadyTimeoutMs;
+      })();
       let monitorRafId = 0;
 
       function startDocumentTitleTypewriter(finalTitle) {
@@ -397,6 +406,21 @@
         repeatVisitHandoffTimer = 0;
       }
 
+      function clearHandoffReadyFallbackTimer() {
+        if (!handoffReadyFallbackTimer) return;
+        window.clearTimeout(handoffReadyFallbackTimer);
+        handoffReadyFallbackTimer = 0;
+      }
+
+      function armHandoffReadyFallbackTimer() {
+        if (handoffReadyFallbackTimer || handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
+        handoffReadyFallbackTimer = window.setTimeout(() => {
+          handoffReadyFallbackTimer = 0;
+          if (handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
+          performFallbackNavigation();
+        }, handoffReadyTimeoutMs);
+      }
+
       function clearIntroEndHandoffTimer() {
         if (!introEndHandoffTimer) return;
         window.clearTimeout(introEndHandoffTimer);
@@ -435,6 +459,7 @@
         setState("preloading_josie");
         handoffFrame.src = resolveJosieHandoffUrl().toString();
         interactionSfx?.setTrustedProxyWindow?.(handoffFrame.contentWindow);
+        armHandoffReadyFallbackTimer();
       }
 
       function isTransitionWindowOpen() {
@@ -456,6 +481,7 @@
           const frameRoot = handoffFrame.contentDocument?.querySelector("#social-hub-root[data-social-hub-ready='true']");
           if (frameRoot) {
             iframeReady = true;
+            clearHandoffReadyFallbackTimer();
           }
         } catch {
         }
@@ -490,6 +516,7 @@
         interactionSfx?.setPage?.("josie");
         clearMonitorLoop();
         clearRepeatVisitTimer();
+        clearHandoffReadyFallbackTimer();
         clearIntroEndHandoffTimer();
         stopIntroPlayback();
         document.body.classList.remove("is-handoff-visible");
@@ -511,6 +538,7 @@
         setState("handoff_fallback_navigation");
         clearMonitorLoop();
         clearRepeatVisitTimer();
+        clearHandoffReadyFallbackTimer();
         clearIntroEndHandoffTimer();
         stopIntroPlayback();
         window.location.replace(resolveJosieDocumentUrl().toString());
@@ -613,6 +641,7 @@
         const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
         if (messageType !== introReadyMessageType) return;
         iframeReady = true;
+        clearHandoffReadyFallbackTimer();
         if (!handoffVisible && (introStarted || repeatVisitClickArmed)) {
           if (shouldExpediteHandoff()) {
             beginRepeatVisitHandoff();

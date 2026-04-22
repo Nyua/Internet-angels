@@ -511,6 +511,45 @@ test("root falls back to a hard josie navigation if the handoff iframe never bec
   await expect(page.locator("#introVideo")).toHaveCount(0);
 });
 
+test("root hard-fallbacks to josie when handoff readiness stalls past the boot timeout", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelBootTimeoutMs = 250;
+  });
+  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/");
+  await page.locator("#introStartButton").click();
+  await expect(page).toHaveURL(/\/josie$/, { timeout: 5_000 });
+  await expect(page).toHaveTitle(/Josie/);
+});
+
+test("josie clears the site-load curtain when bootstrap stalls", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelBootTimeoutMs = 250;
+  });
+  await page.route(/\/josie\.client\.js(?:\?.*)?$/, async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/josie.html");
+  await expect.poll(async () => page.evaluate(() => ({
+    siteLoadPlaying: document.body?.classList.contains("site-load-playing") ?? false,
+    siteLoadComplete: Boolean(window.__amesSiteLoadComplete),
+    siteLoadFallback: document.body?.dataset?.siteLoadFallback || ""
+  })), { timeout: 5_000 }).toMatchObject({
+    siteLoadPlaying: false,
+    siteLoadComplete: true
+  });
+  const stalledState = await page.evaluate(() => ({
+    siteLoadPlaying: document.body?.classList.contains("site-load-playing") ?? false,
+    siteLoadComplete: Boolean(window.__amesSiteLoadComplete),
+    siteLoadFallback: document.body?.dataset?.siteLoadFallback || ""
+  }));
+  expect(["error", "timeout"]).toContain(stalledState.siteLoadFallback);
+});
+
 test("mobile root plays Wings centered in the viewport instead of skipping the intro", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/");

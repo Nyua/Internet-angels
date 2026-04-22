@@ -369,6 +369,14 @@
       (() => {
         const SITE_LOAD_COMPLETE_EVENT = "josie:site-load-complete";
         const handoffMode = Boolean(window.__josieHandoffMode);
+        const defaultSiteLoadTimeoutMs = 12_000;
+        const siteLoadTimeoutMs = (() => {
+          const override = Number(window.__internetAngelBootTimeoutMs);
+          if (Number.isFinite(override) && override >= 0) {
+            return override;
+          }
+          return defaultSiteLoadTimeoutMs;
+        })();
         const compactMobileBreakpointPx = 820;
         function isCompactMobileViewport() {
           const viewportWidth = Math.min(
@@ -432,6 +440,7 @@
         const activeLayers = [];
         let overlayRoot = null;
         let loopHandle = 0;
+        let siteLoadForceReleased = false;
         window.__amesLoadingIconVariantPath = slicePaths.loadingIcon;
         window.__amesLoadingIconUsesVariant = false;
 
@@ -464,6 +473,15 @@
             window.__amesSiteLoadComplete = true;
             window.dispatchEvent(new CustomEvent(SITE_LOAD_COMPLETE_EVENT));
           }
+        }
+
+        function forceCompleteSiteLoad(reason = "timeout") {
+          if (siteLoadForceReleased) return;
+          siteLoadForceReleased = true;
+          if (document.body instanceof HTMLElement) {
+            document.body.dataset.siteLoadFallback = reason;
+          }
+          stopSequence();
         }
 
         function cleanupOverlayRoot() {
@@ -790,9 +808,9 @@
           const socialHubReady = await waitForCondition(() => {
             const root = document.querySelector("#social-hub-root");
             return root && root.getAttribute("data-social-hub-ready") === "true";
-          });
+          }, siteLoadTimeoutMs);
           if (!socialHubReady) {
-            setSiteLoadPlaying(false);
+            forceCompleteSiteLoad("timeout");
             return;
           }
 
@@ -825,9 +843,20 @@
           }
           setSiteLoadPlaying(true);
           void runSliceBootSequence().catch(() => {
-            setSiteLoadPlaying(false);
+            forceCompleteSiteLoad("error");
           });
         }
+
+        window.addEventListener("error", () => {
+          if (window.__amesSiteLoadPlaying) {
+            forceCompleteSiteLoad("error");
+          }
+        });
+        window.addEventListener("unhandledrejection", () => {
+          if (window.__amesSiteLoadPlaying) {
+            forceCompleteSiteLoad("error");
+          }
+        });
 
         if (document.readyState === "complete") {
           startSequence();
