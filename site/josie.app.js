@@ -1936,7 +1936,7 @@
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
-    const SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 48;
+    const SHUFFLE_BALANCED_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
     const SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 20;
     const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
@@ -10801,7 +10801,7 @@
     const ambientPointerParallaxMaxOffsetX = 8;
     const ambientPointerParallaxMaxOffsetY = 10;
     const AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
-    const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 48;
+    const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 60;
     const AMBIENT_BALANCED_DESKTOP_MAX_DPR = 1.5;
     const bodyObserver = new MutationObserver(() => {
       sync();
@@ -12970,8 +12970,6 @@
     const trailSubdivisionCount = 1;
     const scrollMorphHoldMs = 170;
     const selectionAnimationDurationMs = 180;
-    const CURSOR_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
-    const CURSOR_BALANCED_FRAME_INTERVAL_MS = 1e3 / 48;
     const CURSOR_BALANCED_TAIL_POINT_COUNT = 8;
     const CURSOR_BALANCED_MAX_TRAIL_SEGMENTS = 3;
     const CURSOR_BALANCED_TRAIL_CANVAS_DPR = 1.1;
@@ -13415,11 +13413,6 @@
     }
     function tick(nowMs) {
       if (disposed) return;
-      const frameIntervalMs = highFidelityDesktopMotion ? CURSOR_HIGH_FIDELITY_FRAME_INTERVAL_MS : CURSOR_BALANCED_FRAME_INTERVAL_MS;
-      if (nowMs - lastFrameMs < frameIntervalMs) {
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
       const deltaMs = Math.min(34, Math.max(10, nowMs - lastFrameMs || 16.67));
       lastFrameMs = nowMs;
       let keepAnimating = false;
