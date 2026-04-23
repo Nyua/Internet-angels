@@ -106,6 +106,18 @@
       }
     };
   }
+  function resolveCanvasRenderDpr(cssWidth, cssHeight, maxDpr, pixelBudget, minDpr = 1) {
+    const safeMinDpr = Math.max(1, Number(minDpr) || 1);
+    const safeMaxDpr = Math.max(safeMinDpr, Number(maxDpr) || safeMinDpr);
+    const safeWidth = Math.max(1, Number(cssWidth) || 1);
+    const safeHeight = Math.max(1, Number(cssHeight) || 1);
+    const safePixelBudget = Number(pixelBudget) || 0;
+    if (!(safePixelBudget > 0)) {
+      return safeMaxDpr;
+    }
+    const budgetLimitedDpr = Math.sqrt(safePixelBudget / Math.max(1, safeWidth * safeHeight));
+    return clamp(budgetLimitedDpr, safeMinDpr, safeMaxDpr);
+  }
   function getCanvas2DContext(canvas, options = null) {
     if (!(canvas instanceof HTMLCanvasElement)) return null;
     if (options && typeof options === "object") {
@@ -1953,6 +1965,8 @@
     const SHUFFLE_MAX_CANVAS_DPR = 2;
     const SHUFFLE_BALANCED_MAX_CANVAS_DPR = 1.5;
     const SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR = 1.25;
+    const SHUFFLE_HIGH_FIDELITY_PIXEL_BUDGET = 42e5;
+    const SHUFFLE_BALANCED_PIXEL_BUDGET = 32e5;
     const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_BALANCED_TRACE_POINT_LIMIT = 264;
@@ -3266,7 +3280,13 @@
           : balancedDesktopVisualizer
             ? SHUFFLE_BALANCED_MAX_CANVAS_DPR
             : SHUFFLE_MAX_CANVAS_DPR;
-      const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
+      const targetDpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
+      const pixelBudget = usesTouchMobileVisualizerProfile()
+        ? 0
+        : balancedDesktopVisualizer
+          ? SHUFFLE_BALANCED_PIXEL_BUDGET
+          : SHUFFLE_HIGH_FIDELITY_PIXEL_BUDGET;
+      const dpr = resolveCanvasRenderDpr(cssWidth, cssHeight, targetDpr, pixelBudget);
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
       const resizedCanvas = waveCanvas.width !== pixelWidth || waveCanvas.height !== pixelHeight;
@@ -10895,9 +10915,12 @@
     const ambientScrollParallaxFactor = 0.26;
     const ambientPointerParallaxMaxOffsetX = 8;
     const ambientPointerParallaxMaxOffsetY = 10;
+    const AMBIENT_HIGH_FIDELITY_MAX_DPR = 1.6;
     const AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS = 1e3 / 60;
     const AMBIENT_BALANCED_FRAME_INTERVAL_MS = 1e3 / 60;
     const AMBIENT_BALANCED_DESKTOP_MAX_DPR = 1.5;
+    const AMBIENT_HIGH_FIDELITY_PIXEL_BUDGET = 68e5;
+    const AMBIENT_BALANCED_PIXEL_BUDGET = 52e5;
     const ambientFrameGate = createAnimationFrameGate(AMBIENT_HIGH_FIDELITY_FRAME_INTERVAL_MS);
     const bodyObserver = new MutationObserver(() => {
       sync();
@@ -11565,13 +11588,19 @@
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
-      dpr = Math.max(
+      const targetDpr = Math.max(
         1,
         Math.min(
-          compactMobileLayout ? 1.25 : highFidelityDesktopMotion ? 2 : AMBIENT_BALANCED_DESKTOP_MAX_DPR,
+          compactMobileLayout ? 1.25 : highFidelityDesktopMotion ? AMBIENT_HIGH_FIDELITY_MAX_DPR : AMBIENT_BALANCED_DESKTOP_MAX_DPR,
           window.devicePixelRatio || 1
         )
       );
+      const pixelBudget = compactMobileLayout
+        ? 0
+        : highFidelityDesktopMotion
+          ? AMBIENT_HIGH_FIDELITY_PIXEL_BUDGET
+          : AMBIENT_BALANCED_PIXEL_BUDGET;
+      dpr = resolveCanvasRenderDpr(cssWidth, cssHeight, targetDpr, pixelBudget);
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
       if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
