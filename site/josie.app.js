@@ -1840,6 +1840,7 @@
     let barLevelValues = new Float32Array(0);
     let barPeakValues = new Float32Array(0);
     let rafId = 0;
+    let lastVisualizerFrameMs = 0;
     let loadState = "loading";
     let playbackUnlocked = !document.body?.classList.contains("site-load-playing") && !Boolean(window.__josieHandoffPending);
     let siteLoadWaitPromise = null;
