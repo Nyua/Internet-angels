@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { writeShuffleManifest } from "./shuffle-manifest.js";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 const siteDir = path.join(rootDir, "site");
@@ -11,6 +12,7 @@ const clientOutputPath = path.join(distDir, "josie.client.js");
 const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
+const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
 const gsapSourcePath = path.join(nodeModulesDir, "gsap", "dist", "gsap.min.js");
 const gsapOutputPath = path.join(distDir, "vendor", "gsap.min.js");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
@@ -154,6 +156,7 @@ if (fs.existsSync(appOutputPath)) {
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
+writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
 fs.mkdirSync(path.dirname(gsapOutputPath), { recursive: true });
 fs.copyFileSync(gsapSourcePath, gsapOutputPath);
 rewriteHtmlAssetVersions();

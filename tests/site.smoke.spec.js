@@ -301,6 +301,117 @@ async function installWindowFocusOverride(page) {
   });
 }
 
+async function installShuffleAudioMock(page, options = {}) {
+  await page.addInitScript((nextOptions) => {
+    const NativeAudio = window.Audio;
+    const missingPathTokens = Array.isArray(nextOptions?.missingPathTokens)
+      ? nextOptions.missingPathTokens.map((token) => String(token || "")).filter(Boolean)
+      : [];
+    window.Audio = function(...args) {
+      const audio = new NativeAudio(...args);
+      let paused = true;
+      let ended = false;
+      let currentTime = 0;
+      let duration = 30;
+      let assignedSrc = "";
+      Object.defineProperty(audio, "paused", {
+        configurable: true,
+        get() {
+          return paused;
+        }
+      });
+      Object.defineProperty(audio, "ended", {
+        configurable: true,
+        get() {
+          return ended;
+        }
+      });
+      Object.defineProperty(audio, "currentTime", {
+        configurable: true,
+        get() {
+          return currentTime;
+        },
+        set(value) {
+          currentTime = Number(value) || 0;
+          audio.dispatchEvent(new Event("timeupdate"));
+        }
+      });
+      Object.defineProperty(audio, "duration", {
+        configurable: true,
+        get() {
+          return duration;
+        }
+      });
+      Object.defineProperty(audio, "src", {
+        configurable: true,
+        get() {
+          return assignedSrc;
+        },
+        set(value) {
+          assignedSrc = String(value || "");
+        }
+      });
+      Object.defineProperty(audio, "currentSrc", {
+        configurable: true,
+        get() {
+          return assignedSrc;
+        }
+      });
+      audio.load = () => {
+        paused = true;
+        ended = false;
+        currentTime = 0;
+        duration = 30;
+        const source = String(assignedSrc || "");
+        window.setTimeout(() => {
+          if (missingPathTokens.some((token) => source.includes(token))) {
+            audio.dispatchEvent(new Event("error"));
+            return;
+          }
+          audio.dispatchEvent(new Event("loadedmetadata"));
+          audio.dispatchEvent(new Event("durationchange"));
+          audio.dispatchEvent(new Event("loadeddata"));
+          audio.dispatchEvent(new Event("timeupdate"));
+        }, 0);
+      };
+      audio.play = () => {
+        paused = false;
+        ended = false;
+        audio.dispatchEvent(new Event("play"));
+        audio.dispatchEvent(new Event("timeupdate"));
+        return Promise.resolve();
+      };
+      audio.pause = () => {
+        const wasPaused = paused;
+        paused = true;
+        if (!wasPaused) {
+          audio.dispatchEvent(new Event("pause"));
+        }
+      };
+      return audio;
+    };
+    window.Audio.prototype = NativeAudio.prototype;
+  }, options);
+}
+
+async function readFirstSelectableShuffleTrack(page) {
+  return page.evaluate(async () => {
+    try {
+      const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const track = (Array.isArray(data?.tracks) ? data.tracks : []).find((entry) => Number(entry?.segmentIndex || 0) === 0);
+      if (!track) return null;
+      return {
+        title: String(track.displayTitle || track.title || "").trim(),
+        artist: String(track.displayArtist || track.artist || "").trim()
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
 });
@@ -657,6 +768,7 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  const expectedTrack = await readFirstSelectableShuffleTrack(page);
 
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
@@ -716,8 +828,8 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   expect(degradedVisualizerState.wavePortal).toBe(true);
   expect(degradedVisualizerState.waveCanvas).toBe(true);
   expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
-  expect(degradedVisualizerState.title).toBe("trinket [full album]");
-  expect(degradedVisualizerState.artist).toBe("tsubi club");
+  expect(degradedVisualizerState.title).toBe(expectedTrack?.title || "");
+  expect(degradedVisualizerState.artist).toBe(expectedTrack?.artist || "");
 });
 
 test("desktop Josie ignores legacy frame-budget downgrade requests", async ({ page }) => {
@@ -889,6 +1001,73 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
 });
 
+test("josie skips a missing shuffle file and falls through to another available song", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await installShuffleAudioMock(page, {
+    missingPathTokens: ["missing-track.mp3"]
+  });
+  await page.route("**/assets/shuffle-manifest.json", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tracks: [
+          {
+            id: "missing-track",
+            groupId: "missing-track",
+            title: "Missing Song",
+            displayTitle: "Missing Song",
+            artist: "Broken Artist",
+            displayArtist: "Broken Artist",
+            path: "/Shuffle/missing-track.mp3",
+            addedAt: "2026-04-23T02:00:00.000Z",
+            segmentIndex: 0,
+            segmentCount: 1,
+            segmentStart: 0,
+            segmentOffset: 0
+          },
+          {
+            id: "working-track",
+            groupId: "working-track",
+            title: "Working Song",
+            displayTitle: "Working Song",
+            artist: "Working Artist",
+            displayArtist: "Working Artist",
+            path: "/Shuffle/working-track.mp3",
+            addedAt: "2026-04-22T02:00:00.000Z",
+            segmentIndex: 0,
+            segmentCount: 1,
+            segmentStart: 0,
+            segmentOffset: 0
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const track = window.__internetAngelShuffleDebug?.getTrack?.();
+    const state = window.__internetAngelShuffleDebug?.getState?.();
+    return track?.id === "working-track"
+      && state?.hasTrack === true
+      && state?.playing === true
+      && state?.title === "Working Song";
+  }, null, { timeout: 15_000 });
+
+  const recoveredState = await page.evaluate(() => ({
+    track: window.__internetAngelShuffleDebug?.getTrack?.() || null,
+    state: window.__internetAngelShuffleDebug?.getState?.() || null
+  }));
+  expect(recoveredState.track?.id).toBe("working-track");
+  expect(recoveredState.track?.title).toBe("Working Song");
+  expect(recoveredState.track?.artist).toBe("Working Artist");
+  expect(recoveredState.state?.hasTrack).toBe(true);
+  expect(recoveredState.state?.playing).toBe(true);
+  expect(recoveredState.state?.title).toBe("Working Song");
+});
+
 test("josie shifts the visualizer into panel mode while a Last.fm details card is open", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
@@ -908,6 +1087,48 @@ test("josie shifts the visualizer into panel mode while a Last.fm details card i
 
 test("josie hands segmented shuffle tracks across the midpoint without resetting visible playback", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await installShuffleAudioMock(page);
+  await page.route("**/assets/shuffle-manifest.json", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tracks: [
+          {
+            id: "segment-track-part-1",
+            groupId: "segment-track",
+            title: "Segment Track",
+            displayTitle: "Segment Track",
+            artist: "Segment Artist",
+            displayArtist: "Segment Artist",
+            path: "/Shuffle/segment-track-part-1.mp3",
+            addedAt: "2026-04-23T02:00:00.000Z",
+            segmentIndex: 0,
+            segmentCount: 2,
+            segmentStart: 0,
+            segmentOffset: 0,
+            groupDuration: 1678,
+            nextTrackId: "segment-track-part-2"
+          },
+          {
+            id: "segment-track-part-2",
+            groupId: "segment-track",
+            title: "Segment Track",
+            displayTitle: "Segment Track",
+            artist: "Segment Artist",
+            displayArtist: "Segment Artist",
+            path: "/Shuffle/segment-track-part-2.mp3",
+            addedAt: "2026-04-23T02:00:00.000Z",
+            segmentIndex: 1,
+            segmentCount: 2,
+            segmentStart: 0,
+            segmentOffset: 932,
+            groupDuration: 1678
+          }
+        ]
+      })
+    });
+  });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
@@ -922,8 +1143,8 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
     };
   });
   expect(firstSegment.track?.segmentCount).toBe(2);
-  expect(firstSegment.state?.title).toBe("trinket [full album]");
-  expect(firstSegment.state?.artist).toBe("tsubi club");
+  expect(firstSegment.state?.title).toBe("Segment Track");
+  expect(firstSegment.state?.artist).toBe("Segment Artist");
   expect(firstSegment.state?.duration).toBeCloseTo(1678, 0);
 
   await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceSegment?.());
@@ -940,8 +1161,8 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
     };
   });
   expect(secondSegment.track?.segmentOffset).toBeCloseTo(932, 0);
-  expect(secondSegment.state?.title).toBe("trinket [full album]");
-  expect(secondSegment.state?.artist).toBe("tsubi club");
+  expect(secondSegment.state?.title).toBe("Segment Track");
+  expect(secondSegment.state?.artist).toBe("Segment Artist");
   expect(secondSegment.state?.duration).toBeCloseTo(1678, 0);
   expect(secondSegment.state?.currentTime).toBeGreaterThan(931);
   expect(secondSegment.state?.progress).toBeGreaterThan(0.49);
@@ -998,6 +1219,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
+  const expectedTrack = await readFirstSelectableShuffleTrack(page);
   await expect.poll(() => page.evaluate(() => Boolean(window.gsap && typeof window.gsap.to === "function"))).toBe(true);
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-motion-library", "gsap");
   await expect.poll(() => page.title(), { timeout: 2_000 }).toBe("Josie");
@@ -1053,8 +1275,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText("trinket [full album]");
-  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText("tsubi club");
+  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");
+  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedTrack?.artist || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
     const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
@@ -2432,6 +2654,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
+  const expectedTrack = await readFirstSelectableShuffleTrack(page);
 
   await expect(page.locator("[data-mobile-speaker-toggle]")).toBeVisible();
   await expect(page.locator(".josie-mobile-audio-player")).toHaveCount(0);
@@ -2478,8 +2701,8 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText("trinket [full album]");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText("tsubi club");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(expectedTrack?.title || "");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedTrack?.artist || "");
   await expect.poll(async () => {
     return page.evaluate(() => {
       const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");

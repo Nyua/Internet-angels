@@ -1,35 +1,46 @@
 {
   "tracks": [
     {
-      "id": "trinket-full-album-part-1",
-      "groupId": "trinket-full-album",
-      "title": "trinket [full album]",
-      "displayTitle": "trinket [full album]",
-      "artist": "tsubi club",
-      "displayArtist": "tsubi club",
-      "path": "/Shuffle/tsubi%20club%20-%20trinket%20%5Bfull%20album%5D%20-%20tsubi%20club%20%28part%201%29.mp3",
-      "addedAt": "2026-04-19T00:00:00+10:00",
+      "id": "2-her-feat-tjayy-ayowitty",
+      "groupId": "2-her-feat-tjayy-ayowitty",
+      "title": "2 her (feat. TJAYY)",
+      "displayTitle": "2 her (feat. TJAYY)",
+      "artist": "ayowitty",
+      "displayArtist": "ayowitty",
+      "path": "/Shuffle/2%20her%20(feat.%20TJAYY)%20-%20ayowitty.mp3",
+      "addedAt": "2026-04-23T01:02:08.473Z",
       "segmentIndex": 0,
-      "segmentCount": 2,
+      "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0,
-      "groupDuration": 1678,
-      "nextTrackId": "trinket-full-album-part-2"
+      "segmentOffset": 0
     },
     {
-      "id": "trinket-full-album-part-2",
-      "groupId": "trinket-full-album",
-      "title": "trinket [full album]",
-      "displayTitle": "trinket [full album]",
-      "artist": "tsubi club",
-      "displayArtist": "tsubi club",
-      "path": "/Shuffle/tsubi%20club%20-%20trinket%20%5Bfull%20album%5D%20-%20tsubi%20club%20%28part%202%29.mp3",
-      "addedAt": "2026-04-19T00:00:00+10:00",
-      "segmentIndex": 1,
-      "segmentCount": 2,
+      "id": "griffin-feat-skyte-tjayy-voodoochild-release",
+      "groupId": "griffin-feat-skyte-tjayy-voodoochild-release",
+      "title": "griffin (feat. Skyte, TJAYY & VOODOOCHILD)",
+      "displayTitle": "griffin (feat. Skyte, TJAYY & VOODOOCHILD)",
+      "artist": "Release",
+      "displayArtist": "Release",
+      "path": "/Shuffle/griffin%20(feat.%20Skyte%2C%20TJAYY%20%26%20VOODOOCHILD)%20-%20Release.mp3",
+      "addedAt": "2026-04-23T00:57:44.610Z",
+      "segmentIndex": 0,
+      "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 932,
-      "groupDuration": 1678
+      "segmentOffset": 0
+    },
+    {
+      "id": "backdoor-unknown-artist",
+      "groupId": "backdoor-unknown-artist",
+      "title": "Backdoor",
+      "displayTitle": "Backdoor",
+      "artist": "Unknown Artist",
+      "displayArtist": "Unknown Artist",
+      "path": "/Shuffle/Backdoor.mp3",
+      "addedAt": "2026-04-10T11:55:00.832Z",
+      "segmentIndex": 0,
+      "segmentCount": 1,
+      "segmentStart": 0,
+      "segmentOffset": 0
     }
   ]
 }

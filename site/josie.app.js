@@ -1909,6 +1909,8 @@
     let siteLoadClassObserver = null;
     let initialTrackQueued = false;
     let initialTrackQueuePromise = null;
+    let trackLoadAutoplayIntent = true;
+    let brokenTrackRecoveryKey = "";
     let visualizerCopyHideTimer = 0;
     let visualizerCopyEnterRafId = 0;
     let visualizerCopyTrackKey = "";
@@ -2070,10 +2072,67 @@
       if (!track?.nextTrackId) return null;
       return waveformTrackLookup.get(track.nextTrackId) || null;
     }
+    function refreshWaveformTrackLookup() {
+      waveformTrackLookup = new Map(waveformTracks.map((track) => [track.id, track]));
+    }
+    function removeTrackFromShuffleRotation(track) {
+      const queueId = String(track?.queueId || "").trim();
+      const trackId = String(track?.id || "").trim();
+      if (!queueId && !trackId) return 0;
+      const nextTracks = waveformTracks.filter((candidate) => {
+        if (!candidate) return false;
+        if (queueId) {
+          return candidate.queueId !== queueId;
+        }
+        return candidate.id !== trackId;
+      });
+      const removedCount = waveformTracks.length - nextTracks.length;
+      if (!removedCount) return 0;
+      waveformTracks = sortShuffleTracksByRecency(nextTracks);
+      refreshWaveformTrackLookup();
+      return removedCount;
+    }
     function clearQueuedSegmentAudio() {
       queuedSegmentAudioEl.pause();
       queuedSegmentAudioEl.src = "";
       queuedSegmentAudioEl.load();
+    }
+    async function recoverFromBrokenTrack(track, options = {}) {
+      const failedTrack = track && typeof track === "object" ? track : currentTrack;
+      const recoveryKey = String(failedTrack?.queueId || failedTrack?.id || failedTrack?.path || "").trim();
+      if (!recoveryKey) {
+        loadState = "error";
+        syncUi();
+        return false;
+      }
+      if (brokenTrackRecoveryKey === recoveryKey) {
+        return false;
+      }
+      brokenTrackRecoveryKey = recoveryKey;
+      try {
+        removeTrackFromShuffleRotation(failedTrack);
+        pendingSegmentSeekTime = null;
+        segmentAdvanceCooldownUntilMs = 0;
+        clearQueuedSegmentAudio();
+        currentTrack = null;
+        barLevelValues = new Float32Array(0);
+        barPeakValues = new Float32Array(0);
+        if (!waveformTracks.length) {
+          loadState = "error";
+          syncUi();
+          return false;
+        }
+        loadState = "loading";
+        syncUi();
+        return await chooseNextTrack({
+          autoplay: options.autoplay !== false,
+          excludeCurrent: false
+        });
+      } finally {
+        if (brokenTrackRecoveryKey === recoveryKey) {
+          brokenTrackRecoveryKey = "";
+        }
+      }
     }
     function primeQueuedSegmentAudio(track) {
       const nextSegment = getTrackNextSegment(track);
@@ -3368,7 +3427,12 @@
       syncUi();
     }
     async function chooseAndLoadTrack(track, options = {}) {
-      if (!track) return;
+      if (!track) return false;
+      const trackUrl = resolveTrackUrl(track);
+      if (!trackUrl) {
+        return recoverFromBrokenTrack(track, { autoplay: options.autoplay !== false });
+      }
+      trackLoadAutoplayIntent = options.autoplay !== false;
       pendingSegmentSeekTime = null;
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
@@ -3377,19 +3441,20 @@
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
       audioEl.pause();
-      audioEl.src = resolveTrackUrl(track);
+      audioEl.src = trackUrl;
       audioEl.load();
       seekToTrackSegment(track, Number.isFinite(options.seekTime) ? Number(options.seekTime) : null);
       void ensureAnalysisGraph(false);
       syncUi();
-      if (options.autoplay !== false) {
+      if (trackLoadAutoplayIntent) {
         await attemptPlay();
       }
+      return true;
     }
     async function chooseNextTrack(options = {}) {
       const nextTrack = pickWeightedShuffleTrack(waveformTracks, options.excludeCurrent === false ? "" : currentTrack?.queueId || "");
-      if (!nextTrack) return;
-      await chooseAndLoadTrack(nextTrack, options);
+      if (!nextTrack) return false;
+      return await chooseAndLoadTrack(nextTrack, options);
     }
     async function ensureManifest() {
       if (manifestPromise) return manifestPromise;
@@ -3401,11 +3466,11 @@
         const data = await response.json();
         const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(normalizeShuffleTrackEntry).filter(Boolean);
         waveformTracks = sortShuffleTracksByRecency(tracks);
-        waveformTrackLookup = new Map(waveformTracks.map((track) => [track.id, track]));
+        refreshWaveformTrackLookup();
         return waveformTracks;
       })().catch(() => {
         waveformTracks = [];
-        waveformTrackLookup = /* @__PURE__ */ new Map();
+        refreshWaveformTrackLookup();
         loadState = "error";
         syncUi();
         return [];
@@ -3660,8 +3725,7 @@
     });
     audioEl.addEventListener("error", () => {
       pendingSegmentSeekTime = null;
-      loadState = "error";
-      syncUi();
+      void recoverFromBrokenTrack(currentTrack, { autoplay: trackLoadAutoplayIntent });
     });
     window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
     syncVisualizerPerformanceMode();
