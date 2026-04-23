@@ -34,6 +34,7 @@
   var socialHubRenderRafId = 0;
   var ambientBackdropController = null;
   var siteCursorController = null;
+  var profileDecorationScrollGuard = null;
   var INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT = "internet-angel:performance-tier-change";
   var internetAngelReactivePulseState = { beat: 0, flash: 0, sampled: false };
   var josieTitleTypewriterTimer = 0;
@@ -4349,7 +4350,7 @@
     const canSeek = !compact && Number(state?.duration) > 0;
     return `
       <section class="steam-sidebar-currently-playing-panel${compact ? " steam-sidebar-currently-playing-panel--minimal" : " steam-sidebar-currently-playing-panel--desktop"}${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-mode="${escapeHtml(panelMode)}" data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-sidebar-shuffle-reveal="${escapeHtml(revealState)}"${compact ? ` data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}"` : ""} aria-hidden="${compact ? "false" : revealState === "visible" ? "false" : "true"}">
-        <p class="steam-sidebar-currently-playing-label">Currently playing</p>
+        ${compact ? '<p class="steam-sidebar-currently-playing-label">Currently playing</p>' : ""}
         <div class="steam-sidebar-currently-playing-copy">
           <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
           <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
@@ -12409,6 +12410,59 @@
     document.body?.classList.remove("site-load-active", "site-load-playing");
     osStage?.setAttribute("aria-hidden", "false");
   }
+  function createSteamProfileDecorationScrollGuard() {
+    if (!(document.body instanceof HTMLElement)) return null;
+    const desktopDecorationQuery = typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 821px)") : null;
+    const scrollTarget = osStage instanceof HTMLElement ? osStage : null;
+    let rafId = 0;
+    const readScrollTop = () => Math.max(
+      0,
+      Number(scrollTarget?.scrollTop || 0),
+      Number(window.scrollY || window.pageYOffset || 0),
+      Number(document.documentElement?.scrollTop || 0),
+      Number(document.body?.scrollTop || 0)
+    );
+    const sync = () => {
+      rafId = 0;
+      const desktopLayout = !isCompactMobileLayout() && (!desktopDecorationQuery || desktopDecorationQuery.matches);
+      document.body.classList.toggle("steam-profile-decoration-scroll-guard", desktopLayout && readScrollTop() > 6);
+    };
+    const schedule = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(sync);
+    };
+    scrollTarget?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("scroll", schedule, { passive: true, capture: true });
+    window.visualViewport?.addEventListener("scroll", schedule, { passive: true });
+    if (desktopDecorationQuery) {
+      if (typeof desktopDecorationQuery.addEventListener === "function") {
+        desktopDecorationQuery.addEventListener("change", schedule);
+      } else if (typeof desktopDecorationQuery.addListener === "function") {
+        desktopDecorationQuery.addListener(schedule);
+      }
+    }
+    sync();
+    return {
+      refresh: schedule,
+      dispose() {
+        if (rafId) {
+          window.cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+        scrollTarget?.removeEventListener("scroll", schedule);
+        window.removeEventListener("scroll", schedule, true);
+        window.visualViewport?.removeEventListener("scroll", schedule);
+        if (desktopDecorationQuery) {
+          if (typeof desktopDecorationQuery.removeEventListener === "function") {
+            desktopDecorationQuery.removeEventListener("change", schedule);
+          } else if (typeof desktopDecorationQuery.removeListener === "function") {
+            desktopDecorationQuery.removeListener(schedule);
+          }
+        }
+        document.body.classList.remove("steam-profile-decoration-scroll-guard");
+      }
+    };
+  }
   function cancelScheduledSocialHubRender() {
     if (socialHubRenderRafId) {
       window.cancelAnimationFrame(socialHubRenderRafId);
@@ -12471,12 +12525,14 @@
     if (!socialHubInitialized || !socialHubState || !socialHubRenderer) return;
     socialHubState.startAutoRefresh();
     scheduleSocialHubRender(socialHubState.snapshot(Date.now()));
+    profileDecorationScrollGuard?.refresh?.();
   }
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     applyPermanentNightTheme();
     startDocumentTitleTypewriter("Josie");
     setReadyState();
+    profileDecorationScrollGuard = createSteamProfileDecorationScrollGuard();
     ambientBackdropController = createAdaptiveAmbientBackdropController();
     siteCursorController = createSiteCursorController();
     await ensureHeroAvatarSelection();
@@ -12508,5 +12564,7 @@
     ambientBackdropController = null;
     siteCursorController?.dispose?.();
     siteCursorController = null;
+    profileDecorationScrollGuard?.dispose?.();
+    profileDecorationScrollGuard = null;
   });
 })();

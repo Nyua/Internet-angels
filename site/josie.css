@@ -3409,16 +3409,18 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .steam-hero-avatar-decoration {
+  --steam-avatar-decoration-scroll-y: 0px;
   position: absolute;
   top: 50%;
   left: 50%;
   width: 124%;
   height: 124%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, calc(-50% + var(--steam-avatar-decoration-scroll-y)));
   object-fit: contain;
   pointer-events: none;
   z-index: 3;
   filter: drop-shadow(0 10px 18px var(--surface-shadow));
+  transition: transform 220ms cubic-bezier(0.2, 0.85, 0.18, 1);
 }
 
 #social-hub-profile,
@@ -3436,6 +3438,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 144%;
   height: 136%;
   max-width: none;
+}
+
+@media (min-width: 821px) {
+  body.steam-profile-decoration-scroll-guard #social-hub-profile .steam-hero-avatar-decoration {
+    --steam-avatar-decoration-scroll-y: 22px;
+  }
 }
 
 .steam-hero-copy {
@@ -3817,6 +3825,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   padding-bottom: 4px;
 }
 
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-label {
+  display: none;
+}
+
 .steam-sidebar-currently-playing-label,
 .steam-sidebar-currently-playing-time {
   font-family: var(--discord-font);
@@ -3906,6 +3918,47 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-progress-thumb {
   opacity: 1;
+}
+
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-copy {
+  gap: 5px;
+}
+
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-title {
+  font-size: 28px;
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.24),
+    0 0 22px rgba(209, 225, 255, 0.16);
+}
+
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-progress-track {
+  margin-top: 10px;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.12));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 10px rgba(255, 255, 255, 0.07),
+    0 0 22px rgba(255, 255, 255, 0.04);
+}
+
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-progress-fill {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(250, 251, 255, 1) 52%, rgba(255, 255, 255, 0.94));
+  box-shadow:
+    0 0 8px rgba(255, 255, 255, 0.74),
+    0 0 18px rgba(255, 255, 255, 0.34),
+    0 0 28px rgba(255, 255, 255, 0.16);
+}
+
+.steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-progress-thumb {
+  width: 9px;
+  height: 9px;
+  background: rgba(248, 252, 255, 0.98);
+  box-shadow:
+    0 0 8px rgba(255, 255, 255, 0.74),
+    0 0 18px rgba(255, 255, 255, 0.34);
 }
 
 .steam-sidebar-currently-playing-panel--desktop .steam-sidebar-currently-playing-progress-track--scrubbable {
@@ -4403,6 +4456,151 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-sidebar-row--soundcloud:hover .steam-sidebar-link,
 .steam-sidebar-row--soundcloud:focus-within .steam-sidebar-link {
   animation: sidebarSoundcloudWord 1.3s ease-in-out infinite;
+}
+
+@media (min-width: 821px) {
+  .steam-sidebar-row {
+    --desktop-link-platform-color: rgba(248, 249, 252, 0.96);
+    --desktop-link-aura-rgb: 248, 249, 252;
+    --desktop-link-aura-secondary-rgb: 255, 255, 255;
+    --desktop-link-aura-sheen-rgb: 255, 255, 255;
+  }
+
+  .steam-sidebar-row--soundcloud {
+    --desktop-link-platform-color: #ffd4c3;
+    --desktop-link-aura-rgb: 255, 148, 84;
+    --desktop-link-aura-secondary-rgb: 255, 232, 204;
+    --desktop-link-aura-sheen-rgb: 255, 246, 232;
+  }
+
+  .steam-sidebar-row--spotify {
+    --desktop-link-platform-color: #9bf1bf;
+    --desktop-link-aura-rgb: 116, 232, 154;
+    --desktop-link-aura-secondary-rgb: 222, 255, 234;
+    --desktop-link-aura-sheen-rgb: 240, 255, 244;
+  }
+
+  .steam-sidebar-row--lastfm {
+    --desktop-link-platform-color: #ffafbf;
+    --desktop-link-aura-rgb: 255, 114, 143;
+    --desktop-link-aura-secondary-rgb: 255, 223, 231;
+    --desktop-link-aura-sheen-rgb: 255, 242, 245;
+  }
+
+  .steam-sidebar-row--discord {
+    --desktop-link-platform-color: #cfd5ff;
+    --desktop-link-aura-rgb: 176, 188, 255;
+    --desktop-link-aura-secondary-rgb: 235, 239, 255;
+    --desktop-link-aura-sheen-rgb: 246, 247, 255;
+  }
+
+  .steam-sidebar-row--steam {
+    --desktop-link-platform-color: #b9e8ff;
+    --desktop-link-aura-rgb: 152, 220, 255;
+    --desktop-link-aura-secondary-rgb: 223, 245, 255;
+    --desktop-link-aura-sheen-rgb: 241, 251, 255;
+  }
+
+  .steam-sidebar-row--twitter {
+    --desktop-link-platform-color: rgba(248, 249, 252, 0.98);
+    --desktop-link-aura-rgb: 205, 238, 255;
+    --desktop-link-aura-secondary-rgb: 245, 252, 255;
+    --desktop-link-aura-sheen-rgb: 255, 255, 255;
+  }
+
+  .steam-sidebar-site-icon-shell::before,
+  .steam-sidebar-site-icon-shell::after {
+    content: "";
+    position: absolute;
+    border-radius: 999px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .steam-sidebar-site-icon-shell::before {
+    inset: -2px;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22) 0 18%, rgba(255, 255, 255, 0.12) 44%, rgba(255, 255, 255, 0.02) 74%, transparent 100%);
+    box-shadow:
+      0 0 14px rgba(255, 255, 255, 0.1),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    opacity: 0.58;
+    transform: scale(0.9);
+    transition:
+      opacity 160ms ease,
+      transform 180ms cubic-bezier(0.2, 0.82, 0.2, 1),
+      box-shadow 180ms ease,
+      background 180ms ease;
+  }
+
+  .steam-sidebar-site-icon-shell::after {
+    inset: -10px;
+    opacity: 0.16;
+    transform: scale(0.86);
+    filter: blur(10px);
+    background:
+      radial-gradient(circle at center, rgba(255, 255, 255, 0.34) 0 24%, rgba(255, 255, 255, 0.08) 58%, transparent 82%);
+    transition:
+      opacity 180ms ease,
+      transform 200ms cubic-bezier(0.2, 0.82, 0.2, 1),
+      background 180ms ease;
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-site-icon,
+  .steam-sidebar-row--steam .steam-sidebar-site-icon,
+  .steam-sidebar-row--discord .steam-sidebar-site-icon,
+  .steam-sidebar-row--lastfm .steam-sidebar-site-icon,
+  .steam-sidebar-row--spotify .steam-sidebar-site-icon,
+  .steam-sidebar-row--soundcloud .steam-sidebar-site-icon {
+    color: rgba(248, 249, 252, 0.96);
+    opacity: 1;
+    filter:
+      drop-shadow(0 0 6px rgba(255, 255, 255, 0.31))
+      drop-shadow(0 0 14px rgba(255, 255, 255, 0.17));
+  }
+
+  .steam-sidebar-row--twitter .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row--steam .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row--discord .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row--lastfm .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row--spotify .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row--soundcloud .steam-sidebar-site-icon svg [fill]:not([fill="none"]) {
+    stroke-opacity: 0.08;
+  }
+
+  .steam-sidebar-row:hover .steam-sidebar-site-icon,
+  .steam-sidebar-row:focus-within .steam-sidebar-site-icon {
+    color: var(--desktop-link-platform-color);
+    filter:
+      drop-shadow(0 0 7px rgba(255, 255, 255, 0.28))
+      drop-shadow(0 0 10px rgba(var(--desktop-link-aura-rgb), 0.46))
+      drop-shadow(0 0 22px rgba(var(--desktop-link-aura-rgb), 0.24));
+  }
+
+  .steam-sidebar-row:hover .steam-sidebar-site-icon svg [fill]:not([fill="none"]),
+  .steam-sidebar-row:focus-within .steam-sidebar-site-icon svg [fill]:not([fill="none"]) {
+    stroke-opacity: 0.14;
+  }
+
+  .steam-sidebar-row:hover .steam-sidebar-site-icon-shell::before,
+  .steam-sidebar-row:focus-within .steam-sidebar-site-icon-shell::before {
+    opacity: 0.96;
+    transform: scale(1);
+    background:
+      radial-gradient(circle at 50% 50%, rgba(var(--desktop-link-aura-secondary-rgb), 0.3) 0 18%, rgba(var(--desktop-link-aura-rgb), 0.18) 44%, rgba(var(--desktop-link-aura-rgb), 0.02) 74%, transparent 100%);
+    box-shadow:
+      0 0 16px rgba(var(--desktop-link-aura-rgb), 0.24),
+      0 0 28px rgba(var(--desktop-link-aura-rgb), 0.14),
+      inset 0 0 0 1px rgba(var(--desktop-link-aura-secondary-rgb), 0.5);
+  }
+
+  .steam-sidebar-row:hover .steam-sidebar-site-icon-shell::after,
+  .steam-sidebar-row:focus-within .steam-sidebar-site-icon-shell::after {
+    opacity: 0.38;
+    transform: scale(1);
+    background:
+      radial-gradient(circle at center, rgba(var(--desktop-link-aura-secondary-rgb), 0.52) 0 18%, rgba(var(--desktop-link-aura-rgb), 0.28) 46%, rgba(var(--desktop-link-aura-rgb), 0) 78%);
+  }
 }
 
 @keyframes sidebarTwitterVector {

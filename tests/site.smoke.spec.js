@@ -1232,6 +1232,33 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(stageScrollbarState.scrollbarWidth).toBe("none");
   expect(stageScrollbarState.overflowY).toBe("auto");
 
+  const readDesktopSpotifyIcon = async () => page.locator(".steam-sidebar-row--spotify .steam-sidebar-site-icon").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    const colorChannels = (styles.color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+    const shell = node.closest(".steam-sidebar-site-icon-shell");
+    const shellBefore = shell instanceof Element ? window.getComputedStyle(shell, "::before") : null;
+    return {
+      color: styles.color,
+      colorChannels,
+      filter: styles.filter,
+      shellBeforeOpacity: shellBefore ? Number.parseFloat(shellBefore.opacity || "0") : 0,
+      shellBeforeBoxShadow: shellBefore?.boxShadow || ""
+    };
+  });
+  await page.mouse.move(4, 4);
+  await expect.poll(async () => (await readDesktopSpotifyIcon()).colorChannels[0], { timeout: 1_000 }).toBeGreaterThanOrEqual(240);
+  const desktopSpotifyIconResting = await readDesktopSpotifyIcon();
+  expect(desktopSpotifyIconResting.colorChannels[0]).toBeGreaterThanOrEqual(240);
+  expect(desktopSpotifyIconResting.colorChannels[1]).toBeGreaterThanOrEqual(240);
+  expect(desktopSpotifyIconResting.colorChannels[2]).toBeGreaterThanOrEqual(240);
+  expect(desktopSpotifyIconResting.filter).toContain("drop-shadow");
+  await page.locator(".steam-sidebar-row--spotify").hover();
+  await expect.poll(async () => (await readDesktopSpotifyIcon()).color, { timeout: 1_000 }).toBe("rgb(155, 241, 191)");
+  const desktopSpotifyIconHover = await readDesktopSpotifyIcon();
+  expect(desktopSpotifyIconHover.filter).toContain("drop-shadow");
+  expect(desktopSpotifyIconHover.shellBeforeOpacity).toBeGreaterThan(desktopSpotifyIconResting.shellBeforeOpacity);
+  expect(desktopSpotifyIconHover.shellBeforeBoxShadow).toContain("rgba(116, 232, 154");
+
   await clearInteractionSfxLog(page);
   await page.locator(".steam-sidebar-link").first().hover();
   expect(await readInteractionSfxLog(page)).toEqual([]);
@@ -1284,15 +1311,21 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const timeRow = panel?.querySelector(".steam-sidebar-currently-playing-time");
     const thumb = panel?.querySelector("[data-sidebar-shuffle-progress-thumb]");
     const progressTrack = panel?.querySelector("[data-sidebar-shuffle-progress-track]");
+    const progressFill = panel?.querySelector("[data-sidebar-shuffle-progress-fill]");
     const readPx = (node) => node instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(node).fontSize || "0") : 0;
     const readBoxPx = (node, property) => node instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(node)[property] || "0") : 0;
+    const readStyleValue = (node, property) => node instanceof HTMLElement ? String(window.getComputedStyle(node)[property] || "") : "";
     return {
+      labelCount: panel instanceof HTMLElement ? panel.querySelectorAll(".steam-sidebar-currently-playing-label").length : 0,
       titleFontSize: readPx(title),
       artistFontSize: readPx(artist),
       timeFontSize: readPx(timeRow),
       thumbVisible: thumb instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(thumb).opacity || "0") > 0.9,
       thumbWidth: readBoxPx(thumb, "width"),
       trackHeight: readBoxPx(progressTrack, "height"),
+      trackBoxShadow: readStyleValue(progressTrack, "boxShadow"),
+      fillBoxShadow: readStyleValue(progressFill, "boxShadow"),
+      thumbBoxShadow: readStyleValue(thumb, "boxShadow"),
       panelBottomLeftRadius: readBoxPx(panel, "borderBottomLeftRadius"),
       shellBottomLeftRadius: readBoxPx(shell, "borderBottomLeftRadius"),
       shellOverflow: shell instanceof HTMLElement ? window.getComputedStyle(shell).overflow : "",
@@ -1300,12 +1333,17 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       shellClipPath: shell instanceof HTMLElement ? window.getComputedStyle(shell).clipPath : ""
     };
   });
-  expect(desktopCurrentlyPlayingLayout.titleFontSize).toBeGreaterThanOrEqual(14);
+  expect(desktopCurrentlyPlayingLayout.labelCount).toBe(0);
+  expect(desktopCurrentlyPlayingLayout.titleFontSize).toBeGreaterThanOrEqual(26);
   expect(desktopCurrentlyPlayingLayout.artistFontSize).toBeGreaterThanOrEqual(11);
   expect(desktopCurrentlyPlayingLayout.timeFontSize).toBeGreaterThanOrEqual(10);
   expect(desktopCurrentlyPlayingLayout.thumbVisible).toBe(true);
   expect(desktopCurrentlyPlayingLayout.thumbWidth).toBeGreaterThanOrEqual(7.5);
   expect(desktopCurrentlyPlayingLayout.trackHeight).toBeGreaterThanOrEqual(3.5);
+  expect(desktopCurrentlyPlayingLayout.trackBoxShadow).toContain("rgba(255, 255, 255");
+  expect(desktopCurrentlyPlayingLayout.fillBoxShadow).toContain("rgba(255, 255, 255");
+  expect(desktopCurrentlyPlayingLayout.thumbBoxShadow).toContain("rgba(255, 255, 255");
+  expect(desktopCurrentlyPlayingLayout.thumbBoxShadow).not.toContain("rgba(6, 10, 18");
   expect(desktopCurrentlyPlayingLayout.panelBottomLeftRadius).toBe(0);
   expect(desktopCurrentlyPlayingLayout.shellBottomLeftRadius).toBe(0);
   expect(desktopCurrentlyPlayingLayout.shellOverflow).toBe("visible");
@@ -1452,6 +1490,51 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(heroDecorationOverflow.extendsPastWrapTop).toBe(true);
   expect(heroDecorationOverflow.extendsPastWrapLeft).toBe(true);
   expect(heroDecorationOverflow.extendsPastWrapRight).toBe(true);
+  const profileDecorationScrollGuard = await page.evaluate(async () => {
+    const stage = document.querySelector("#os-stage");
+    const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
+    if (!(stage instanceof HTMLElement && decoration instanceof HTMLElement)) return null;
+    const waitFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const readShift = () => window.getComputedStyle(decoration).getPropertyValue("--steam-avatar-decoration-scroll-y").trim();
+    stage.scrollTop = 0;
+    window.scrollTo(0, 0);
+    stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+    window.dispatchEvent(new Event("scroll"));
+    await waitFrame();
+    const initialShift = readShift();
+    const scrollTop = Math.min(160, Math.max(0, stage.scrollHeight - stage.clientHeight));
+    if (scrollTop > 0) {
+      stage.scrollTop = scrollTop;
+      stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+    } else {
+      window.scrollTo(0, 80);
+      window.dispatchEvent(new Event("scroll"));
+    }
+    await waitFrame();
+    const shiftedScrollTop = Math.max(stage.scrollTop, window.scrollY || 0);
+    const shiftedShift = readShift();
+    const activeAfterScroll = document.body.classList.contains("steam-profile-decoration-scroll-guard");
+    stage.scrollTop = 0;
+    window.scrollTo(0, 0);
+    stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+    window.dispatchEvent(new Event("scroll"));
+    await waitFrame();
+    return {
+      initialShift,
+      shiftedScrollTop,
+      shiftedShift,
+      activeAfterScroll,
+      restoredShift: readShift(),
+      activeAfterRestore: document.body.classList.contains("steam-profile-decoration-scroll-guard")
+    };
+  });
+  expect(profileDecorationScrollGuard).not.toBeNull();
+  expect(profileDecorationScrollGuard.shiftedScrollTop).toBeGreaterThan(6);
+  expect(profileDecorationScrollGuard.initialShift).toBe("0px");
+  expect(profileDecorationScrollGuard.activeAfterScroll).toBe(true);
+  expect(profileDecorationScrollGuard.shiftedShift).toBe("22px");
+  expect(profileDecorationScrollGuard.activeAfterRestore).toBe(false);
+  expect(profileDecorationScrollGuard.restoredShift).toBe("0px");
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-section-title", { hasText: "Top Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
