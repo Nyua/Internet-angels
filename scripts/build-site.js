@@ -6,15 +6,12 @@ import { writeShuffleManifest } from "./shuffle-manifest.js";
 const rootDir = path.resolve(import.meta.dirname, "..");
 const siteDir = path.join(rootDir, "site");
 const distDir = path.join(rootDir, "dist");
-const nodeModulesDir = path.join(rootDir, "node_modules");
 const appSourcePath = path.join(siteDir, "josie.app.js");
 const clientOutputPath = path.join(distDir, "josie.client.js");
 const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
-const gsapSourcePath = path.join(nodeModulesDir, "gsap", "dist", "gsap.min.js");
-const gsapOutputPath = path.join(distDir, "vendor", "gsap.min.js");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
@@ -58,9 +55,6 @@ if (!fs.existsSync(siteDir)) {
 }
 if (!fs.existsSync(appSourcePath)) {
   throw new Error(`Missing app source file: ${appSourcePath}`);
-}
-if (!fs.existsSync(gsapSourcePath)) {
-  throw new Error(`Missing GSAP bundle: ${gsapSourcePath}`);
 }
 
 function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = []) {
@@ -157,8 +151,6 @@ fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
 writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
-fs.mkdirSync(path.dirname(gsapOutputPath), { recursive: true });
-fs.copyFileSync(gsapSourcePath, gsapOutputPath);
 rewriteHtmlAssetVersions();
 
 const oversizedFiles = collectOversizedFiles(distDir);
