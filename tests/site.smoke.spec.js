@@ -601,11 +601,11 @@ test("mobile root plays Wings centered in the viewport instead of skipping the i
   expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
-test("desktop degraded performance mode keeps BloomToDeath handoff behavior without an intro ASCII overlay", async ({ page }) => {
+test("desktop BloomToDeath ignores the deprecated degraded performance override", async ({ page }) => {
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator("#asciiCanvas")).toHaveCount(0);
 
   await page.locator("#introStartButton").click();
@@ -652,16 +652,16 @@ test("next page redirects to josie", async ({ page }) => {
   await expect(page).toHaveTitle(/Josie/);
 });
 
-test("desktop degraded performance mode softens Josie rendering while keeping playback and interaction online", async ({ page }) => {
+test("desktop Josie ignores the deprecated degraded performance override and keeps full rendering", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
-  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
-  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
 
   await page.locator(".steam-sidebar-link").first().hover();
   await page.mouse.wheel(0, 180);
@@ -680,9 +680,8 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
   });
   expect(degradedCursorState).not.toBeNull();
   expect(degradedCursorState.morph).toBe("orb");
-  expect(degradedCursorState.degraded).toBe(true);
-  expect(degradedCursorState.scroll).toBe(false);
-  expect(degradedCursorState.trailDisplay).toBe("none");
+  expect(degradedCursorState.degraded).toBe(false);
+  expect(degradedCursorState.trailDisplay).not.toBe("none");
 
   await clearInteractionSfxLog(page);
   await page.locator("[data-mobile-speaker-toggle]").click();
@@ -713,7 +712,7 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
       artist: artist?.textContent?.trim() || ""
     };
   });
-  expect(degradedVisualizerState.layerMode).toBe("degraded");
+  expect(degradedVisualizerState.layerMode).toBe("full");
   expect(degradedVisualizerState.wavePortal).toBe(true);
   expect(degradedVisualizerState.waveCanvas).toBe(true);
   expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
@@ -721,35 +720,35 @@ test("desktop degraded performance mode softens Josie rendering while keeping pl
   expect(degradedVisualizerState.artist).toBe("tsubi club");
 });
 
-test("desktop Josie can live-downgrade once on sustained bad frame windows", async ({ page }) => {
+test("desktop Josie ignores legacy frame-budget downgrade requests", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await page.evaluate(() => {
     const badWindow = Array.from({ length: 80 }, () => 45);
     window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.([...badWindow, ...badWindow]);
   });
-  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "frame-budget");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
 
   await page.evaluate(() => {
     const healthyWindow = Array.from({ length: 220 }, () => 16);
     window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.(healthyWindow);
   });
-  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
 });
 
-test("desktop Josie background-throttles intensive rendering when the window loses focus", async ({ page }) => {
+test("desktop Josie no longer background-throttles rendering when the window loses focus", async ({ page }) => {
   await installWindowFocusOverride(page);
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
@@ -771,10 +770,10 @@ test("desktop Josie background-throttles intensive rendering when the window los
   await page.evaluate(() => {
     window.__setCodexWindowFocus?.(false);
   });
-  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "background");
-  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
   const backgroundState = await page.evaluate(() => {
     const performanceState = window.__internetAngelPerformanceState?.getState?.() || null;
     const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
@@ -783,14 +782,13 @@ test("desktop Josie background-throttles intensive rendering when the window los
       portalHidden: portal instanceof HTMLElement ? portal.hidden : null
     };
   });
-  expect(backgroundState.performanceState?.backgroundThrottled).toBe(true);
-  expect(backgroundState.portalHidden).toBe(true);
+  expect(backgroundState.performanceState?.backgroundThrottled).toBe(false);
 
   await page.evaluate(() => {
     window.__setCodexWindowFocus?.(true);
   });
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
-  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "override");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
   const resumedState = await page.evaluate(() => ({
     performanceState: window.__internetAngelPerformanceState?.getState?.() || null,
