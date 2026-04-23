@@ -1895,6 +1895,7 @@
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
     const SHUFFLE_ASCII_MAX_CELL_PX = 2;
+    const SHUFFLE_TOUCH_ASCII_MAX_CELL_PX = 3;
     const SHUFFLE_BAR_MIN_COUNT = 40;
     const SHUFFLE_BAR_MAX_COUNT = 88;
     const SHUFFLE_BAR_MIN_WIDTH_PX = 3;
@@ -1904,11 +1905,8 @@
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
-    const SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 20;
     const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
-    const SHUFFLE_PANEL_MAX_CANVAS_DPR = 1.15;
-    const SHUFFLE_PANEL_TRACE_POINT_LIMIT = 176;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
     const SHUFFLE_MAX_VOLUME = 0.077;
     const SHUFFLE_BODY_RIBBON_CONFIG = Object.freeze({
@@ -2224,30 +2222,19 @@
     function usesTouchMobileVisualizerProfile() {
       return isCompactMobileLayout() && hasCompactMobileInput();
     }
-    function isLastFmTrackPanelOpen() {
-      return Boolean(document.body?.classList.contains("lastfm-track-panel-open"));
-    }
-    function getCurrentVisualizerMode() {
-      if (performanceDegraded) {
-        return "degraded";
-      }
-      return isLastFmTrackPanelOpen() ? "panel" : "full";
-    }
     function getShuffleVisualizerDeviceProfile() {
       return usesTouchMobileVisualizerProfile() ? "touch-mobile" : "default";
     }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
-      const visualizerMode = getCurrentVisualizerMode();
-      const panelOptimized = visualizerMode === "panel";
+      const touchMobileProfile = usesTouchMobileVisualizerProfile();
       const asciiCellWidth = clamp2(
-        Math.round(width / 208),
+        Math.round(width / (touchMobileProfile ? 172 : 208)),
         SHUFFLE_ASCII_MIN_CELL_PX,
-        SHUFFLE_ASCII_MAX_CELL_PX
+        touchMobileProfile ? SHUFFLE_TOUCH_ASCII_MAX_CELL_PX : SHUFFLE_ASCII_MAX_CELL_PX
       );
       const asciiCellHeight = Math.max(2, Math.round(asciiCellWidth * 1.42));
-      const pointLimit = panelOptimized ? SHUFFLE_PANEL_TRACE_POINT_LIMIT : SHUFFLE_TRACE_POINT_LIMIT;
-      const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), pointLimit));
+      const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_TRACE_POINT_LIMIT));
       const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
       if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
         traceValues = new Float32Array(pointCount);
@@ -2274,14 +2261,13 @@
       let textureRecovery = 0;
       let mudSuppression = 0;
       if (shouldSampleLive && analyserFrequencyData.length) {
-        const bandStride = panelOptimized ? 2 : 1;
         const readBand = (startBin, endBin) => {
           const start = clamp2(startBin, 0, analyserFrequencyData.length - 1);
           const end = clamp2(endBin, start, analyserFrequencyData.length - 1);
           let weightedTotal = 0;
           let weightTotal = 0;
           let peakValue = 0;
-          for (let bin = start; bin <= end; bin += bandStride) {
+          for (let bin = start; bin <= end; bin += 1) {
             const normalized = (analyserFrequencyData[bin] || 0) / 255;
             const distance = (bin - start) / Math.max(end - start, 1);
             const weight = 1.18 - distance * 0.24;
@@ -2327,6 +2313,12 @@
           0,
           1
         );
+        if (touchMobileProfile) {
+          bassBodyDrive = clamp2(bassBodyDrive * 0.72, 0, 1);
+          detailPresenceDrive = clamp2(detailPresenceDrive * 0.84, 0, 1);
+          textureRecovery = clamp2(textureRecovery * 0.9, 0, 1);
+          mudSuppression = clamp2(mudSuppression * 0.78, 0, 1);
+        }
       }
       let peak = 0;
       let transientPeak = 0;
@@ -2334,19 +2326,16 @@
         if (!reuseCurrentFrameSamples) {
           analyserNode.getFloatTimeDomainData(analyserSamples);
         }
-        const nearSampleOffset = panelOptimized ? 1 : 2;
-        const wideSampleOffset = panelOptimized ? 4 : 6;
-        const farSampleOffset = panelOptimized ? 12 : 18;
         let filteredValue = 0;
         for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
           const sampleIndex = sampleIndexLookup[pointIndex] || 0;
           const currentSample = analyserSamples[sampleIndex] || 0;
-          const previousSample = analyserSamples[Math.max(0, sampleIndex - wideSampleOffset)] || currentSample;
-          const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + wideSampleOffset)] || currentSample;
-          const nearPreviousSample = analyserSamples[Math.max(0, sampleIndex - nearSampleOffset)] || previousSample;
-          const nearNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + nearSampleOffset)] || nextSample;
-          const farPreviousSample = analyserSamples[Math.max(0, sampleIndex - farSampleOffset)] || previousSample;
-          const farNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + farSampleOffset)] || nextSample;
+          const previousSample = analyserSamples[Math.max(0, sampleIndex - 6)] || currentSample;
+          const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 6)] || currentSample;
+          const nearPreviousSample = analyserSamples[Math.max(0, sampleIndex - 2)] || previousSample;
+          const nearNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 2)] || nextSample;
+          const farPreviousSample = analyserSamples[Math.max(0, sampleIndex - 18)] || previousSample;
+          const farNextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 18)] || nextSample;
           const mediumContour = nearPreviousSample * 0.24 + currentSample * 0.52 + nearNextSample * 0.24;
           const wideContour = farPreviousSample * 0.16 + previousSample * 0.22 + currentSample * 0.24 + nextSample * 0.22 + farNextSample * 0.16;
           const transient = (nextSample - previousSample) * 4.8;
@@ -2409,13 +2398,13 @@
         Math.max(0, transientPeak - 0.32) * 0.28,
         0,
         1
-      );
+      ) * (touchMobileProfile ? 0.7 : 1);
       const absolutePeakSurge = clamp2(
         Math.max(0, peak - 0.68) * 3.15 +
         Math.max(0, transientPeak - 0.44) * 0.52,
         0,
         1
-      );
+      ) * (touchMobileProfile ? 0.64 : 1);
       const bassDrive = clamp2(
         reactiveBass * 1.22 +
         reactiveBassFlash * 0.92 +
@@ -2431,24 +2420,24 @@
         1
       );
       const traceAttackMix = clamp2(
-        0.44 + reactiveBeat * 0.14 + peakSurge * 0.08 + bassDrive * 0.12,
-        0.44,
-        0.82
+        (0.44 + reactiveBeat * 0.14 + peakSurge * 0.08 + bassDrive * 0.12) * (touchMobileProfile ? 0.74 : 1),
+        touchMobileProfile ? 0.32 : 0.44,
+        touchMobileProfile ? 0.7 : 0.82
       );
       const traceReleaseMix = clamp2(
-        0.2 + structureHold * 0.1 + absolutePeakSurge * 0.05 + bassDrive * 0.03,
-        0.2,
-        0.46
+        (0.2 + structureHold * 0.1 + absolutePeakSurge * 0.05 + bassDrive * 0.03) * (touchMobileProfile ? 1.08 : 1),
+        touchMobileProfile ? 0.22 : 0.2,
+        touchMobileProfile ? 0.5 : 0.46
       );
       const detailAttackMix = clamp2(
-        0.54 + detailDrive * 0.18 + reactiveFlash * 0.08,
-        0.54,
-        0.88
+        (0.54 + detailDrive * 0.18 + reactiveFlash * 0.08) * (touchMobileProfile ? 0.78 : 1),
+        touchMobileProfile ? 0.44 : 0.54,
+        touchMobileProfile ? 0.82 : 0.88
       );
       const detailReleaseMix = clamp2(
-        0.28 + textureRecovery * 0.14 + detailPresenceDrive * 0.08,
-        0.28,
-        0.56
+        (0.28 + textureRecovery * 0.14 + detailPresenceDrive * 0.08) * (touchMobileProfile ? 1.06 : 1),
+        touchMobileProfile ? 0.3 : 0.28,
+        touchMobileProfile ? 0.6 : 0.56
       );
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
         const targetValue = traceValues[pointIndex] || 0;
@@ -2510,7 +2499,7 @@
             bassDrive * 0.2 +
             detailDrive * 0.08
           )
-        ),
+        ) * (touchMobileProfile ? 0.76 : 1),
         2,
         Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
       );
@@ -2522,7 +2511,7 @@
             textureRecovery * 0.24 +
             bassDrive * 0.08
           )
-        ),
+        ) * (touchMobileProfile ? 0.82 : 1),
         1,
         Math.max(1, amplitudeRows + 2)
       );
@@ -2612,7 +2601,7 @@
           continue;
         }
         paintRibbon(previousBodyTargetRow, bodyTargetRow, x, magnitude, bodyRibbonConfig);
-        if (detailMagnitude >= 0.018 && (!panelOptimized || pointIndex % 2 === 0)) {
+        if (detailMagnitude >= 0.018) {
           const detailTargetRow = clamp2(
             bodyTargetRow - Math.round(detailValue * detailAmplitudeRows),
             0,
@@ -2650,7 +2639,7 @@
       return cachedReactiveTargets;
     }
     function syncVisualizerPerformanceMode() {
-      const mode = getCurrentVisualizerMode();
+      const mode = performanceDegraded ? "degraded" : "full";
       const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
         ? visualizerLayerHost
         : document.getElementById("os-shuffle-visualizer-layer");
@@ -2913,15 +2902,12 @@
       if (analyserFrequencyData.length) {
         analyserNode.getByteFrequencyData(analyserFrequencyData);
       }
-      const visualizerMode = getCurrentVisualizerMode();
-      const sampleStride = visualizerMode === "panel" ? 12 : 6;
-      const frequencyStride = visualizerMode === "panel" ? 2 : 1;
       let peak = 0;
       let transientPeak = 0;
       let sumSquares = 0;
       let sampleCount = 0;
       let previousSample = 0;
-      for (let index = 0; index < analyserSamples.length; index += sampleStride) {
+      for (let index = 0; index < analyserSamples.length; index += 6) {
         const sample = analyserSamples[index] || 0;
         const magnitude = Math.abs(sample);
         peak = Math.max(peak, magnitude);
@@ -2938,7 +2924,7 @@
         const subEndBin = Math.min(analyserFrequencyData.length - 1, 8);
         let weightedTotal = 0;
         let weightTotal = 0;
-        for (let bin = 2; bin <= bassEndBin; bin += frequencyStride) {
+        for (let bin = 2; bin <= bassEndBin; bin += 1) {
           const normalized = (analyserFrequencyData[bin] || 0) / 255;
           const weight = bin <= subEndBin
             ? 1.9 - (bin - 2) * 0.09
@@ -3183,12 +3169,7 @@
       }
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
-      const visualizerMode = getCurrentVisualizerMode();
-      const maxCanvasDpr = usesTouchMobileVisualizerProfile()
-        ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR
-        : visualizerMode === "panel"
-          ? SHUFFLE_PANEL_MAX_CANVAS_DPR
-          : SHUFFLE_MAX_CANVAS_DPR;
+      const maxCanvasDpr = usesTouchMobileVisualizerProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
       const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
@@ -3277,7 +3258,6 @@
     function renderLoop(nowMs) {
       if (disposed) return;
       maybeAdvanceSegmentTrack(nowMs);
-      syncVisualizerPerformanceMode();
       const backgroundThrottled = isInternetAngelBackgroundThrottled();
       const shouldRenderDesktopWave = Boolean(
         playerRoot
@@ -3286,12 +3266,7 @@
         && !document.hidden
         && !backgroundThrottled
       );
-      const visualizerMode = getCurrentVisualizerMode();
-      const activeFrameIntervalMs = visualizerMode === "degraded"
-        ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS
-        : visualizerMode === "panel"
-          ? SHUFFLE_PANEL_ACTIVE_FRAME_INTERVAL_MS
-          : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
+      const activeFrameIntervalMs = performanceDegraded ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
       const frameIntervalMs = shouldRenderDesktopWave && !audioEl.paused ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
       if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
         rafId = window.requestAnimationFrame(renderLoop);
@@ -4620,171 +4595,6 @@
       </div>
     `;
   }
-  function createLastFmPanelMarkupTemplate(markup) {
-    const template = document.createElement("template");
-    template.innerHTML = String(markup || "").trim();
-    return template;
-  }
-  function renderLastFmPanelDeferredLine(width, className = "") {
-    const safeWidth = firstNonEmpty(width, "100%");
-    const extraClassName = firstNonEmpty(className, "");
-    return `<span class="lastfm-track-panel-deferred-line lastfm-track-panel-skeleton${extraClassName ? ` ${escapeHtml(extraClassName)}` : ""}" style="width:${escapeHtml(safeWidth)}"></span>`;
-  }
-  function renderLastFmPanelDeferredSlotMarkup(slotName, sourceElement) {
-    const safeSlotName = firstNonEmpty(slotName, "");
-    const classNames = new Set([
-      "lastfm-track-panel-deferred-slot",
-      "lastfm-track-panel-deferred-placeholder"
-    ]);
-    if (sourceElement instanceof HTMLElement) {
-      sourceElement.classList.forEach((className) => {
-        if (!className.startsWith("is-")) {
-          classNames.add(className);
-        }
-      });
-    }
-    const className = escapeHtml(Array.from(classNames).join(" "));
-    const baseAttrs = `class="${className}" data-lastfm-panel-slot="${escapeHtml(safeSlotName)}" data-lastfm-panel-slot-state="pending" aria-hidden="true"`;
-    if (sourceElement instanceof HTMLElement && (sourceElement.classList.contains("lastfm-track-panel-preview") || sourceElement.classList.contains("lastfm-track-panel-spotify-slot"))) {
-      return `
-        <div ${baseAttrs}>
-          <div class="lastfm-track-panel-spotify-slot-head">
-            <span class="lastfm-track-panel-spotify-slot-label">Loading preview</span>
-          </div>
-          <div class="lastfm-track-panel-spotify-slot-body">
-            <div class="lastfm-track-panel-deferred-bar lastfm-track-panel-skeleton"></div>
-          </div>
-        </div>
-      `;
-    }
-    if (sourceElement instanceof HTMLElement && sourceElement.classList.contains("lastfm-track-panel-summary")) {
-      return `
-        <section ${baseAttrs}>
-          ${renderLastFmPanelDeferredLine("38%", "lastfm-track-panel-deferred-line--title")}
-          <div class="lastfm-track-panel-deferred-copy">
-            ${renderLastFmPanelDeferredLine("100%")}
-            ${renderLastFmPanelDeferredLine("92%")}
-            ${renderLastFmPanelDeferredLine("74%")}
-          </div>
-        </section>
-      `;
-    }
-    if (sourceElement instanceof HTMLElement && sourceElement.classList.contains("lastfm-track-panel-history--album")) {
-      return `
-        <section ${baseAttrs}>
-          <div class="lastfm-track-panel-section-head">
-            ${renderLastFmPanelDeferredLine("34%", "lastfm-track-panel-deferred-line--title")}
-            ${renderLastFmPanelDeferredLine("16%", "lastfm-track-panel-deferred-line--meta")}
-          </div>
-          <div class="lastfm-track-panel-deferred-list lastfm-track-panel-deferred-list--album">
-            <div class="lastfm-track-panel-deferred-list-row">
-              ${renderLastFmPanelDeferredLine("9%", "lastfm-track-panel-deferred-line--rank")}
-              <div class="lastfm-track-panel-deferred-copy">
-                ${renderLastFmPanelDeferredLine("56%", "lastfm-track-panel-deferred-line--title")}
-                ${renderLastFmPanelDeferredLine("86%")}
-              </div>
-            </div>
-            <div class="lastfm-track-panel-deferred-list-row">
-              ${renderLastFmPanelDeferredLine("9%", "lastfm-track-panel-deferred-line--rank")}
-              <div class="lastfm-track-panel-deferred-copy">
-                ${renderLastFmPanelDeferredLine("48%", "lastfm-track-panel-deferred-line--title")}
-                ${renderLastFmPanelDeferredLine("80%")}
-              </div>
-            </div>
-            <div class="lastfm-track-panel-deferred-list-row">
-              ${renderLastFmPanelDeferredLine("9%", "lastfm-track-panel-deferred-line--rank")}
-              <div class="lastfm-track-panel-deferred-copy">
-                ${renderLastFmPanelDeferredLine("53%", "lastfm-track-panel-deferred-line--title")}
-                ${renderLastFmPanelDeferredLine("72%")}
-              </div>
-            </div>
-          </div>
-        </section>
-      `;
-    }
-    if (sourceElement instanceof HTMLElement && sourceElement.classList.contains("lastfm-track-panel-history")) {
-      return `
-        <section ${baseAttrs}>
-          <div class="lastfm-track-panel-section-head">
-            ${renderLastFmPanelDeferredLine("31%", "lastfm-track-panel-deferred-line--title")}
-            ${renderLastFmPanelDeferredLine("18%", "lastfm-track-panel-deferred-line--meta")}
-          </div>
-          <div class="lastfm-track-panel-deferred-list">
-            <div class="lastfm-track-panel-deferred-list-row">
-              <div class="lastfm-track-panel-deferred-copy">
-                ${renderLastFmPanelDeferredLine("38%", "lastfm-track-panel-deferred-line--title")}
-                ${renderLastFmPanelDeferredLine("62%")}
-              </div>
-            </div>
-            <div class="lastfm-track-panel-deferred-list-row">
-              <div class="lastfm-track-panel-deferred-copy">
-                ${renderLastFmPanelDeferredLine("42%", "lastfm-track-panel-deferred-line--title")}
-                ${renderLastFmPanelDeferredLine("58%")}
-              </div>
-            </div>
-          </div>
-        </section>
-      `;
-    }
-    return `
-      <section ${baseAttrs}>
-        <div class="lastfm-track-panel-section-head">
-          ${renderLastFmPanelDeferredLine("29%", "lastfm-track-panel-deferred-line--title")}
-        </div>
-        <div class="lastfm-track-panel-deferred-list">
-          <div class="lastfm-track-panel-deferred-list-row">
-            <div class="lastfm-track-panel-deferred-copy">
-              ${renderLastFmPanelDeferredLine("48%", "lastfm-track-panel-deferred-line--title")}
-              ${renderLastFmPanelDeferredLine("74%")}
-            </div>
-            ${renderLastFmPanelDeferredLine("18%", "lastfm-track-panel-deferred-line--pill")}
-          </div>
-          <div class="lastfm-track-panel-deferred-list-row">
-            <div class="lastfm-track-panel-deferred-copy">
-              ${renderLastFmPanelDeferredLine("42%", "lastfm-track-panel-deferred-line--title")}
-              ${renderLastFmPanelDeferredLine("66%")}
-            </div>
-            ${renderLastFmPanelDeferredLine("16%", "lastfm-track-panel-deferred-line--pill")}
-          </div>
-          <div class="lastfm-track-panel-deferred-list-row">
-            <div class="lastfm-track-panel-deferred-copy">
-              ${renderLastFmPanelDeferredLine("45%", "lastfm-track-panel-deferred-line--title")}
-              ${renderLastFmPanelDeferredLine("70%")}
-            </div>
-            ${renderLastFmPanelDeferredLine("20%", "lastfm-track-panel-deferred-line--pill")}
-          </div>
-        </div>
-      </section>
-    `;
-  }
-  function buildLastFmPanelProgressiveMarkup(markup, sections) {
-    const template = createLastFmPanelMarkupTemplate(markup);
-    const root = template.content.firstElementChild;
-    const deferredSections = [];
-    if (!(root instanceof HTMLElement) || !Array.isArray(sections)) {
-      return {
-        initialMarkup: template.innerHTML,
-        deferredSections
-      };
-    }
-    sections.forEach((section, index) => {
-      if (!section || !section.selector) return;
-      const target = root.querySelector(section.selector);
-      if (!(target instanceof HTMLElement)) return;
-      const slotName = firstNonEmpty(section.slot, `deferred-${index}`);
-      deferredSections.push({
-        slot: slotName,
-        markup: target.outerHTML,
-        delayMs: Number.isFinite(Number(section.delayMs)) ? Math.max(0, Number(section.delayMs)) : index * LASTFM_PANEL_DEFERRED_SECTION_STEP_MS,
-        afterRender: typeof section.afterRender === "function" ? section.afterRender : null
-      });
-      target.outerHTML = renderLastFmPanelDeferredSlotMarkup(slotName, target);
-    });
-    return {
-      initialMarkup: template.innerHTML,
-      deferredSections
-    };
-  }
   function renderLastFmTrackPanelSkeleton(query = {}) {
     return renderLastFmPanelViewModel({
       state: "loading",
@@ -5546,97 +5356,6 @@
       stackMarkup: `${summaryMarkup}${trackListMarkup}${relatedMarkup}`
     });
   }
-  function buildLastFmTrackPanelProgressiveContent(detail, cacheKey) {
-    const fullMarkup = renderLastFmTrackPanelContent(detail);
-    const fullTemplate = createLastFmPanelMarkupTemplate(fullMarkup);
-    const fullRoot = fullTemplate.content.firstElementChild;
-    const hasPreviewPlayer = fullRoot instanceof HTMLElement && fullRoot.querySelector(".lastfm-track-panel-preview") instanceof HTMLElement;
-    const progressive = buildLastFmPanelProgressiveMarkup(fullMarkup, [
-      {
-        slot: "track-spotify",
-        selector: ".lastfm-track-panel-preview, .lastfm-track-panel-spotify-slot",
-        delayMs: 32,
-        afterRender: () => {
-          hydrateTrackPreview(detail);
-          if (hasPreviewPlayer) {
-            return Promise.resolve();
-          }
-          return mountSpotifyEmbedController(detail, cacheKey);
-        }
-      },
-      {
-        slot: "track-summary",
-        selector: ".lastfm-track-panel-summary",
-        delayMs: 72
-      },
-      {
-        slot: "track-history",
-        selector: ".lastfm-track-panel-history",
-        delayMs: 132
-      },
-      {
-        slot: "track-related",
-        selector: ".lastfm-track-panel-related",
-        delayMs: 196
-      }
-    ]);
-    return {
-      initialMarkup: progressive.initialMarkup,
-      deferredSections: progressive.deferredSections
-    };
-  }
-  function buildLastFmArtistPanelProgressiveContentShared(detail) {
-    const progressive = buildLastFmPanelProgressiveMarkup(renderLastFmArtistPanelContentShared(detail), [
-      {
-        slot: "artist-summary",
-        selector: ".lastfm-track-panel-summary",
-        delayMs: 54
-      },
-      {
-        slot: "artist-albums",
-        selector: ".lastfm-track-panel-related--albums",
-        delayMs: 120
-      },
-      {
-        slot: "artist-tracks",
-        selector: ".lastfm-track-panel-stack > .lastfm-track-panel-related:last-child",
-        delayMs: 186
-      }
-    ]);
-    return {
-      initialMarkup: progressive.initialMarkup,
-      deferredSections: progressive.deferredSections
-    };
-  }
-  function buildLastFmAlbumPanelProgressiveContentShared(detail, cacheKey) {
-    const progressive = buildLastFmPanelProgressiveMarkup(renderLastFmAlbumPanelContentShared(detail), [
-      {
-        slot: "album-spotify",
-        selector: ".lastfm-track-panel-spotify-slot",
-        delayMs: 32,
-        afterRender: () => mountSpotifyEmbedController(detail, cacheKey)
-      },
-      {
-        slot: "album-summary",
-        selector: ".lastfm-track-panel-summary",
-        delayMs: 78
-      },
-      {
-        slot: "album-tracklist",
-        selector: ".lastfm-track-panel-history--album",
-        delayMs: 144
-      },
-      {
-        slot: "album-related",
-        selector: ".lastfm-track-panel-related",
-        delayMs: 210
-      }
-    ]);
-    return {
-      initialMarkup: progressive.initialMarkup,
-      deferredSections: progressive.deferredSections
-    };
-  }
   function renderSiteShowcase(site, payload) {
     const safePayload = ensurePayload(site, payload);
     if (site.id === "steam") return renderSteamShowcase(site, safePayload);
@@ -5657,15 +5376,6 @@
     return `<span class="steam-sidebar-site-icon steam-sidebar-site-icon--${safeSiteId}" aria-hidden="true">${iconMarkupById[siteId] || ""}</span>`;
   }
   var cinnaGifAssetCache = /* @__PURE__ */ new Map();
-  function shouldEnhanceCinnaMobileGifPlayback() {
-    if (typeof window === "undefined") return false;
-    if (hasCompactMobileInput()) return false;
-    const saveDataEnabled = Boolean(navigator.connection?.saveData);
-    const deviceMemory = Number(navigator.deviceMemory) || 0;
-    if (saveDataEnabled) return false;
-    if (deviceMemory > 0 && deviceMemory <= 4) return false;
-    return true;
-  }
   function skipGifSubBlocks2(data, offset) {
     let cursor = offset;
     while (cursor < data.length) {
@@ -5786,14 +5496,6 @@
     gifImage.style.opacity = CINNA_GIF_OPACITY;
     const safeUrl = sanitizeUrl(gifImage.getAttribute("data-cinna-gif-src") || gifImage.getAttribute("src") || "");
     if (!safeUrl) {
-      return { dispose() {
-      } };
-    }
-    if (!shouldEnhanceCinnaMobileGifPlayback()) {
-      gifImage.loading = "eager";
-      gifImage.decoding = "async";
-      gifImage.hidden = false;
-      gifImage.classList.remove("cinna-mobile-gif--enhanced");
       return { dispose() {
       } };
     }
@@ -5988,7 +5690,6 @@
     let lastFmTrackPanelAbortController = null;
     let lastFmTrackPanelIsClosing = false;
     const lastFmTrackDetailsCache = /* @__PURE__ */ new Map();
-    const LASTFM_TRACK_DETAILS_CACHE_LIMIT = 18;
     let lastFmTrackPreviewAudio = null;
     let lastFmTrackPreviewPausedShuffle = false;
     let lastFmTrackPreviewSyncQueued = false;
@@ -6002,8 +5703,6 @@
     let lastFmTrackPanelArtworkSourceRetireTimer = 0;
     let lastFmTrackPanelBuildAnimations = [];
     let lastFmTrackPanelBuildNonce = 0;
-    let lastFmTrackPanelDeferredHydrationToken = 0;
-    let lastFmTrackPanelDeferredHydrationTimers = [];
     let spotifyIframeApiPromise = null;
     let lastFmSpotifyEmbedController = null;
     let lastFmSpotifyEmbedLoadToken = 0;
@@ -6047,8 +5746,6 @@
     const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 1500;
     const LASTFM_PANEL_BUILD_STEP_MS = 74;
     const LASTFM_PANEL_BUILD_DURATION_MS = 460;
-    const LASTFM_PANEL_DEFERRED_SECTION_STEP_MS = 74;
-    const LASTFM_PANEL_DEFERRED_REVEAL_DURATION_MS = 320;
     const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
     const lastFmTrackPanelSceneRuntime = new WeakMap();
     let mobileLinkSelectionTimer = 0;
@@ -7114,7 +6811,6 @@
         renderSkeleton: renderLastFmTrackPanelSkeleton,
         renderError: renderLastFmTrackPanelError,
         renderContent: renderLastFmTrackPanelContent,
-        renderProgressive: buildLastFmTrackPanelProgressiveContent,
         openSoundSource: "lastfmTrackPanelOpen",
         afterRender(detail, cacheKey) {
           hydrateTrackPreview(detail);
@@ -7131,7 +6827,6 @@
         renderSkeleton: renderLastFmArtistPanelSkeleton,
         renderError: renderLastFmArtistPanelError,
         renderContent: renderLastFmArtistPanelContentShared,
-        renderProgressive: buildLastFmArtistPanelProgressiveContentShared,
         openSoundSource: "lastfmArtistPanelOpen",
         afterRender() {
           return Promise.resolve();
@@ -7147,7 +6842,6 @@
         renderSkeleton: renderLastFmAlbumPanelSkeletonShared,
         renderError: renderLastFmAlbumPanelErrorShared,
         renderContent: renderLastFmAlbumPanelContentShared,
-        renderProgressive: buildLastFmAlbumPanelProgressiveContentShared,
         openSoundSource: "lastfmAlbumPanelOpen",
         afterRender(detail, cacheKey) {
           return mountSpotifyEmbedController(detail, cacheKey);
@@ -7306,134 +7000,6 @@
         delete lastFmTrackPanelArtworkSourceElement.dataset.lastfmArtSourceState;
       }
       lastFmTrackPanelArtworkSourceElement = null;
-    }
-    function clearLastFmTrackPanelDeferredHydration() {
-      lastFmTrackPanelDeferredHydrationToken += 1;
-      lastFmTrackPanelDeferredHydrationTimers.forEach((entry) => {
-        if (!entry || !entry.id) return;
-        if (entry.kind === "raf") {
-          window.cancelAnimationFrame(entry.id);
-          return;
-        }
-        window.clearTimeout(entry.id);
-      });
-      lastFmTrackPanelDeferredHydrationTimers = [];
-    }
-    function trackLastFmTrackPanelDeferredHydrationTimer(kind, id) {
-      if (!id) return id;
-      lastFmTrackPanelDeferredHydrationTimers.push({
-        kind,
-        id
-      });
-      return id;
-    }
-    function stampLastFmTrackPanelDeferredMarkup(markup, slotName) {
-      const template = createLastFmPanelMarkupTemplate(markup);
-      const root = template.content.firstElementChild;
-      if (!(root instanceof HTMLElement)) {
-        return String(markup || "");
-      }
-      root.classList.add("lastfm-track-panel-deferred-slot");
-      root.dataset.lastfmPanelSlot = slotName;
-      root.dataset.lastfmPanelSlotState = "entering";
-      return template.innerHTML;
-    }
-    function getLastFmTrackPanelDeferredSlot(slotName) {
-      const currentScene = getLastFmTrackPanelCurrentScene();
-      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
-      if (!(currentLayer instanceof HTMLElement)) return null;
-      const safeSlotName = String(slotName || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      const slot = currentLayer.querySelector(`[data-lastfm-panel-slot="${safeSlotName}"]`);
-      return slot instanceof HTMLElement ? slot : null;
-    }
-    function revealLastFmTrackPanelDeferredSlot(slotName, markup, options = {}) {
-      const slot = getLastFmTrackPanelDeferredSlot(slotName);
-      if (!(slot instanceof HTMLElement)) return null;
-      const currentScene = getLastFmTrackPanelCurrentScene();
-      const currentLayer = getLastFmTrackPanelSceneCurrentLayer(currentScene);
-      if (!(currentLayer instanceof HTMLElement)) return null;
-      const stampedMarkup = stampLastFmTrackPanelDeferredMarkup(markup, slotName);
-      slot.outerHTML = stampedMarkup;
-      const inserted = getLastFmTrackPanelDeferredSlot(slotName);
-      if (!(inserted instanceof HTMLElement)) return null;
-      const shouldAnimate = Boolean(options?.animate) && !(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
-      if (shouldAnimate) {
-        inserted.getBoundingClientRect();
-        trackLastFmTrackPanelDeferredHydrationTimer("raf", window.requestAnimationFrame(() => {
-          if (!(inserted.isConnected && inserted.dataset.lastfmPanelSlot === slotName)) return;
-          inserted.dataset.lastfmPanelSlotState = "visible";
-          trackLastFmTrackPanelDeferredHydrationTimer("timeout", window.setTimeout(() => {
-            if (inserted.isConnected && inserted.dataset.lastfmPanelSlot === slotName) {
-              delete inserted.dataset.lastfmPanelSlotState;
-            }
-          }, LASTFM_PANEL_DEFERRED_REVEAL_DURATION_MS + 72));
-        }));
-      } else {
-        delete inserted.dataset.lastfmPanelSlotState;
-      }
-      hydrateLastFmTrackPanelScene(currentScene);
-      return inserted;
-    }
-    function queueLastFmTrackPanelDeferredSections(plan, options = {}) {
-      const sections = Array.isArray(plan?.deferredSections) ? plan.deferredSections.filter(Boolean) : [];
-      if (!sections.length) {
-        clearLastFmTrackPanelDeferredHydration();
-        return;
-      }
-      clearLastFmTrackPanelDeferredHydration();
-      const token = lastFmTrackPanelDeferredHydrationToken;
-      const cacheKey = firstNonEmpty(plan?.cacheKey, "");
-      const startDelayMs = Math.max(0, Number(options?.startDelayMs) || 0);
-      sections.forEach((section, index) => {
-        const delayMs = startDelayMs + Math.max(0, Number(section?.delayMs) || index * LASTFM_PANEL_DEFERRED_SECTION_STEP_MS);
-        trackLastFmTrackPanelDeferredHydrationTimer("timeout", window.setTimeout(async () => {
-          if (token !== lastFmTrackPanelDeferredHydrationToken || lastFmTrackPanelActiveKey !== cacheKey) return;
-          const animate = lastFmTrackPanelRoot instanceof HTMLElement && lastFmTrackPanelRoot.dataset.panelVisibility === "visible";
-          const inserted = revealLastFmTrackPanelDeferredSlot(section.slot, section.markup, {
-            animate
-          });
-          if (!(inserted instanceof HTMLElement)) return;
-          if (section.slot === "track-spotify") {
-            await waitForAnimationFrames(1);
-            if (token !== lastFmTrackPanelDeferredHydrationToken || lastFmTrackPanelActiveKey !== cacheKey || !inserted.isConnected) {
-              return;
-            }
-            await waitForLastFmPanelAfterRender((() => {
-              hydrateTrackPreview(plan?.payload);
-              if (getTrackPreviewPlayer() instanceof HTMLElement && !(getSpotifyEmbedTarget() instanceof HTMLElement)) {
-                return Promise.resolve();
-              }
-              return mountSpotifyEmbedController(plan?.payload, cacheKey);
-            })(), {
-              timeoutMs: 0,
-              isStillActive: () => token === lastFmTrackPanelDeferredHydrationToken && lastFmTrackPanelActiveKey === cacheKey && inserted.isConnected
-            });
-            return;
-          }
-          if (section.slot === "album-spotify") {
-            await waitForAnimationFrames(1);
-            if (token !== lastFmTrackPanelDeferredHydrationToken || lastFmTrackPanelActiveKey !== cacheKey || !inserted.isConnected) {
-              return;
-            }
-            await waitForLastFmPanelAfterRender(mountSpotifyEmbedController(plan?.payload, cacheKey), {
-              timeoutMs: 0,
-              isStillActive: () => token === lastFmTrackPanelDeferredHydrationToken && lastFmTrackPanelActiveKey === cacheKey && inserted.isConnected
-            });
-            return;
-          }
-          const deferredFollowup = typeof section.afterRender === "function" ? section.afterRender : null;
-          if (typeof deferredFollowup === "function") {
-            await waitForAnimationFrames(1);
-            if (token !== lastFmTrackPanelDeferredHydrationToken || lastFmTrackPanelActiveKey !== cacheKey || !inserted.isConnected) {
-              return;
-            }
-            await waitForLastFmPanelAfterRender(deferredFollowup(), {
-              timeoutMs: 0,
-              isStillActive: () => token === lastFmTrackPanelDeferredHydrationToken && lastFmTrackPanelActiveKey === cacheKey && inserted.isConnected
-            });
-          }
-        }, delayMs));
-      });
     }
     function setLastFmTrackPanelArtworkSourceState(shell, state) {
       if (!(shell instanceof HTMLElement) || !state) return;
@@ -7767,47 +7333,10 @@
         rect
       };
     }
-    function clearLastFmTrackPanelRevealOrigin(panel) {
-      if (!(panel instanceof HTMLElement)) return;
-      delete panel.dataset.panelRevealOrigin;
-      panel.style.removeProperty("--lastfm-track-panel-reveal-top");
-      panel.style.removeProperty("--lastfm-track-panel-reveal-right");
-      panel.style.removeProperty("--lastfm-track-panel-reveal-bottom");
-      panel.style.removeProperty("--lastfm-track-panel-reveal-left");
-    }
-    function setLastFmTrackPanelRevealOrigin(panel, targetState = null) {
-      if (!(panel instanceof HTMLElement) || !(targetState?.rect)) {
-        clearLastFmTrackPanelRevealOrigin(panel);
-        return false;
-      }
-      const windowElement = getLastFmTrackPanelSceneLayerWindow(getLastFmTrackPanelCurrentScene(), "current");
-      if (!(windowElement instanceof HTMLElement)) {
-        clearLastFmTrackPanelRevealOrigin(panel);
-        return false;
-      }
-      const targetRect = targetState.rect;
-      const windowRect = windowElement.getBoundingClientRect();
-      if (windowRect.width < 1 || windowRect.height < 1 || targetRect.width < 1 || targetRect.height < 1) {
-        clearLastFmTrackPanelRevealOrigin(panel);
-        return false;
-      }
-      const insetTop = clamp2(targetRect.top - windowRect.top, 0, Math.max(0, windowRect.height - 1));
-      const insetLeft = clamp2(targetRect.left - windowRect.left, 0, Math.max(0, windowRect.width - 1));
-      const insetRight = clamp2(windowRect.right - targetRect.right, 0, Math.max(0, windowRect.width - 1));
-      const insetBottom = clamp2(windowRect.bottom - targetRect.bottom, 0, Math.max(0, windowRect.height - 1));
-      panel.dataset.panelRevealOrigin = "artwork";
-      panel.style.setProperty("--lastfm-track-panel-reveal-top", `${insetTop.toFixed(2)}px`);
-      panel.style.setProperty("--lastfm-track-panel-reveal-right", `${insetRight.toFixed(2)}px`);
-      panel.style.setProperty("--lastfm-track-panel-reveal-bottom", `${insetBottom.toFixed(2)}px`);
-      panel.style.setProperty("--lastfm-track-panel-reveal-left", `${insetLeft.toFixed(2)}px`);
-      return true;
-    }
     function stageLastFmTrackPanelOverlay(panel) {
       if (!(panel instanceof HTMLElement)) return;
       clearLastFmTrackPanelArtworkLaunch();
       clearLastFmTrackPanelBuildReveal();
-      clearLastFmTrackPanelDeferredHydration();
-      clearLastFmTrackPanelRevealOrigin(panel);
       panel.hidden = false;
       panel.classList.add("is-open");
       panel.setAttribute("aria-hidden", "true");
@@ -7815,9 +7344,8 @@
       panel.dataset.artworkLaunchState = "preloading";
       setTrackPanelOpenState(true);
     }
-    function revealLastFmTrackPanelOverlay(panel, openSoundSource, revealTargetState = null) {
+    function revealLastFmTrackPanelOverlay(panel, openSoundSource) {
       if (!(panel instanceof HTMLElement)) return;
-      setLastFmTrackPanelRevealOrigin(panel, revealTargetState);
       panel.hidden = false;
       panel.setAttribute("aria-hidden", "false");
       panel.dataset.panelVisibility = "visible";
@@ -7998,44 +7526,7 @@
       return true;
     }
     async function renderLastFmPanelLoadStateIntoCurrentScene(definition, loadState) {
-      if (!definition || !loadState) {
-        return {
-          ready: false,
-          deferredPlan: null
-        };
-      }
-      const progressivePlan = typeof definition.renderProgressive === "function"
-        ? definition.renderProgressive(loadState.payload, loadState.cacheKey)
-        : null;
-      if (progressivePlan?.initialMarkup) {
-        updateLastFmTrackPanelCurrentSceneMarkup(progressivePlan.initialMarkup, {
-          panelType: definition.panelType,
-          loading: true
-        });
-        const initialRenderFinished = await waitForLastFmPanelAfterRender(
-          progressivePlan.afterInitialRender?.(),
-          {
-            timeoutMs: 0,
-            isStillActive: () => lastFmTrackPanelActiveKey === loadState.cacheKey
-          }
-        );
-        if (!initialRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
-          return {
-            ready: false,
-            deferredPlan: null
-          };
-        }
-        settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
-        return {
-          ready: true,
-          deferredPlan: {
-            panelType: definition.panelType,
-            cacheKey: loadState.cacheKey,
-            payload: loadState.payload,
-            deferredSections: progressivePlan.deferredSections
-          }
-        };
-      }
+      if (!definition || !loadState) return false;
       const contentMarkup = definition.renderContent(loadState.payload);
       updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
         panelType: definition.panelType,
@@ -8048,20 +7539,13 @@
         }
       );
       if (!afterRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
-        return {
-          ready: false,
-          deferredPlan: null
-        };
+        return false;
       }
       settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
-      return {
-        ready: true,
-        deferredPlan: null
-      };
+      return true;
     }
     function renderLastFmPanelErrorIntoCurrentScene(definition, normalizedQuery) {
       if (!definition) return;
-      clearLastFmTrackPanelDeferredHydration();
       updateLastFmTrackPanelCurrentSceneMarkup(definition.renderError(normalizedQuery), {
         panelType: definition.panelType,
         loading: false
@@ -8080,7 +7564,6 @@
       const cacheKey = definition.buildCacheKey(normalizedQuery);
       lastFmTrackPanelOriginTrigger = trigger;
       lastFmTrackPanelActiveKey = cacheKey;
-      clearLastFmTrackPanelDeferredHydration();
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       const skeletonMarkup = definition.renderSkeleton(normalizedQuery);
@@ -8100,8 +7583,8 @@
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
-        const preloadState = await renderLastFmPanelLoadStateIntoCurrentScene(definition, loadState);
-        if (!preloadState.ready || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
+        const preloadFinished = await renderLastFmPanelLoadStateIntoCurrentScene(definition, loadState);
+        if (!preloadFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
         const settledTargetAnchor = await waitForLastFmTrackPanelArtworkReady("current");
@@ -8122,10 +7605,7 @@
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
-        revealLastFmTrackPanelOverlay(panel, definition.openSoundSource, settledTargetAnchor);
-        queueLastFmTrackPanelDeferredSections(preloadState.deferredPlan, {
-          startDelayMs: 38
-        });
+        revealLastFmTrackPanelOverlay(panel, definition.openSoundSource);
         await releaseLastFmTrackPanelArtworkLaunch();
         const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (focusTarget instanceof HTMLElement) {
@@ -9456,7 +8936,6 @@
       clearLastFmTrackPanelSceneTimer();
       clearLastFmTrackPanelSceneSettleTimer();
       clearLastFmTrackPanelBuildReveal();
-      clearLastFmTrackPanelDeferredHydration();
       if (lastFmTrackPanelFitRaf) {
         cancelAnimationFrame(lastFmTrackPanelFitRaf);
         lastFmTrackPanelFitRaf = 0;
@@ -9490,7 +8969,6 @@
       lastFmTrackPanelRoot.dataset.panelExplosionState = "idle";
       delete lastFmTrackPanelRoot.dataset.panelVisibility;
       delete lastFmTrackPanelRoot.dataset.artworkLaunchState;
-      clearLastFmTrackPanelRevealOrigin(lastFmTrackPanelRoot);
       lastFmTrackPanelRoot.hidden = true;
       if (lastFmTrackPanelContent instanceof HTMLElement) {
         Array.from(lastFmTrackPanelContent.querySelectorAll(".lastfm-track-panel-scene")).forEach((scene) => {
@@ -9515,10 +8993,7 @@
       const normalizedQuery = definition.normalizeQuery(query);
       const cacheKey = definition.buildCacheKey(normalizedQuery);
       if (lastFmTrackDetailsCache.has(cacheKey)) {
-        const cachedPayload = lastFmTrackDetailsCache.get(cacheKey);
-        lastFmTrackDetailsCache.delete(cacheKey);
-        lastFmTrackDetailsCache.set(cacheKey, cachedPayload);
-        return { cacheKey, normalizedQuery, payload: cachedPayload };
+        return { cacheKey, normalizedQuery, payload: lastFmTrackDetailsCache.get(cacheKey) };
       }
       lastFmTrackPanelAbortController?.abort();
       const controller = new AbortController();
@@ -9532,11 +9007,6 @@
         );
         const normalizedPayload = definition.normalizePayload(payload, normalizedQuery);
         lastFmTrackDetailsCache.set(cacheKey, normalizedPayload);
-        while (lastFmTrackDetailsCache.size > LASTFM_TRACK_DETAILS_CACHE_LIMIT) {
-          const oldestCacheKey = lastFmTrackDetailsCache.keys().next().value;
-          if (!oldestCacheKey) break;
-          lastFmTrackDetailsCache.delete(oldestCacheKey);
-        }
         return { cacheKey, normalizedQuery, payload: normalizedPayload };
       } finally {
         if (lastFmTrackPanelAbortController === controller) {
@@ -9561,7 +9031,6 @@
         lastFmTrackPanelOriginTrigger = trigger;
       }
       lastFmTrackPanelActiveKey = cacheKey;
-      clearLastFmTrackPanelDeferredHydration();
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
       const skeletonMarkup = definition.renderSkeleton(normalizedQuery);
@@ -9596,37 +9065,17 @@
       try {
         const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
-        const progressivePlan = typeof definition.renderProgressive === "function"
-          ? definition.renderProgressive(loadState.payload, loadState.cacheKey)
-          : null;
-        const contentMarkup = progressivePlan?.initialMarkup || definition.renderContent(loadState.payload);
-        const deferredPlan = progressivePlan?.initialMarkup ? {
-          panelType: definition.panelType,
-          cacheKey: loadState.cacheKey,
-          payload: loadState.payload,
-          deferredSections: progressivePlan.deferredSections
-        } : null;
+        const contentMarkup = definition.renderContent(loadState.payload);
         if (morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)) {
           setLastFmTrackPanelSceneMorphNextMarkup(morphScene, contentMarkup);
-          if (progressivePlan?.initialMarkup) {
-            const initialRenderFinished = await waitForLastFmPanelAfterRender(
-              progressivePlan.afterInitialRender?.(),
-              {
-                timeoutMs: 0,
-                isStillActive: () => isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)
-              }
-            );
-            if (!initialRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
-          } else {
-            const afterRenderFinished = await waitForLastFmPanelAfterRender(
-              definition.afterRender?.(loadState.payload, loadState.cacheKey),
-              {
-                timeoutMs: 0,
-                isStillActive: () => isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)
-              }
-            );
-            if (!afterRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
-          }
+          const afterRenderFinished = await waitForLastFmPanelAfterRender(
+            definition.afterRender?.(loadState.payload, loadState.cacheKey),
+            {
+              timeoutMs: 0,
+              isStillActive: () => isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)
+            }
+          );
+          if (!afterRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           const morphFinished = await finishLastFmTrackPanelSceneMorph(morphScene, {
             nonce: morphNonce,
@@ -9638,21 +9087,10 @@
             panelType: definition.panelType,
             loading: true
           });
-          if (progressivePlan?.initialMarkup) {
-            const initialRenderFinished = await waitForLastFmPanelAfterRender(progressivePlan.afterInitialRender?.(), {
-              timeoutMs: 0,
-              isStillActive: () => lastFmTrackPanelActiveKey === loadState.cacheKey
-            });
-            if (!initialRenderFinished) return;
-          } else {
-            await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
-          }
+          await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
           if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
         }
-        queueLastFmTrackPanelDeferredSections(deferredPlan, {
-          startDelayMs: 56
-        });
         const nextFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
@@ -10228,15 +9666,7 @@
     let performanceDegraded = isDesktopPerformanceDegraded();
     let scrollTargetOffsetY = 0;
     let scrollCurrentOffsetY = 0;
-    let backdropParallaxTargetX = 0;
-    let backdropParallaxTargetY = 0;
-    let backdropParallaxCurrentX = 0;
-    let backdropParallaxCurrentY = 0;
-    let appliedBackdropParallaxX = 0;
-    let appliedBackdropParallaxY = 0;
     const ambientScrollParallaxFactor = 0.26;
-    const ambientPointerParallaxMaxOffsetX = 8;
-    const ambientPointerParallaxMaxOffsetY = 10;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -10270,20 +9700,6 @@
       if (force) {
         scrollCurrentOffsetY = scrollTargetOffsetY;
       }
-    }
-    function applyBackdropParallax(force = false) {
-      if (!(osAmbientBackdrop instanceof HTMLElement)) {
-        return;
-      }
-      const nextX = Math.abs(backdropParallaxCurrentX) < 0.01 ? 0 : backdropParallaxCurrentX;
-      const nextY = Math.abs(backdropParallaxCurrentY) < 0.01 ? 0 : backdropParallaxCurrentY;
-      if (!force && Math.abs(nextX - appliedBackdropParallaxX) < 0.05 && Math.abs(nextY - appliedBackdropParallaxY) < 0.05) {
-        return;
-      }
-      appliedBackdropParallaxX = nextX;
-      appliedBackdropParallaxY = nextY;
-      osAmbientBackdrop.style.setProperty("--ambient-pointer-parallax-x", `${nextX.toFixed(2)}px`);
-      osAmbientBackdrop.style.setProperty("--ambient-pointer-parallax-y", `${nextY.toFixed(2)}px`);
     }
     function stepAmbientScrollState() {
       const ease = prefersReducedMotion ? 1 : 0.14;
@@ -10346,23 +9762,11 @@
         pointerCurrentX = renderWidth * 0.5;
         pointerCurrentY = renderHeight * 0.5;
         pointerStrength = 0;
-        backdropParallaxTargetX = 0;
-        backdropParallaxTargetY = 0;
-        backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.18;
-        backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.18;
-        applyBackdropParallax();
         return;
       }
       pointerCurrentX += (pointerTargetX - pointerCurrentX) * 0.16;
       pointerCurrentY += (pointerTargetY - pointerCurrentY) * 0.16;
       pointerStrength += (pointerTargetStrength - pointerStrength) * (pointerTargetStrength > pointerStrength ? 0.18 : 0.11);
-      const normalizedX = renderWidth > 0 ? pointerCurrentX / renderWidth - 0.5 : 0;
-      const normalizedY = renderHeight > 0 ? pointerCurrentY / renderHeight - 0.5 : 0;
-      backdropParallaxTargetX = -normalizedX * ambientPointerParallaxMaxOffsetX * 2 * pointerStrength;
-      backdropParallaxTargetY = -normalizedY * ambientPointerParallaxMaxOffsetY * 2 * pointerStrength;
-      backdropParallaxCurrentX += (backdropParallaxTargetX - backdropParallaxCurrentX) * 0.14;
-      backdropParallaxCurrentY += (backdropParallaxTargetY - backdropParallaxCurrentY) * 0.14;
-      applyBackdropParallax();
     }
     function resolvePointerRepulsion(x, y, radius, shift, seed) {
       if (!enableAmbientPointerResponse || performanceDegraded) {
@@ -10508,7 +9912,6 @@
           returnEaseMin: 0.55,
           returnEaseSpan: 0.45
         }),
-        cycleState: { cycleIndex: -1 },
         renderState: { x: 0, y: 0, size: 1, alpha: 0, pointerInfluence: 0, influence: 0 }
       };
     }
@@ -10540,7 +9943,6 @@
           returnEaseMin: 0.42,
           returnEaseSpan: 0.36
         }),
-        cycleState: { cycleIndex: -1 },
         renderState: {
           x: 0,
           y: 0,
@@ -10582,7 +9984,6 @@
           returnEaseMin: 0.34,
           returnEaseSpan: 0.26
         }),
-        cycleState: { cycleIndex: -1 },
         renderState: {
           x: 0,
           y: 0,
@@ -10618,7 +10019,6 @@
         repelShiftMin: (compactMobileLayout ? 4.4 : 8.8) + rng() * (compactMobileLayout ? 2.2 : 5.2),
         repelShiftSpan: (compactMobileLayout ? 2.8 : 4.6) + rng() * (compactMobileLayout ? 3.2 : 6.4),
         headCoreChance: 0.34 + rng() * 0.22,
-        cycleState: { cycleIndex: -1 },
         renderState: {
           seed: 0,
           headX: 0,
@@ -10636,113 +10036,34 @@
         }
       };
     }
-    function ensureStarCycleState(star, cycleIndex) {
-      const cycleState = star.cycleState;
-      if (cycleState.cycleIndex === cycleIndex) {
-        return cycleState;
-      }
-      const rng = createSeededRandom(hashCycleSeed(star.seed, cycleIndex, 1013904223));
-      cycleState.cycleIndex = cycleIndex;
-      cycleState.anchorX = Math.round(rng() * (renderWidth - 1));
-      cycleState.anchorY = Math.round(rng() * (renderHeight - 1));
-      cycleState.size = rng() < star.largeChance ? 2 : 1;
-      cycleState.alphaBase = star.alphaMin + rng() * star.alphaSpan;
-      cycleState.twinkleAmount = star.twinkleAmountMin > 0 ? star.twinkleAmountMin + rng() * star.twinkleAmountSpan : 0;
-      cycleState.twinkleSpeed = star.twinkleSpeedMin + rng() * star.twinkleSpeedSpan;
-      cycleState.twinklePhase = rng() * TAU;
-      cycleState.driftAmplitude = star.driftAmpMin + rng() * star.driftAmpSpan;
-      cycleState.driftSpeed = star.driftSpeedMin + rng() * star.driftSpeedSpan;
-      cycleState.driftPhaseX = rng() * TAU;
-      cycleState.driftPhaseY = rng() * TAU;
-      cycleState.fadeInRatio = 0.08 + rng() * 0.12;
-      cycleState.fadeOutRatio = 0.12 + rng() * 0.18;
-      cycleState.repelRadius = star.repelRadiusMin + rng() * star.repelRadiusSpan;
-      cycleState.repelShift = star.repelShiftMin + rng() * star.repelShiftSpan;
-      return cycleState;
-    }
-    function ensureGlintCycleState(glint, cycleIndex) {
-      const cycleState = glint.cycleState;
-      if (cycleState.cycleIndex === cycleIndex) {
-        return cycleState;
-      }
-      const rng = createSeededRandom(hashCycleSeed(glint.seed, cycleIndex, 1664525));
-      cycleState.cycleIndex = cycleIndex;
-      cycleState.anchorX = Math.round(rng() * (renderWidth - 1));
-      cycleState.anchorY = Math.round(rng() * (renderHeight - 1));
-      cycleState.radius = glint.radiusMin + rng() * glint.radiusSpan;
-      cycleState.alpha = glint.alphaMin + rng() * glint.alphaSpan;
-      cycleState.pulseSpeed = glint.pulseSpeedMin + rng() * glint.pulseSpeedSpan;
-      cycleState.pulsePhase = rng() * TAU;
-      cycleState.driftAmplitude = glint.driftAmpMin + rng() * glint.driftAmpSpan;
-      cycleState.driftSpeed = glint.driftSpeedMin + rng() * glint.driftSpeedSpan;
-      cycleState.driftPhaseX = rng() * TAU;
-      cycleState.driftPhaseY = rng() * TAU;
-      cycleState.fadeInRatio = 0.12 + rng() * 0.12;
-      cycleState.fadeOutRatio = 0.18 + rng() * 0.18;
-      cycleState.repelRadius = glint.repelRadiusMin + rng() * glint.repelRadiusSpan;
-      cycleState.repelShift = glint.repelShiftMin + rng() * glint.repelShiftSpan;
-      cycleState.coreSize = rng() < 0.52 ? 1 : 2;
-      cycleState.armScale = glint.armScaleMin + rng() * glint.armScaleSpan;
-      cycleState.diagonalAlpha = rng() < glint.diagonalChance ? 0.06 + rng() * 0.11 : 0;
-      return cycleState;
-    }
-    function ensureFlareCycleState(flare, cycleIndex) {
-      const cycleState = flare.cycleState;
-      if (cycleState.cycleIndex === cycleIndex) {
-        return cycleState;
-      }
-      const rng = createSeededRandom(hashCycleSeed(flare.seed, cycleIndex, 747796405));
-      cycleState.cycleIndex = cycleIndex;
-      cycleState.anchorX = Math.round(rng() * (renderWidth - 1));
-      cycleState.anchorY = Math.round(rng() * (renderHeight - 1));
-      cycleState.radius = flare.radiusMin + rng() * flare.radiusSpan;
-      cycleState.alpha = flare.alphaMin + rng() * flare.alphaSpan;
-      cycleState.pulseSpeed = flare.pulseSpeedMin + rng() * flare.pulseSpeedSpan;
-      cycleState.pulsePhase = rng() * TAU;
-      cycleState.driftAmplitude = flare.driftAmpMin + rng() * flare.driftAmpSpan;
-      cycleState.driftSpeed = flare.driftSpeedMin + rng() * flare.driftSpeedSpan;
-      cycleState.driftPhaseX = rng() * TAU;
-      cycleState.driftPhaseY = rng() * TAU;
-      cycleState.repelRadius = flare.repelRadiusMin + rng() * flare.repelRadiusSpan;
-      cycleState.repelShift = flare.repelShiftMin + rng() * flare.repelShiftSpan;
-      cycleState.coreSize = 2 + Math.round(rng() * 2);
-      return cycleState;
-    }
-    function ensureShootingStarCycleState(shootingStar, cycleIndex) {
-      const cycleState = shootingStar.cycleState;
-      if (cycleState.cycleIndex === cycleIndex) {
-        return cycleState;
-      }
-      const rng = createSeededRandom(hashCycleSeed(shootingStar.seed, cycleIndex, 1580030173));
-      cycleState.cycleIndex = cycleIndex;
-      cycleState.visibleDuration = shootingStar.visibleDurationMin + rng() * shootingStar.visibleDurationSpan;
-      cycleState.startFromLeft = rng() < 0.5;
-      cycleState.startYRatio = shootingStar.entryBandMin + rng() * shootingStar.entryBandSpan;
-      cycleState.travelDropRatio = shootingStar.travelDropMin + rng() * shootingStar.travelDropSpan;
-      cycleState.travelDirection = rng() < shootingStar.upwardChance ? -0.45 : 1;
-      cycleState.fadeInRatio = 0.08 + rng() * 0.08;
-      cycleState.fadeOutRatio = 0.18 + rng() * 0.12;
-      cycleState.trailLength = shootingStar.trailLengthMin + rng() * shootingStar.trailLengthSpan;
-      cycleState.alpha = clamp(shootingStar.alphaMin + rng() * shootingStar.alphaSpan, 0.42, 0.96);
-      cycleState.repelRadius = shootingStar.repelRadiusMin + rng() * shootingStar.repelRadiusSpan;
-      cycleState.repelShift = shootingStar.repelShiftMin + rng() * shootingStar.repelShiftSpan;
-      cycleState.coreCells = rng() < shootingStar.headCoreChance ? 2 : 1;
-      cycleState.armCells = rng() < 0.55 ? 2 : 1;
-      return cycleState;
-    }
     function resolveStarState(star, timeSec) {
       const localTime = timeSec + star.cycleOffset;
       const cycleIndex = Math.floor(localTime / star.cycleDuration);
       const cycleProgress = localTime / star.cycleDuration - cycleIndex;
-      const cycleState = ensureStarCycleState(star, cycleIndex);
-      const lifeAlpha = evaluateCycleEnvelope(cycleProgress, cycleState.fadeInRatio, cycleState.fadeOutRatio);
-      const twinkle = cycleState.twinkleAmount > 0 ? Math.sin(timeSec * cycleState.twinkleSpeed + cycleState.twinklePhase) * cycleState.twinkleAmount : 0;
-      const driftX = Math.sin(timeSec * cycleState.driftSpeed + cycleState.driftPhaseX) * cycleState.driftAmplitude;
-      const driftY = Math.cos(timeSec * (cycleState.driftSpeed * 0.84) + cycleState.driftPhaseY) * cycleState.driftAmplitude;
+      const rng = createSeededRandom(hashCycleSeed(star.seed, cycleIndex, 1013904223));
+      const anchorX = Math.round(rng() * (renderWidth - 1));
+      const anchorY = Math.round(rng() * (renderHeight - 1));
+      const size = rng() < star.largeChance ? 2 : 1;
+      const alphaBase = star.alphaMin + rng() * star.alphaSpan;
+      const twinkleAmount = star.twinkleAmountMin > 0 ? star.twinkleAmountMin + rng() * star.twinkleAmountSpan : 0;
+      const twinkleSpeed = star.twinkleSpeedMin + rng() * star.twinkleSpeedSpan;
+      const twinklePhase = rng() * TAU;
+      const driftAmplitude = star.driftAmpMin + rng() * star.driftAmpSpan;
+      const driftSpeed = star.driftSpeedMin + rng() * star.driftSpeedSpan;
+      const driftPhaseX = rng() * TAU;
+      const driftPhaseY = rng() * TAU;
+      const fadeInRatio = 0.08 + rng() * 0.12;
+      const fadeOutRatio = 0.12 + rng() * 0.18;
+      const repelRadius = star.repelRadiusMin + rng() * star.repelRadiusSpan;
+      const repelShift = star.repelShiftMin + rng() * star.repelShiftSpan;
+      const lifeAlpha = evaluateCycleEnvelope(cycleProgress, fadeInRatio, fadeOutRatio);
+      const twinkle = twinkleAmount > 0 ? Math.sin(timeSec * twinkleSpeed + twinklePhase) * twinkleAmount : 0;
+      const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
+      const driftY = Math.cos(timeSec * (driftSpeed * 0.84) + driftPhaseY) * driftAmplitude;
       const state = star.renderState;
-      updateAmbientMotion(star, cycleIndex, cycleState.anchorX + driftX, cycleState.anchorY + driftY, cycleState.repelRadius, cycleState.repelShift, star.seed, state);
-      state.size = cycleState.size;
-      state.alpha = clamp(cycleState.alphaBase + twinkle, 0.06, 0.96) * lifeAlpha;
+      updateAmbientMotion(star, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, star.seed, state);
+      state.size = size;
+      state.alpha = clamp(alphaBase + twinkle, 0.06, 0.96) * lifeAlpha;
       state.pointerInfluence = state.influence;
       return state;
     }
@@ -10750,20 +10071,34 @@
       const localTime = timeSec + glint.cycleOffset;
       const cycleIndex = Math.floor(localTime / glint.cycleDuration);
       const cycleProgress = localTime / glint.cycleDuration - cycleIndex;
-      const cycleState = ensureGlintCycleState(glint, cycleIndex);
-      const lifeAlpha = evaluateCycleEnvelope(cycleProgress, cycleState.fadeInRatio, cycleState.fadeOutRatio);
-      const driftX = Math.sin(timeSec * cycleState.driftSpeed + cycleState.driftPhaseX) * cycleState.driftAmplitude;
-      const driftY = Math.cos(timeSec * (cycleState.driftSpeed * 0.76) + cycleState.driftPhaseY) * cycleState.driftAmplitude;
+      const rng = createSeededRandom(hashCycleSeed(glint.seed, cycleIndex, 1664525));
+      const anchorX = Math.round(rng() * (renderWidth - 1));
+      const anchorY = Math.round(rng() * (renderHeight - 1));
+      const radius = glint.radiusMin + rng() * glint.radiusSpan;
+      const alpha = glint.alphaMin + rng() * glint.alphaSpan;
+      const pulseSpeed = glint.pulseSpeedMin + rng() * glint.pulseSpeedSpan;
+      const pulsePhase = rng() * TAU;
+      const driftAmplitude = glint.driftAmpMin + rng() * glint.driftAmpSpan;
+      const driftSpeed = glint.driftSpeedMin + rng() * glint.driftSpeedSpan;
+      const driftPhaseX = rng() * TAU;
+      const driftPhaseY = rng() * TAU;
+      const fadeInRatio = 0.12 + rng() * 0.12;
+      const fadeOutRatio = 0.18 + rng() * 0.18;
+      const repelRadius = glint.repelRadiusMin + rng() * glint.repelRadiusSpan;
+      const repelShift = glint.repelShiftMin + rng() * glint.repelShiftSpan;
+      const lifeAlpha = evaluateCycleEnvelope(cycleProgress, fadeInRatio, fadeOutRatio);
+      const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
+      const driftY = Math.cos(timeSec * (driftSpeed * 0.76) + driftPhaseY) * driftAmplitude;
       const state = glint.renderState;
-      updateAmbientMotion(glint, cycleIndex, cycleState.anchorX + driftX, cycleState.anchorY + driftY, cycleState.repelRadius, cycleState.repelShift, glint.seed, state);
-      state.radius = cycleState.radius;
-      state.alpha = cycleState.alpha * lifeAlpha;
-      state.coreSize = cycleState.coreSize;
-      state.pulseSpeed = cycleState.pulseSpeed;
-      state.pulsePhase = cycleState.pulsePhase;
+      updateAmbientMotion(glint, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, glint.seed, state);
+      state.radius = radius;
+      state.alpha = alpha * lifeAlpha;
+      state.coreSize = rng() < 0.52 ? 1 : 2;
+      state.pulseSpeed = pulseSpeed;
+      state.pulsePhase = pulsePhase;
       state.pointerInfluence = state.influence;
-      state.armScale = cycleState.armScale;
-      state.diagonalAlpha = cycleState.diagonalAlpha;
+      state.armScale = glint.armScaleMin + rng() * glint.armScaleSpan;
+      state.diagonalAlpha = rng() < glint.diagonalChance ? 0.06 + rng() * 0.11 : 0;
       return state;
     }
     function resolveFlareState(flare, timeSec) {
@@ -10773,18 +10108,30 @@
       if (elapsed < 0 || elapsed > flare.visibleDuration) {
         return null;
       }
-      const cycleState = ensureFlareCycleState(flare, cycleIndex);
+      const rng = createSeededRandom(hashCycleSeed(flare.seed, cycleIndex, 747796405));
+      const anchorX = Math.round(rng() * (renderWidth - 1));
+      const anchorY = Math.round(rng() * (renderHeight - 1));
+      const radius = flare.radiusMin + rng() * flare.radiusSpan;
+      const alpha = flare.alphaMin + rng() * flare.alphaSpan;
+      const pulseSpeed = flare.pulseSpeedMin + rng() * flare.pulseSpeedSpan;
+      const pulsePhase = rng() * TAU;
+      const driftAmplitude = flare.driftAmpMin + rng() * flare.driftAmpSpan;
+      const driftSpeed = flare.driftSpeedMin + rng() * flare.driftSpeedSpan;
+      const driftPhaseX = rng() * TAU;
+      const driftPhaseY = rng() * TAU;
+      const repelRadius = flare.repelRadiusMin + rng() * flare.repelRadiusSpan;
+      const repelShift = flare.repelShiftMin + rng() * flare.repelShiftSpan;
       const progress = elapsed / flare.visibleDuration;
       const lifeAlpha = progress < 0.14 ? easeInOutCubic(progress / 0.14) : progress < 0.66 ? 1 : easeInOutCubic((1 - progress) / 0.34);
-      const driftX = Math.sin(timeSec * cycleState.driftSpeed + cycleState.driftPhaseX) * cycleState.driftAmplitude;
-      const driftY = Math.cos(timeSec * (cycleState.driftSpeed * 0.7) + cycleState.driftPhaseY) * cycleState.driftAmplitude;
+      const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
+      const driftY = Math.cos(timeSec * (driftSpeed * 0.7) + driftPhaseY) * driftAmplitude;
       const state = flare.renderState;
-      updateAmbientMotion(flare, cycleIndex, cycleState.anchorX + driftX, cycleState.anchorY + driftY, cycleState.repelRadius, cycleState.repelShift, flare.seed, state);
-      state.radius = cycleState.radius;
-      state.alpha = cycleState.alpha * clamp(lifeAlpha, 0, 1);
-      state.pulseSpeed = cycleState.pulseSpeed;
-      state.pulsePhase = cycleState.pulsePhase;
-      state.coreSize = cycleState.coreSize;
+      updateAmbientMotion(flare, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, flare.seed, state);
+      state.radius = radius;
+      state.alpha = alpha * clamp(lifeAlpha, 0, 1);
+      state.pulseSpeed = pulseSpeed;
+      state.pulsePhase = pulsePhase;
+      state.coreSize = 2 + Math.round(rng() * 2);
       state.pointerInfluence = state.influence;
       state.progress = progress;
       return state;
@@ -10793,19 +10140,23 @@
       const localTime = timeSec + shootingStar.cycleOffset;
       const cycleIndex = Math.floor(localTime / shootingStar.cycleDuration);
       const elapsed = localTime - cycleIndex * shootingStar.cycleDuration;
-      const cycleState = ensureShootingStarCycleState(shootingStar, cycleIndex);
-      if (elapsed < 0 || elapsed > cycleState.visibleDuration) {
+      const rng = createSeededRandom(hashCycleSeed(shootingStar.seed, cycleIndex, 1580030173));
+      const visibleDuration = shootingStar.visibleDurationMin + rng() * shootingStar.visibleDurationSpan;
+      if (elapsed < 0 || elapsed > visibleDuration) {
         return null;
       }
       const offscreenPad = Math.max(72 * Math.max(1, dpr), Math.min(renderWidth, renderHeight) * 0.16);
-      const startX = cycleState.startFromLeft ? -offscreenPad : renderWidth + offscreenPad;
-      const endX = cycleState.startFromLeft ? renderWidth + offscreenPad : -offscreenPad;
-      const startY = cycleState.startYRatio * renderHeight;
-      const travelDrop = cycleState.travelDropRatio * renderHeight;
-      const endY = startY + travelDrop * cycleState.travelDirection;
-      const progress = clamp(elapsed / cycleState.visibleDuration, 0, 1);
+      const startFromLeft = rng() < 0.5;
+      const startX = startFromLeft ? -offscreenPad : renderWidth + offscreenPad;
+      const endX = startFromLeft ? renderWidth + offscreenPad : -offscreenPad;
+      const startY = (shootingStar.entryBandMin + rng() * shootingStar.entryBandSpan) * renderHeight;
+      const travelDrop = (shootingStar.travelDropMin + rng() * shootingStar.travelDropSpan) * renderHeight;
+      const endY = startY + (rng() < shootingStar.upwardChance ? -travelDrop * 0.45 : travelDrop);
+      const progress = clamp(elapsed / visibleDuration, 0, 1);
       const travelProgress = 1 - Math.pow(1 - progress, 1.6);
-      const alphaEnvelope = evaluateCycleEnvelope(progress, cycleState.fadeInRatio, cycleState.fadeOutRatio);
+      const fadeInRatio = 0.08 + rng() * 0.08;
+      const fadeOutRatio = 0.18 + rng() * 0.12;
+      const alphaEnvelope = evaluateCycleEnvelope(progress, fadeInRatio, fadeOutRatio);
       const headX = startX + (endX - startX) * travelProgress;
       const headY = startY + (endY - startY) * travelProgress;
       const pathDx = endX - startX;
@@ -10813,20 +10164,24 @@
       const pathLength = Math.max(1, Math.hypot(pathDx, pathDy));
       const dirX = pathDx / pathLength;
       const dirY = pathDy / pathLength;
+      const trailLength = shootingStar.trailLengthMin + rng() * shootingStar.trailLengthSpan;
+      const alpha = clamp(shootingStar.alphaMin + rng() * shootingStar.alphaSpan, 0.42, 0.96) * alphaEnvelope;
+      const repelRadius = shootingStar.repelRadiusMin + rng() * shootingStar.repelRadiusSpan;
+      const repelShift = (shootingStar.repelShiftMin + rng() * shootingStar.repelShiftSpan) * alphaEnvelope;
       const state = shootingStar.renderState;
       state.seed = shootingStar.seed;
       state.headX = headX;
       state.headY = headY;
-      state.tailX = headX - dirX * cycleState.trailLength;
-      state.tailY = headY - dirY * cycleState.trailLength;
+      state.tailX = headX - dirX * trailLength;
+      state.tailY = headY - dirY * trailLength;
       state.dirX = dirX;
       state.dirY = dirY;
-      state.alpha = cycleState.alpha * alphaEnvelope;
-      state.trailLength = cycleState.trailLength;
-      state.repelRadius = cycleState.repelRadius;
-      state.repelShift = cycleState.repelShift * alphaEnvelope;
-      state.coreCells = cycleState.coreCells;
-      state.armCells = cycleState.armCells;
+      state.alpha = alpha;
+      state.trailLength = trailLength;
+      state.repelRadius = repelRadius;
+      state.repelShift = repelShift;
+      state.coreCells = rng() < shootingStar.headCoreChance ? 2 : 1;
+      state.armCells = rng() < 0.55 ? 2 : 1;
       return state;
     }
     function clearCanvas() {
@@ -10858,13 +10213,6 @@
       pointerTargetY = renderHeight * 0.5;
       pointerCurrentX = pointerTargetX;
       pointerCurrentY = pointerTargetY;
-      backdropParallaxTargetX = 0;
-      backdropParallaxTargetY = 0;
-      backdropParallaxCurrentX = 0;
-      backdropParallaxCurrentY = 0;
-      appliedBackdropParallaxX = 0;
-      appliedBackdropParallaxY = 0;
-      applyBackdropParallax(true);
     }
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
@@ -11162,8 +10510,6 @@
     }
     function handleWindowBlur() {
       pointerTargetStrength = 0;
-      backdropParallaxTargetX = 0;
-      backdropParallaxTargetY = 0;
     }
     function handleAmbientScroll() {
       if (disposed) return;
@@ -11196,11 +10542,6 @@
         rafId = 0;
       }
       lastAmbientFrameMs = 0;
-      backdropParallaxTargetX = 0;
-      backdropParallaxTargetY = 0;
-      backdropParallaxCurrentX = 0;
-      backdropParallaxCurrentY = 0;
-      applyBackdropParallax(true);
       clearCanvas();
     }
     function start() {
@@ -11221,17 +10562,6 @@
         "data-ambient-motion",
         prefersReducedMotion || performanceDegraded ? "frozen" : "running"
       );
-      osAmbientBackdrop.setAttribute(
-        "data-ambient-pointer-parallax",
-        enableAmbientPointerResponse && !prefersReducedMotion && !performanceDegraded ? "active" : "idle"
-      );
-      if (performanceDegraded || !enableAmbientPointerResponse) {
-        backdropParallaxTargetX = 0;
-        backdropParallaxTargetY = 0;
-        backdropParallaxCurrentX = 0;
-        backdropParallaxCurrentY = 0;
-        applyBackdropParallax(true);
-      }
     }
     function handlePerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
@@ -11283,8 +10613,6 @@
           window.removeEventListener("blur", handleWindowBlur);
         }
         window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, handlePerformanceTierChange);
-        osAmbientBackdrop.style.removeProperty("--ambient-pointer-parallax-x");
-        osAmbientBackdrop.style.removeProperty("--ambient-pointer-parallax-y");
       }
     };
   }
