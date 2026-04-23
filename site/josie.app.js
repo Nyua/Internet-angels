@@ -1889,11 +1889,12 @@
     const queuedSegmentAudioEl = new Audio();
     const SHUFFLE_STAGE_BOTTOM_OFFSET_PX = 0;
     const SHUFFLE_VISUAL_STYLE = "ascii";
-    const SHUFFLE_MAX_CANVAS_DPR = 2;
+    const SHUFFLE_MAX_CANVAS_DPR = 1.25;
     const SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR = 1.25;
     const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
+    const SHUFFLE_ASCII_ALPHA_CACHE_STEPS = 64;
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
     const SHUFFLE_ASCII_MAX_CELL_PX = 2;
     const SHUFFLE_TOUCH_ASCII_MAX_CELL_PX = 3;
@@ -2225,15 +2226,20 @@
       }
       return traceSampleIndexLookup;
     }
-    function getAsciiAlphaFillStyle(alpha) {
+    function getAsciiAlphaKey(alpha) {
       const scaledAlpha = clamp2(alpha * SHUFFLE_TRACE_OPACITY_SCALE, 0, 4);
-      const alphaKey = Math.round(scaledAlpha * 1e3);
+      return Math.round(scaledAlpha * SHUFFLE_ASCII_ALPHA_CACHE_STEPS);
+    }
+    function getAsciiAlphaFillStyleFromKey(alphaKey) {
       let fillStyle = asciiAlphaStyleCache[alphaKey];
       if (!fillStyle) {
-        fillStyle = `rgba(248, 253, 255, ${(alphaKey / 1e3).toFixed(3)})`;
+        fillStyle = `rgba(248, 253, 255, ${(alphaKey / SHUFFLE_ASCII_ALPHA_CACHE_STEPS).toFixed(3)})`;
         asciiAlphaStyleCache[alphaKey] = fillStyle;
       }
       return fillStyle;
+    }
+    function getAsciiAlphaFillStyle(alpha) {
+      return getAsciiAlphaFillStyleFromKey(getAsciiAlphaKey(alpha));
     }
     function usesTouchMobileVisualizerProfile() {
       return isCompactMobileLayout() && hasCompactMobileInput();

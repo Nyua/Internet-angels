@@ -919,6 +919,12 @@ test("desktop Josie no longer background-throttles rendering when the window los
 
 test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform layer", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      get: () => 2
+    });
+  });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
@@ -966,6 +972,9 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
       canvasAsciiOverlay: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-ascii-overlay") || "" : "",
       canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
       canvasFilter: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).filter : "",
+      canvasDpr: canvas instanceof HTMLCanvasElement && canvas.getBoundingClientRect().width > 0
+        ? canvas.width / canvas.getBoundingClientRect().width
+        : 0,
       surfaceRect: rectOf(surface),
       canvasRect: rectOf(canvas),
       copyRect: rectOf(copy),
@@ -983,6 +992,7 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   expect(visualizerLayout.canvasAsciiOverlay).toBe("glyph");
   expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
   expect(visualizerLayout.canvasFilter).toBe("none");
+  expect(visualizerLayout.canvasDpr).toBeLessThanOrEqual(1.35);
   expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
   expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
   expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
