@@ -1818,8 +1818,6 @@
     let resizeObserver = null;
     let viewportGeometryListener = null;
     let cachedWaveLayout = null;
-    let waveCanvasContextConfigured = false;
-    let lastWaveCanvasDpr = 0;
     let manifestPromise = null;
     let previewCtx = null;
     let mediaSourceNode = null;
@@ -1959,6 +1957,21 @@
       alphaMax: 0.84
     });
     const asciiAlphaStyleCache = [];
+    const waveformAvoidancePoints = [];
+    const waveformAvoidanceState = {
+      active: false,
+      viewportLeft: 0,
+      viewportTop: 0,
+      drawWidth: 0,
+      drawHeight: 0,
+      repelRadius: 0,
+      repelShift: 0,
+      revision: 0,
+      points: []
+    };
+    if (typeof window === "object") {
+      window.__internetAngelShuffleWaveformAvoidance = waveformAvoidanceState;
+    }
     audioEl.preload = "auto";
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
@@ -3098,14 +3111,10 @@
         waveCanvas.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
         waveCanvas.setAttribute("data-shuffle-ascii-overlay", "glyph");
         wavePortal.appendChild(waveCanvas);
-        waveCanvasContextConfigured = false;
-        lastWaveCanvasDpr = 0;
       }
       waveCanvas.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
       if (!(waveCtx instanceof CanvasRenderingContext2D)) {
-        waveCtx = getCanvas2DContext(waveCanvas, { alpha: true, desynchronized: true });
-        waveCanvasContextConfigured = false;
-        lastWaveCanvasDpr = 0;
+        waveCtx = getCanvas2DContext(waveCanvas);
       }
       return wavePortal;
     }
@@ -3173,18 +3182,12 @@
       const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
-      const resizedCanvas = waveCanvas.width !== pixelWidth || waveCanvas.height !== pixelHeight;
-      if (resizedCanvas) {
+      if (waveCanvas.width !== pixelWidth || waveCanvas.height !== pixelHeight) {
         waveCanvas.width = pixelWidth;
         waveCanvas.height = pixelHeight;
-        waveCanvasContextConfigured = false;
       }
-      if (!waveCanvasContextConfigured || resizedCanvas || Math.abs(lastWaveCanvasDpr - dpr) > 1e-4) {
-        waveCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        waveCtx.imageSmoothingEnabled = false;
-        waveCanvasContextConfigured = true;
-        lastWaveCanvasDpr = dpr;
-      }
+      waveCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      waveCtx.imageSmoothingEnabled = false;
       return {
         canvasWidth: cssWidth,
         canvasHeight: cssHeight,
@@ -3286,8 +3289,6 @@
     }
     function onPerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
-      waveCanvasContextConfigured = false;
-      lastWaveCanvasDpr = 0;
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
       traceValues = new Float32Array(0);
@@ -9650,6 +9651,10 @@
     let flares = [];
     let shootingStars = [];
     let activeShootingStarFields = [];
+    let activeWaveformRepulsionFields = [];
+    let lastWaveformRepulsionRevision = -1;
+    let lastWaveformRepulsionScaleX = 0;
+    let lastWaveformRepulsionScaleY = 0;
     let pointerTargetX = 0;
     let pointerTargetY = 0;
     let pointerCurrentX = 0;
@@ -9658,7 +9663,6 @@
     let pointerTargetStrength = 0;
     let ambientDeltaSec = 1 / 60;
     let lastAmbientFrameMs = 0;
-    let lastAmbientFillStyle = "";
     const prefersReducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
     const compactMobileLayout = isCompactMobileLayout();
     const coarsePointerLayout = Boolean(window.matchMedia?.("(pointer: coarse)")?.matches || window.matchMedia?.("(hover: none)")?.matches);
@@ -9817,6 +9821,59 @@
         influence: clamp(radial.influence * headWeight, 0, 1)
       };
     }
+    function resolveSegmentProximity(x, y, startX, startY, endX, endY, seed) {
+      const segmentDx = endX - startX;
+      const segmentDy = endY - startY;
+      const segmentLengthSq = segmentDx * segmentDx + segmentDy * segmentDy;
+      if (segmentLengthSq < 1e-3) {
+        const dx = x - endX;
+        const dy = y - endY;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 1e-3) {
+          return {
+            nearestX: endX,
+            nearestY: endY,
+            distance,
+            dirX: dx / distance,
+            dirY: dy / distance
+          };
+        }
+        const angle = ((seed % 360) / 360) * TAU;
+        return {
+          nearestX: endX,
+          nearestY: endY,
+          distance: 0,
+          dirX: Math.cos(angle),
+          dirY: Math.sin(angle)
+        };
+      }
+      const segmentT = clamp(((x - startX) * segmentDx + (y - startY) * segmentDy) / segmentLengthSq, 0, 1);
+      const nearestX = startX + segmentDx * segmentT;
+      const nearestY = startY + segmentDy * segmentT;
+      const dx = x - nearestX;
+      const dy = y - nearestY;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 1e-3) {
+        return {
+          nearestX,
+          nearestY,
+          distance,
+          dirX: dx / distance,
+          dirY: dy / distance
+        };
+      }
+      const segmentLength = Math.sqrt(segmentLengthSq);
+      const normalX = -segmentDy / segmentLength;
+      const normalY = segmentDx / segmentLength;
+      const orientation = y <= nearestY ? -1 : 1;
+      return {
+        nearestX,
+        nearestY,
+        distance: 0,
+        dirX: normalX * orientation,
+        dirY: normalY * orientation
+      };
+    }
     function resolveShootingStarRepulsion(x, y, field, seed) {
       const repelRadius = field.repelRadius * 2;
       const laneRepulsion = resolveLineRepulsion(
@@ -9845,6 +9902,138 @@
         influence: Math.max(laneRepulsion.influence * 0.82, headRepulsion.influence)
       };
     }
+    function readWaveformRepulsionFields() {
+      const waveformState = typeof window === "object" ? window.__internetAngelShuffleWaveformAvoidance : null;
+      if (!waveformState?.active || !Array.isArray(waveformState.points) || waveformState.points.length < 2) {
+        activeWaveformRepulsionFields.length = 0;
+        lastWaveformRepulsionRevision = Number(waveformState?.revision) || -1;
+        return activeWaveformRepulsionFields;
+      }
+      const scaleX = renderWidth / Math.max(1, cssWidth);
+      const scaleY = renderHeight / Math.max(1, cssHeight);
+      const revision = Number(waveformState.revision) || 0;
+      if (
+        revision === lastWaveformRepulsionRevision
+        && Math.abs(scaleX - lastWaveformRepulsionScaleX) < 1e-4
+        && Math.abs(scaleY - lastWaveformRepulsionScaleY) < 1e-4
+      ) {
+        return activeWaveformRepulsionFields;
+      }
+      lastWaveformRepulsionRevision = revision;
+      lastWaveformRepulsionScaleX = scaleX;
+      lastWaveformRepulsionScaleY = scaleY;
+      const pointCount = waveformState.points.length;
+      const scaleMax = Math.max(scaleX, scaleY);
+      let fieldCount = 0;
+      for (let index = 0; index < pointCount - 1; index += 1) {
+        const currentPoint = waveformState.points[index];
+        const nextPoint = waveformState.points[index + 1];
+        if (
+          !currentPoint
+          || !nextPoint
+          || !Number.isFinite(currentPoint.x)
+          || !Number.isFinite(currentPoint.y)
+          || !Number.isFinite(nextPoint.x)
+          || !Number.isFinite(nextPoint.y)
+        ) {
+          continue;
+        }
+        const weight = clamp(
+          Math.max(
+            Number(currentPoint.weight) || 0,
+            Number(nextPoint.weight) || 0
+          ),
+          0,
+          1
+        );
+        const repelRadius = (Number(waveformState.repelRadius) || 0) * scaleMax * (0.78 + weight * 0.18);
+        const field = activeWaveformRepulsionFields[fieldCount] || (activeWaveformRepulsionFields[fieldCount] = {
+          startX: 0,
+          startY: 0,
+          endX: 0,
+          endY: 0,
+          repelRadius: 0,
+          repelShift: 0,
+          minX: 0,
+          maxX: 0,
+          minY: 0,
+          maxY: 0,
+          seed: 0
+        });
+        field.startX = currentPoint.x * scaleX;
+        field.startY = currentPoint.y * scaleY;
+        field.endX = nextPoint.x * scaleX;
+        field.endY = nextPoint.y * scaleY;
+        field.repelRadius = repelRadius;
+        field.repelShift = (Number(waveformState.repelShift) || 0) * scaleMax * (0.82 + weight * 0.16);
+        field.minX = Math.min(field.startX, field.endX) - repelRadius;
+        field.maxX = Math.max(field.startX, field.endX) + repelRadius;
+        field.minY = Math.min(field.startY, field.endY) - repelRadius;
+        field.maxY = Math.max(field.startY, field.endY) + repelRadius;
+        field.seed = Math.imul(index + 1, 2246822519) >>> 0;
+        fieldCount += 1;
+      }
+      activeWaveformRepulsionFields.length = fieldCount;
+      return activeWaveformRepulsionFields;
+    }
+    function resolveWaveformRepulsion(x, y, field, seed) {
+      if (x < field.minX || x > field.maxX || y < field.minY || y > field.maxY) {
+        return { offsetX: 0, offsetY: 0, influence: 0 };
+      }
+      const laneRepulsion = resolveLineRepulsion(
+        x,
+        y,
+        field.startX,
+        field.startY,
+        field.endX,
+        field.endY,
+        field.repelRadius,
+        field.repelShift,
+        field.seed ^ seed
+      );
+      if (laneRepulsion.influence <= 0.001) {
+        return laneRepulsion;
+      }
+      const endCapRepulsion = resolveRadialRepulsion(
+        x,
+        y,
+        field.endX,
+        field.endY,
+        field.repelRadius * 0.36,
+        field.repelShift * 0.16,
+        field.seed + seed
+      );
+      return {
+        offsetX: laneRepulsion.offsetX + endCapRepulsion.offsetX,
+        offsetY: laneRepulsion.offsetY + endCapRepulsion.offsetY,
+        influence: Math.max(laneRepulsion.influence, endCapRepulsion.influence * 0.22)
+      };
+    }
+    function resolveWaveformCollisionSeparation(x, y, field, seed) {
+      if (x < field.minX || x > field.maxX || y < field.minY || y > field.maxY) {
+        return { offsetX: 0, offsetY: 0, penetration: 0 };
+      }
+      const proximity = resolveSegmentProximity(
+        x,
+        y,
+        field.startX,
+        field.startY,
+        field.endX,
+        field.endY,
+        field.seed ^ seed
+      );
+      const collisionRadius = Math.max(2 * dpr, field.repelRadius);
+      if (proximity.distance >= collisionRadius) {
+        return { offsetX: 0, offsetY: 0, penetration: 0 };
+      }
+      const boundaryPad = Math.max(1.25 * dpr, 1);
+      const separation = collisionRadius - proximity.distance + boundaryPad;
+      return {
+        offsetX: proximity.dirX * separation,
+        offsetY: proximity.dirY * separation,
+        penetration: separation
+      };
+    }
     function createAmbientMotionState(rng, options) {
       return {
         offsetX: 0,
@@ -9854,7 +10043,7 @@
         lastCycleIndex: -1
       };
     }
-    function updateAmbientMotion(subject, cycleIndex, anchorX, anchorY, radius, shift, seed, output = null) {
+    function updateAmbientMotion(subject, cycleIndex, anchorX, anchorY, radius, shift, seed) {
       const motion = subject.motion;
       if (motion.lastCycleIndex !== cycleIndex) {
         motion.lastCycleIndex = cycleIndex;
@@ -9880,11 +10069,11 @@
       const blend = 1 - Math.exp(-ambientDeltaSec * easePerSecond);
       motion.offsetX += (targetOffsetX - motion.offsetX) * blend;
       motion.offsetY += (targetOffsetY - motion.offsetY) * blend;
-      const result = output && typeof output === "object" ? output : {};
-      result.x = anchorX + motion.offsetX;
-      result.y = anchorY + motion.offsetY;
-      result.influence = strongestInfluence;
-      return result;
+      return {
+        x: anchorX + motion.offsetX,
+        y: anchorY + motion.offsetY,
+        influence: strongestInfluence
+      };
     }
     function buildStarPrototype(rng, index) {
       return {
@@ -9911,8 +10100,7 @@
           repelEaseSpan: 2.2,
           returnEaseMin: 0.55,
           returnEaseSpan: 0.45
-        }),
-        renderState: { x: 0, y: 0, size: 1, alpha: 0, pointerInfluence: 0, influence: 0 }
+        })
       };
     }
     function buildGlintPrototype(rng, index) {
@@ -9942,20 +10130,7 @@
           repelEaseSpan: 2,
           returnEaseMin: 0.42,
           returnEaseSpan: 0.36
-        }),
-        renderState: {
-          x: 0,
-          y: 0,
-          radius: 0,
-          alpha: 0,
-          coreSize: 1,
-          pulseSpeed: 0,
-          pulsePhase: 0,
-          pointerInfluence: 0,
-          armScale: 0,
-          diagonalAlpha: 0,
-          influence: 0
-        }
+        })
       };
     }
     function buildFlarePrototype(rng, index) {
@@ -9983,19 +10158,7 @@
           repelEaseSpan: 1.8,
           returnEaseMin: 0.34,
           returnEaseSpan: 0.26
-        }),
-        renderState: {
-          x: 0,
-          y: 0,
-          radius: 0,
-          alpha: 0,
-          pulseSpeed: 0,
-          pulsePhase: 0,
-          coreSize: 2,
-          pointerInfluence: 0,
-          progress: 0,
-          influence: 0
-        }
+        })
       };
     }
     function buildShootingStarPrototype(rng, index) {
@@ -10018,22 +10181,7 @@
         repelRadiusSpan: (compactMobileLayout ? 24 : 42) + rng() * (compactMobileLayout ? 24 : 44),
         repelShiftMin: (compactMobileLayout ? 4.4 : 8.8) + rng() * (compactMobileLayout ? 2.2 : 5.2),
         repelShiftSpan: (compactMobileLayout ? 2.8 : 4.6) + rng() * (compactMobileLayout ? 3.2 : 6.4),
-        headCoreChance: 0.34 + rng() * 0.22,
-        renderState: {
-          seed: 0,
-          headX: 0,
-          headY: 0,
-          tailX: 0,
-          tailY: 0,
-          dirX: 0,
-          dirY: 0,
-          alpha: 0,
-          trailLength: 0,
-          repelRadius: 0,
-          repelShift: 0,
-          coreCells: 1,
-          armCells: 1
-        }
+        headCoreChance: 0.34 + rng() * 0.22
       };
     }
     function resolveStarState(star, timeSec) {
@@ -10060,12 +10208,14 @@
       const twinkle = twinkleAmount > 0 ? Math.sin(timeSec * twinkleSpeed + twinklePhase) * twinkleAmount : 0;
       const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
       const driftY = Math.cos(timeSec * (driftSpeed * 0.84) + driftPhaseY) * driftAmplitude;
-      const state = star.renderState;
-      updateAmbientMotion(star, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, star.seed, state);
-      state.size = size;
-      state.alpha = clamp(alphaBase + twinkle, 0.06, 0.96) * lifeAlpha;
-      state.pointerInfluence = state.influence;
-      return state;
+      const repelled = updateAmbientMotion(star, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, star.seed);
+      return {
+        x: repelled.x,
+        y: repelled.y,
+        size,
+        alpha: clamp(alphaBase + twinkle, 0.06, 0.96) * lifeAlpha,
+        pointerInfluence: repelled.influence
+      };
     }
     function resolveGlintState(glint, timeSec) {
       const localTime = timeSec + glint.cycleOffset;
@@ -10089,17 +10239,19 @@
       const lifeAlpha = evaluateCycleEnvelope(cycleProgress, fadeInRatio, fadeOutRatio);
       const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
       const driftY = Math.cos(timeSec * (driftSpeed * 0.76) + driftPhaseY) * driftAmplitude;
-      const state = glint.renderState;
-      updateAmbientMotion(glint, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, glint.seed, state);
-      state.radius = radius;
-      state.alpha = alpha * lifeAlpha;
-      state.coreSize = rng() < 0.52 ? 1 : 2;
-      state.pulseSpeed = pulseSpeed;
-      state.pulsePhase = pulsePhase;
-      state.pointerInfluence = state.influence;
-      state.armScale = glint.armScaleMin + rng() * glint.armScaleSpan;
-      state.diagonalAlpha = rng() < glint.diagonalChance ? 0.06 + rng() * 0.11 : 0;
-      return state;
+      const repelled = updateAmbientMotion(glint, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, glint.seed);
+      return {
+        x: repelled.x,
+        y: repelled.y,
+        radius,
+        alpha: alpha * lifeAlpha,
+        coreSize: rng() < 0.52 ? 1 : 2,
+        pulseSpeed,
+        pulsePhase,
+        pointerInfluence: repelled.influence,
+        armScale: glint.armScaleMin + rng() * glint.armScaleSpan,
+        diagonalAlpha: rng() < glint.diagonalChance ? 0.06 + rng() * 0.11 : 0
+      };
     }
     function resolveFlareState(flare, timeSec) {
       const localTime = timeSec + flare.cycleOffset;
@@ -10125,16 +10277,18 @@
       const lifeAlpha = progress < 0.14 ? easeInOutCubic(progress / 0.14) : progress < 0.66 ? 1 : easeInOutCubic((1 - progress) / 0.34);
       const driftX = Math.sin(timeSec * driftSpeed + driftPhaseX) * driftAmplitude;
       const driftY = Math.cos(timeSec * (driftSpeed * 0.7) + driftPhaseY) * driftAmplitude;
-      const state = flare.renderState;
-      updateAmbientMotion(flare, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, flare.seed, state);
-      state.radius = radius;
-      state.alpha = alpha * clamp(lifeAlpha, 0, 1);
-      state.pulseSpeed = pulseSpeed;
-      state.pulsePhase = pulsePhase;
-      state.coreSize = 2 + Math.round(rng() * 2);
-      state.pointerInfluence = state.influence;
-      state.progress = progress;
-      return state;
+      const repelled = updateAmbientMotion(flare, cycleIndex, anchorX + driftX, anchorY + driftY, repelRadius, repelShift, flare.seed);
+      return {
+        x: repelled.x,
+        y: repelled.y,
+        radius,
+        alpha: alpha * clamp(lifeAlpha, 0, 1),
+        pulseSpeed,
+        pulsePhase,
+        coreSize: 2 + Math.round(rng() * 2),
+        pointerInfluence: repelled.influence,
+        progress
+      };
     }
     function resolveShootingStarState(shootingStar, timeSec) {
       const localTime = timeSec + shootingStar.cycleOffset;
@@ -10168,34 +10322,26 @@
       const alpha = clamp(shootingStar.alphaMin + rng() * shootingStar.alphaSpan, 0.42, 0.96) * alphaEnvelope;
       const repelRadius = shootingStar.repelRadiusMin + rng() * shootingStar.repelRadiusSpan;
       const repelShift = (shootingStar.repelShiftMin + rng() * shootingStar.repelShiftSpan) * alphaEnvelope;
-      const state = shootingStar.renderState;
-      state.seed = shootingStar.seed;
-      state.headX = headX;
-      state.headY = headY;
-      state.tailX = headX - dirX * trailLength;
-      state.tailY = headY - dirY * trailLength;
-      state.dirX = dirX;
-      state.dirY = dirY;
-      state.alpha = alpha;
-      state.trailLength = trailLength;
-      state.repelRadius = repelRadius;
-      state.repelShift = repelShift;
-      state.coreCells = rng() < shootingStar.headCoreChance ? 2 : 1;
-      state.armCells = rng() < 0.55 ? 2 : 1;
-      return state;
+      return {
+        seed: shootingStar.seed,
+        headX,
+        headY,
+        tailX: headX - dirX * trailLength,
+        tailY: headY - dirY * trailLength,
+        dirX,
+        dirY,
+        alpha,
+        trailLength,
+        repelRadius,
+        repelShift,
+        coreCells: rng() < shootingStar.headCoreChance ? 2 : 1,
+        armCells: rng() < 0.55 ? 2 : 1
+      };
     }
     function clearCanvas() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = false;
-      lastAmbientFillStyle = "";
       ctx.clearRect(0, 0, ambientCanvas.width, ambientCanvas.height);
-    }
-    function setAmbientFillAlpha(alpha) {
-      const nextStyle = `rgba(255,255,255,${clamp(alpha, 0, 1).toFixed(4)})`;
-      if (nextStyle !== lastAmbientFillStyle) {
-        ctx.fillStyle = nextStyle;
-        lastAmbientFillStyle = nextStyle;
-      }
     }
     function rebuildField() {
       const area = cssWidth * cssHeight;
@@ -10208,7 +10354,7 @@
       glints = Array.from({ length: glintCount }, (_, index) => buildGlintPrototype(rng, index));
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
       shootingStars = Array.from({ length: shootingStarCount }, (_, index) => buildShootingStarPrototype(rng, index));
-      activeShootingStarFields.length = 0;
+      activeShootingStarFields = [];
       pointerTargetX = renderWidth * 0.5;
       pointerTargetY = renderHeight * 0.5;
       pointerCurrentX = pointerTargetX;
@@ -10237,7 +10383,7 @@
       const safeCellSize = Math.max(1, Math.round(cellSize));
       const safeWidthCells = Math.max(1, Math.round(widthCells));
       const safeHeightCells = Math.max(1, Math.round(heightCells));
-      setAmbientFillAlpha(alpha);
+      ctx.fillStyle = `rgba(255,255,255,${clamp(alpha, 0, 1)})`;
       ctx.fillRect(
         Math.round(gridX * safeCellSize),
         Math.round(gridY * safeCellSize),
@@ -10259,7 +10405,7 @@
       const corePixelOffsetX = Number(options.corePixelOffsetX) || 0;
       const corePixelOffsetY = Number(options.corePixelOffsetY) || 0;
       if (alpha * coreAlphaScale > 0.002) {
-        setAmbientFillAlpha(alpha * coreAlphaScale);
+        ctx.fillStyle = `rgba(255,255,255,${clamp(alpha * coreAlphaScale, 0, 1)})`;
         ctx.fillRect(
           Math.round((gridX - Math.floor(coreCells / 2)) * cellSize + corePixelOffsetX),
           Math.round((gridY - Math.floor(coreCells / 2)) * cellSize + corePixelOffsetY),
@@ -10450,36 +10596,26 @@
     function drawStaticFrame(timeMs) {
       clearCanvas();
       const timeSec = timeMs * 0.001;
-      const staticTimeSec = prefersReducedMotion ? 0 : timeSec;
       const allowShootingStars = timeMs > 0 && !prefersReducedMotion && !performanceDegraded;
+      updateAmbientScrollState();
       stepAmbientScrollState();
       updatePointerState();
-      if (allowShootingStars) {
-        let activeFieldCount = 0;
-        for (const shootingStar of shootingStars) {
-          const shootingStarState = resolveShootingStarState(shootingStar, staticTimeSec);
-          if (shootingStarState) {
-            activeShootingStarFields[activeFieldCount] = shootingStarState;
-            activeFieldCount += 1;
-          }
-        }
-        activeShootingStarFields.length = activeFieldCount;
-      } else {
-        activeShootingStarFields.length = 0;
-      }
+      activeShootingStarFields = allowShootingStars
+        ? shootingStars.map((shootingStar) => resolveShootingStarState(shootingStar, timeSec)).filter(Boolean)
+        : [];
       ctx.save();
       ctx.globalCompositeOperation = "source-over";
       for (const star of stars) {
-        const starState = resolveStarState(star, staticTimeSec);
+        const starState = resolveStarState(star, prefersReducedMotion ? 0 : timeSec);
         drawStar(starState);
       }
       for (const glint of glints) {
-        drawGlint(resolveGlintState(glint, staticTimeSec), staticTimeSec);
+        drawGlint(resolveGlintState(glint, prefersReducedMotion ? 0 : timeSec), prefersReducedMotion ? 0 : timeSec);
       }
       for (const flare of flares) {
-        const flareState = resolveFlareState(flare, staticTimeSec);
+        const flareState = resolveFlareState(flare, prefersReducedMotion ? 0 : timeSec);
         if (flareState) {
-          drawFlare(flareState, staticTimeSec);
+          drawFlare(flareState, prefersReducedMotion ? 0 : timeSec);
         }
       }
       for (const shootingStarState of activeShootingStarFields) {
@@ -11712,7 +11848,7 @@
     cursorEl.dataset.cursorMorph = "orb";
     cursorEl.dataset.cursorContrast = "light";
     const trailCanvas = cursorEl.querySelector(".site-pointer-trail-canvas");
-    const trailContext = trailCanvas instanceof HTMLCanvasElement ? getCanvas2DContext(trailCanvas, { alpha: true, desynchronized: true }) : null;
+    const trailContext = trailCanvas instanceof HTMLCanvasElement ? getCanvas2DContext(trailCanvas) : null;
     if (!(trailCanvas instanceof HTMLCanvasElement) || !trailContext) {
       document.body.classList.remove("has-custom-cursor");
       cursorEl.remove();
@@ -11766,8 +11902,6 @@
     let lastSelectionAnimationAt = 0;
     let performanceDegraded = isDesktopPerformanceDegraded();
     const trailHistory = [];
-    const relativeTrailPoints = [];
-    const sampledTrailPoints = [];
     const pointerMoveEventName = "pointermove";
     function parseCssColor(value) {
       if (typeof value !== "string" || !value) return null;
@@ -11876,32 +12010,9 @@
       trailHistory.unshift(...inserts.reverse());
       trimTrailHistory(nowMs);
     }
-    function writeRelativeTrailPoints(originX, originY, target = relativeTrailPoints) {
-      target.length = trailHistory.length;
-      for (let index = 0; index < trailHistory.length; index += 1) {
-        const historyPoint = trailHistory[index];
-        const point = target[index] || (target[index] = { x: 0, y: 0 });
-        point.x = historyPoint.x - originX;
-        point.y = historyPoint.y - originY;
-      }
-      return target;
-    }
-    function sampleTrailPoints(points, subdivisionCount = 3, target = sampledTrailPoints) {
-      if (points.length < 2 || subdivisionCount <= 1) {
-        target.length = points.length;
-        for (let index = 0; index < points.length; index += 1) {
-          const sourcePoint = points[index];
-          const point = target[index] || (target[index] = { x: 0, y: 0 });
-          point.x = sourcePoint.x;
-          point.y = sourcePoint.y;
-        }
-        return target;
-      }
-      let sampleCount = 0;
-      const firstPoint = target[sampleCount] || (target[sampleCount] = { x: 0, y: 0 });
-      firstPoint.x = points[0].x;
-      firstPoint.y = points[0].y;
-      sampleCount += 1;
+    function sampleTrailPoints(points, subdivisionCount = 3) {
+      if (points.length < 2) return points.slice();
+      const sampled = [points[0]];
       for (let index = 0; index < points.length - 1; index += 1) {
         const p0 = points[Math.max(0, index - 1)];
         const p1 = points[index];
@@ -11911,14 +12022,13 @@
           const t = step / subdivisionCount;
           const t2 = t * t;
           const t3 = t2 * t;
-          const sampledPoint = target[sampleCount] || (target[sampleCount] = { x: 0, y: 0 });
-          sampledPoint.x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
-          sampledPoint.y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
-          sampleCount += 1;
+          sampled.push({
+            x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+            y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+          });
         }
       }
-      target.length = sampleCount;
-      return target;
+      return sampled;
     }
     function drawTrailRibbon(points, baseWidth, baseAlpha, glowBlur, glowAlpha) {
       if (points.length < 2) return;
@@ -12077,9 +12187,8 @@
       const idleMs = Math.max(0, nowMs - lastMoveMs);
       const idleFade = clamp(Math.max(0, idleMs - 38) / 320, 0, 1);
       const motionStrength = clamp(pointerEnergy * 1.2 + (pressed ? 0.14 : 0), 0, 1);
-      const tailOpacity = clamp((0.22 + motionStrength * 0.84) * (1 - idleFade * 0.96), 0, 1);
       const suppressTail = false;
-      if (suppressTail || tailOpacity <= 0.003) {
+      if (suppressTail) {
         cursorEl.style.setProperty("--cursor-tail-opacity", "0");
         clearTrailCanvas();
         return;
@@ -12097,10 +12206,14 @@
         }
       }
       trimTrailHistory(nowMs);
-      const relativePoints = writeRelativeTrailPoints(headX, headY);
+      const relativePoints = trailHistory.map((point) => ({
+        x: point.x - headX,
+        y: point.y - headY
+      }));
+      const tailOpacity = clamp((0.22 + motionStrength * 0.84) * (1 - idleFade * 0.96), 0, 1);
       const coreWidth = 3.6 + motionStrength * 2.2 + (scrollDirection !== 0 ? 0.4 : 0);
       const glowWidth = 11 + motionStrength * 6 + (scrollDirection !== 0 ? 1.2 : 0);
-      const sampledPoints = trailSubdivisionCount > 1 ? sampleTrailPoints(relativePoints, trailSubdivisionCount) : relativePoints;
+      const sampledPoints = sampleTrailPoints(relativePoints, trailSubdivisionCount);
       cursorEl.style.setProperty("--cursor-tail-opacity", tailOpacity.toFixed(3));
       clearTrailCanvas();
       drawTrailRibbon(sampledPoints, glowWidth, tailOpacity * 0.28, 11 + motionStrength * 4, 0.24);
