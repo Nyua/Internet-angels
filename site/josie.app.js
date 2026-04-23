@@ -30,6 +30,8 @@
   var socialHubInitialized = false;
   var socialHubRenderer = null;
   var socialHubState = null;
+  var socialHubPendingSnapshot = null;
+  var socialHubRenderRafId = 0;
   var ambientBackdropController = null;
   var siteCursorController = null;
   var INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT = "internet-angel:performance-tier-change";
@@ -9528,6 +9530,7 @@
       const site = siteById.get(siteId);
       const policy = resolveRefreshPolicy(siteId);
       const reason = String(options.reason || "auto");
+      const shouldPublish = options.publish !== false;
       const bypassVisibilityGate = reason === "manual" || reason === "boot";
       if (!bypassVisibilityGate && policy.visibleOnly && document.hidden) {
         return;
@@ -9557,22 +9560,40 @@
         if (carried) commitPayload(carried, now);
       } finally {
         inflightBySite.delete(siteId);
-        publish(now);
+        if (shouldPublish) {
+          publish(now);
+        }
+      }
+    }
+    async function refreshSites(siteIds, options = {}) {
+      if (disposed) return;
+      const uniqueSiteIds = Array.from(new Set((Array.isArray(siteIds) ? siteIds : []).filter((siteId) => siteById.has(siteId))));
+      if (!uniqueSiteIds.length) return;
+      const reason = String(options.reason || "auto");
+      const markRefreshAll = Boolean(options.markRefreshAll);
+      if (markRefreshAll) {
+        if (refreshAllInProgress) return;
+        refreshAllInProgress = true;
+        publish(Date.now());
+      }
+      try {
+        await Promise.all(uniqueSiteIds.map((siteId) => refreshSite(siteId, {
+          ...options,
+          reason,
+          publish: false
+        })));
+      } finally {
+        if (markRefreshAll) {
+          refreshAllInProgress = false;
+        }
+        publish(Date.now());
       }
     }
     async function refreshAll(reason = "manual") {
-      if (disposed) return;
-      if (refreshAllInProgress) return;
-      refreshAllInProgress = true;
-      publish(Date.now());
-      try {
-        await Promise.all(
-          sites.map((site) => refreshSite(site.id, { reason }))
-        );
-      } finally {
-        refreshAllInProgress = false;
-        publish(Date.now());
-      }
+      await refreshSites(sites.map((site) => site.id), {
+        reason,
+        markRefreshAll: true
+      });
     }
     function onVisibilityChange() {
       if (disposed) return;
@@ -9585,16 +9606,18 @@
     function startAutoRefresh() {
       if (disposed) return;
       stopAutoRefresh();
+      const bootSiteIds = [];
+      const resumeSiteIds = [];
       for (const site of sites) {
         const policy = resolveRefreshPolicy(site.id);
         if (policy.bootRefresh && !lastAttemptAtBySite.has(site.id) && (!policy.visibleOnly || !document.hidden)) {
-          void refreshSite(site.id, { reason: "boot" });
+          bootSiteIds.push(site.id);
         }
         if (!policy.autoRefresh || policy.intervalMs <= 0) continue;
         const lastAttemptAt = lastAttemptAtBySite.get(site.id) || 0;
         const elapsedMs = lastAttemptAt > 0 ? Date.now() - lastAttemptAt : Number.POSITIVE_INFINITY;
         if (!document.hidden && (!policy.visibleOnly || !document.hidden) && lastAttemptAt > 0 && elapsedMs >= policy.intervalMs) {
-          void refreshSite(site.id, { reason: "resume" });
+          resumeSiteIds.push(site.id);
         }
         const timerId = window.setInterval(() => {
           if (disposed) return;
@@ -9602,6 +9625,12 @@
           void refreshSite(site.id, { reason: "interval" });
         }, policy.intervalMs);
         intervalBySite.set(site.id, timerId);
+      }
+      if (bootSiteIds.length) {
+        void refreshSites(bootSiteIds, { reason: "boot" });
+      }
+      if (resumeSiteIds.length) {
+        void refreshSites(resumeSiteIds, { reason: "resume" });
       }
     }
     function stopAutoRefresh() {
@@ -12374,6 +12403,25 @@
     document.body?.classList.remove("site-load-active", "site-load-playing");
     osStage?.setAttribute("aria-hidden", "false");
   }
+  function cancelScheduledSocialHubRender() {
+    if (socialHubRenderRafId) {
+      window.cancelAnimationFrame(socialHubRenderRafId);
+      socialHubRenderRafId = 0;
+    }
+    socialHubPendingSnapshot = null;
+  }
+  function scheduleSocialHubRender(snapshot) {
+    socialHubPendingSnapshot = snapshot;
+    if (socialHubRenderRafId) return;
+    socialHubRenderRafId = window.requestAnimationFrame(() => {
+      socialHubRenderRafId = 0;
+      const nextSnapshot = socialHubPendingSnapshot;
+      socialHubPendingSnapshot = null;
+      if (!nextSnapshot) return;
+      socialHubRenderer?.render(nextSnapshot);
+      siteCursorController?.refresh?.();
+    });
+  }
   function initializeSocialHubIfNeeded() {
     if (socialHubInitialized) return;
     if (!(socialHubRoot instanceof HTMLElement)) return;
@@ -12399,14 +12447,14 @@
       seedPayloads: createSeedPayloadMap(),
       loadSitePayload: dataSources.loadSitePayload,
       onStateChange: (snapshot) => {
-        socialHubRenderer?.render(snapshot);
-        siteCursorController?.refresh?.();
+        scheduleSocialHubRender(snapshot);
       }
     });
     socialHubState.startAutoRefresh();
     socialHubInitialized = true;
   }
   function destroySocialHub() {
+    cancelScheduledSocialHubRender();
     socialHubState?.dispose?.();
     socialHubState = null;
     socialHubRenderer?.dispose?.();
@@ -12416,8 +12464,7 @@
   function syncLayoutMode() {
     if (!socialHubInitialized || !socialHubState || !socialHubRenderer) return;
     socialHubState.startAutoRefresh();
-    socialHubRenderer.render(socialHubState.snapshot(Date.now()));
-    siteCursorController?.refresh?.();
+    scheduleSocialHubRender(socialHubState.snapshot(Date.now()));
   }
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
