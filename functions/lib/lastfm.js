@@ -151,7 +151,7 @@ export function normalizeTrackKey(artist, title) {
 }
 
 export function getTrackArtistName(trackEntry) {
-  return String(trackEntry?.artist?.name || trackEntry?.artist?.["#text"] || "").trim();
+  return String(trackEntry?.artist?.name || trackEntry?.artist?.["#text"] || trackEntry?.artist || "").trim();
 }
 
 export function getTrackTitle(trackEntry) {

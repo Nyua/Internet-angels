@@ -747,6 +747,145 @@ test("lastfm track details route returns partial data when scrobble and spotify 
   }
 });
 
+test("lastfm track details route falls back to partial query data when core track info is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time&album=This%20Is%20How%20Tomorrow%20Moves");
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const requestUrl = new URL(String(resource));
+      const method = requestUrl.searchParams.get("method");
+      if (method === "track.getInfo") {
+        return Response.json({});
+      }
+      if (method === "track.gettoptags") {
+        return Response.json({
+          toptags: {
+            tag: [
+              { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" }
+            ]
+          }
+        });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
+      }
+      if (method === "user.gettrackscrobbles") {
+        return Response.json({ trackscrobbles: { "@attr": { total: "0" }, track: [] } });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({
+          toptracks: {
+            track: [
+              {
+                name: "Talk",
+                artist: { name: "beabadoobee" },
+                playcount: "1820011",
+                listeners: "942304",
+                url: "https://www.last.fm/music/beabadoobee/_/Talk"
+              }
+            ]
+          }
+        });
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.track.title, "One Time");
+    assert.equal(payload.track.artist, "beabadoobee");
+    assert.equal(payload.track.album, "This Is How Tomorrow Moves");
+    assert.equal(payload.track.lastfmUrl, "https://www.last.fm/music/beabadoobee/_/One%20Time");
+    assert.equal(payload.track.artistLastFmUrl, "https://www.last.fm/music/beabadoobee");
+    assert.equal(payload.track.topTags.length, 1);
+    assert.equal(payload.artistTopTracks.artist, "beabadoobee");
+    assert.equal(payload.artistTopTracks.items.length, 1);
+    assert.equal(payload.spotify.matchStatus, "not_configured");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm track details route keeps a retained internal core cache when upstream returns an empty track payload", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
+  const retainedTrackInfoRequest = new Request("https://internet-angel.internal/__lastfm-details/track-core/beabadoobee/one%20time", {
+    method: "GET"
+  });
+
+  try {
+    globalThis.caches = { default: cache };
+    await primeCache(cache, retainedTrackInfoRequest, {
+      fetchedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      value: {
+        name: "One Time",
+        artist: {
+          name: "beabadoobee",
+          url: "https://www.last.fm/music/beabadoobee"
+        },
+        album: {
+          title: "This Is How Tomorrow Moves"
+        },
+        url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+        duration: "184000",
+        playcount: "2740015",
+        listeners: "285055",
+        userplaycount: "3",
+        userloved: "1"
+      }
+    }, 7 * 24 * 60 * 60);
+
+    globalThis.fetch = async (resource) => {
+      const requestUrl = new URL(String(resource));
+      const method = requestUrl.searchParams.get("method");
+      if (method === "track.getInfo") {
+        return Response.json({});
+      }
+      if (method === "track.gettoptags") {
+        return Response.json({ toptags: { tag: [] } });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
+      }
+      if (method === "user.gettrackscrobbles") {
+        return Response.json({ trackscrobbles: { "@attr": { total: "0" }, track: [] } });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({ toptracks: { track: [] } });
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.track.title, "One Time");
+    assert.equal(payload.track.artist, "beabadoobee");
+    assert.equal(payload.track.userPlaycount, 3);
+    assert.equal(payload.track.userLoved, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("lastfm track details route returns retained stale payload when upstream fails", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
@@ -999,6 +1138,87 @@ test("lastfm artist details route validates query params and assembles artist de
   }
 });
 
+test("lastfm artist details route falls back to partial query data when artist info is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-artist-details?artist=beabadoobee");
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      if (resourceUrl.startsWith("https://api.deezer.com/search/artist")) {
+        return Response.json({
+          data: [
+            {
+              name: "beabadoobee",
+              picture_big: "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg"
+            }
+          ]
+        });
+      }
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "artist.getinfo") {
+        return Response.json({});
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({
+          toptracks: {
+            track: [
+              {
+                name: "Talk",
+                artist: { name: "beabadoobee" },
+                playcount: "1820011",
+                listeners: "942304",
+                url: "https://www.last.fm/music/beabadoobee/_/Talk"
+              }
+            ]
+          }
+        });
+      }
+      if (method === "artist.gettopalbums") {
+        return Response.json({
+          topalbums: {
+            album: [
+              {
+                name: "Beatopia",
+                artist: { name: "beabadoobee" },
+                playcount: "1200456",
+                url: "https://www.last.fm/music/beabadoobee/Beatopia"
+              }
+            ]
+          }
+        });
+      }
+      if (method === "track.getInfo" || method === "album.getinfo") {
+        return Response.json({});
+      }
+      throw new Error(`Unexpected request: ${resourceUrl}`);
+    };
+
+    const response = await onLastFmArtistDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.artist.name, "beabadoobee");
+    assert.equal(payload.artist.lastfmUrl, "https://www.last.fm/music/beabadoobee");
+    assert.equal(payload.artist.artworkUrl, "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg");
+    assert.equal(payload.topTracks.artist, "beabadoobee");
+    assert.equal(payload.topTracks.items.length, 1);
+    assert.equal(payload.topAlbums.artist, "beabadoobee");
+    assert.equal(payload.topAlbums.items.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("lastfm album details route assembles album detail data and track popularity", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
@@ -1140,6 +1360,75 @@ test("lastfm album details route assembles album detail data and track popularit
     assert.equal(payload.relatedTracks.artist, "beabadoobee");
     assert.ok(Array.isArray(payload.relatedTracks.items));
     assert.equal(callUrls.filter((url) => url === "https://accounts.spotify.com/api/token").length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm album details route falls back to partial query data when album info is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-album-details?artist=beabadoobee&album=Beatopia");
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const requestUrl = new URL(String(resource));
+      const method = requestUrl.searchParams.get("method");
+      if (method === "album.getinfo") {
+        return Response.json({});
+      }
+      if (method === "artist.getinfo") {
+        return Response.json({
+          artist: {
+            name: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee",
+            stats: {
+              listeners: "285055",
+              playcount: "2740015"
+            }
+          }
+        });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({
+          toptracks: {
+            track: [
+              {
+                name: "Talk",
+                artist: { name: "beabadoobee" },
+                playcount: "1820011",
+                listeners: "942304",
+                url: "https://www.last.fm/music/beabadoobee/_/Talk"
+              }
+            ]
+          }
+        });
+      }
+      if (method === "track.getInfo") {
+        return Response.json({});
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const response = await onLastFmAlbumDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.album.title, "Beatopia");
+    assert.equal(payload.album.artist, "beabadoobee");
+    assert.equal(payload.album.lastfmUrl, "https://www.last.fm/music/beabadoobee/Beatopia");
+    assert.equal(payload.album.artistLastFmUrl, "https://www.last.fm/music/beabadoobee");
+    assert.deepEqual(payload.tracks.items, []);
+    assert.equal(payload.relatedTracks.artist, "beabadoobee");
+    assert.equal(payload.relatedTracks.items.length, 1);
+    assert.equal(payload.spotify.matchStatus, "unavailable");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

@@ -38,18 +38,33 @@ function buildInternalCacheRequest(parts) {
   return new Request(`${LASTFM_INTERNAL_CACHE_BASE}/${safeParts.join("/")}`, { method: "GET" });
 }
 
+function readUsableCachedValue(cacheState) {
+  if (!cacheState?.payload || !Object.prototype.hasOwnProperty.call(cacheState.payload, "value")) {
+    return { hasValue: false, value: null };
+  }
+  const value = cacheState.payload.value;
+  if (value === null || value === undefined) {
+    return { hasValue: false, value: null };
+  }
+  return { hasValue: true, value };
+}
+
 async function loadCachedValue({
   cacheKeyParts,
   freshTtlSec,
   retainTtlSec,
   nowMs = Date.now(),
-  loader
+  loader,
+  throwOnLoaderError = false
 }) {
   const cache = globalThis.caches?.default;
   if (!cache) {
     try {
       return await loader();
-    } catch {
+    } catch (error) {
+      if (throwOnLoaderError) {
+        throw error;
+      }
       return null;
     }
   }
@@ -62,14 +77,15 @@ async function loadCachedValue({
     retainTtlSec,
     nowMs
   });
+  const cachedValueState = readUsableCachedValue(cacheState);
 
-  if (cacheState.status === "fresh" && cacheState.payload && Object.prototype.hasOwnProperty.call(cacheState.payload, "value")) {
-    return cacheState.payload.value;
+  if (cacheState.status === "fresh" && cachedValueState.hasValue) {
+    return cachedValueState.value;
   }
 
   try {
     const value = await loader();
-    if (value !== undefined) {
+    if (value !== undefined && value !== null) {
       await writeCachedPayload({
         cache,
         request,
@@ -79,11 +95,18 @@ async function loadCachedValue({
         },
         retainTtlSec
       });
+      return value;
     }
-    return value;
-  } catch {
-    if (cacheState.status === "retained" && cacheState.payload && Object.prototype.hasOwnProperty.call(cacheState.payload, "value")) {
-      return cacheState.payload.value;
+    if (cacheState.status === "retained" && cachedValueState.hasValue) {
+      return cachedValueState.value;
+    }
+    return null;
+  } catch (error) {
+    if (cacheState.status === "retained" && cachedValueState.hasValue) {
+      return cachedValueState.value;
+    }
+    if (throwOnLoaderError) {
+      throw error;
     }
     return null;
   }
@@ -157,7 +180,7 @@ function normalizeWikiExcerpt(summary, content) {
 }
 
 function getTrackAlbumName(trackEntry) {
-  return String(trackEntry?.album?.title || trackEntry?.album?.["#text"] || "").trim();
+  return String(trackEntry?.album?.title || trackEntry?.album?.["#text"] || trackEntry?.album || "").trim();
 }
 
 function getArtistName(entry) {
@@ -188,6 +211,29 @@ function getArtistUrl(trackEntry) {
   return String(trackEntry?.artist?.url || "").trim();
 }
 
+function buildLastFmMusicUrl(...segments) {
+  const safeSegments = segments
+    .map((segment) => String(segment || "").trim())
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment));
+  if (!safeSegments.length) {
+    return "";
+  }
+  return `https://www.last.fm/music/${safeSegments.join("/")}`;
+}
+
+function buildLastFmArtistUrl(artist) {
+  return buildLastFmMusicUrl(artist);
+}
+
+function buildLastFmAlbumUrl(artist, album) {
+  return buildLastFmMusicUrl(artist, album);
+}
+
+function buildLastFmTrackUrl(artist, track) {
+  return buildLastFmMusicUrl(artist, "_", track);
+}
+
 function parseUserLoved(value) {
   const loved = String(value ?? "").trim();
   if (loved === "1") return true;
@@ -215,6 +261,7 @@ async function loadTrackInfo(apiKey, artist, track, nowMs = Date.now(), options 
     freshTtlSec: options.freshTtlSec ?? LASTFM_TRACK_DETAILS_CORE_FRESH_TTL_SEC,
     retainTtlSec: options.retainTtlSec ?? LASTFM_TRACK_DETAILS_CORE_RETAIN_TTL_SEC,
     nowMs,
+    throwOnLoaderError: Boolean(options.throwOnUpstreamError),
     loader: async () => normalizeTrackInfoPayload(await fetchLastFmJson("track.getInfo", apiKey, {
       artist: safeArtist,
       track: safeTrack,
@@ -378,7 +425,7 @@ async function loadArtistTopAlbums(apiKey, artist, nowMs = Date.now()) {
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
-async function loadArtistInfo(apiKey, artist, nowMs = Date.now()) {
+async function loadArtistInfo(apiKey, artist, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   if (!safeArtist) {
     return null;
@@ -388,6 +435,7 @@ async function loadArtistInfo(apiKey, artist, nowMs = Date.now()) {
     freshTtlSec: LASTFM_ARTIST_INFO_FRESH_TTL_SEC,
     retainTtlSec: LASTFM_ARTIST_INFO_RETAIN_TTL_SEC,
     nowMs,
+    throwOnLoaderError: Boolean(options.throwOnUpstreamError),
     loader: async () => {
       const payload = await fetchLastFmJson("artist.getinfo", apiKey, {
         artist: safeArtist,
@@ -399,7 +447,7 @@ async function loadArtistInfo(apiKey, artist, nowMs = Date.now()) {
   return cachedValue && typeof cachedValue === "object" ? cachedValue : null;
 }
 
-async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now()) {
+async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   const safeAlbum = String(album || "").trim();
   if (!safeArtist || !safeAlbum) {
@@ -410,6 +458,7 @@ async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now()) {
     freshTtlSec: LASTFM_ALBUM_INFO_FRESH_TTL_SEC,
     retainTtlSec: LASTFM_ALBUM_INFO_RETAIN_TTL_SEC,
     nowMs,
+    throwOnLoaderError: Boolean(options.throwOnUpstreamError),
     loader: async () => {
       const payload = await fetchLastFmJson("album.getinfo", apiKey, {
         artist: safeArtist,
@@ -611,6 +660,48 @@ function buildAlbumSummary(albumInfo, artistInfo, trackItems) {
   };
 }
 
+function buildFallbackTrackInfo(query = {}) {
+  const artist = String(query.artist || "").trim();
+  const track = String(query.track || "").trim();
+  const album = String(query.album || "").trim();
+  if (!artist && !track && !album) {
+    return null;
+  }
+  return {
+    name: track,
+    artist: artist ? {
+      name: artist,
+      url: buildLastFmArtistUrl(artist)
+    } : {},
+    album: album ? { title: album } : {},
+    url: buildLastFmTrackUrl(artist, track)
+  };
+}
+
+function buildFallbackArtistInfo(query = {}) {
+  const artist = String(query.artist || "").trim();
+  if (!artist) {
+    return null;
+  }
+  return {
+    name: artist,
+    url: buildLastFmArtistUrl(artist)
+  };
+}
+
+function buildFallbackAlbumInfo(query = {}) {
+  const artist = String(query.artist || "").trim();
+  const album = String(query.album || "").trim();
+  if (!artist && !album) {
+    return null;
+  }
+  return {
+    name: album,
+    artist,
+    url: buildLastFmAlbumUrl(artist, album)
+  };
+}
+
 function buildEmptySpotifyTrackMatch() {
   return {
     matchStatus: "unavailable",
@@ -725,15 +816,17 @@ export async function fetchLastFmTrackDetails({
   const selectedTrackInfo = await loadTrackInfo(apiKey, rawQuery.artist, rawQuery.track, nowMs, {
     cachePrefix: "track-core",
     freshTtlSec: LASTFM_TRACK_DETAILS_CORE_FRESH_TTL_SEC,
-    retainTtlSec: LASTFM_TRACK_DETAILS_CORE_RETAIN_TTL_SEC
+    retainTtlSec: LASTFM_TRACK_DETAILS_CORE_RETAIN_TTL_SEC,
+    throwOnUpstreamError: true
   });
-  if (!selectedTrackInfo) {
-    throw new Error("Track details unavailable");
+  const baseTrackInfo = selectedTrackInfo || buildFallbackTrackInfo(rawQuery);
+  if (!baseTrackInfo) {
+    return buildEmptyLastFmTrackDetailsPayload(nowMs, "PARTIAL", rawQuery);
   }
 
-  const canonicalArtist = getTrackArtistName(selectedTrackInfo) || rawQuery.artist;
-  const canonicalTrack = getTrackTitle(selectedTrackInfo) || rawQuery.track;
-  const canonicalAlbum = getTrackAlbumName(selectedTrackInfo) || rawQuery.album;
+  const canonicalArtist = getTrackArtistName(baseTrackInfo) || rawQuery.artist;
+  const canonicalTrack = getTrackTitle(baseTrackInfo) || rawQuery.track;
+  const canonicalAlbum = getTrackAlbumName(baseTrackInfo) || rawQuery.album;
 
   const [topTags, similarTracks, scrobbles, spotifyMatch] = await Promise.all([
     loadTrackTopTags(apiKey, canonicalArtist, canonicalTrack, nowMs),
@@ -761,11 +854,17 @@ export async function fetchLastFmTrackDetails({
   const scrobbleItems = Array.isArray(scrobbles?.items) ? scrobbles.items : [];
   const scrobbleTotal = parseInteger(scrobbles?.total);
   const fallbackArtworkUrl = String(scrobbleItems[0]?.artworkUrl || "").trim();
-  const trackSummary = buildTrackSummary(selectedTrackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks);
+  const trackSummary = buildTrackSummary(baseTrackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks);
   const artistTopTracks = await buildRelatedArtistTracks(apiKey, canonicalArtist, normalizeTrackKey(canonicalArtist, canonicalTrack), nowMs);
-  const sourceStatus = artistTopTracks.length || topTags.length || similarTracks.length || scrobbleItems.length || spotifyMatch.matchStatus === "matched"
-    ? "OK"
-    : "PARTIAL";
+  const hasTrackSignals = Boolean(
+    artistTopTracks.length ||
+    topTags.length ||
+    similarTracks.length ||
+    scrobbleItems.length ||
+    spotifyMatch.matchStatus === "matched" ||
+    trackSummary.summary
+  );
+  const sourceStatus = selectedTrackInfo && hasTrackSignals ? "OK" : "PARTIAL";
 
   return {
     sourceStatus,
@@ -808,20 +907,31 @@ export async function fetchLastFmArtistDetails({
   const rawQuery = {
     artist: String(artist || "").trim()
   };
-  const artistInfo = await loadArtistInfo(apiKey, rawQuery.artist, nowMs);
-  if (!artistInfo) {
-    throw new Error("Artist details unavailable");
+  const artistInfo = await loadArtistInfo(apiKey, rawQuery.artist, nowMs, {
+    throwOnUpstreamError: true
+  });
+  const baseArtistInfo = artistInfo || buildFallbackArtistInfo(rawQuery);
+  if (!baseArtistInfo) {
+    return buildEmptyLastFmArtistDetailsPayload(nowMs, "PARTIAL", rawQuery);
   }
-  const canonicalArtist = getArtistName(artistInfo) || rawQuery.artist;
+  const canonicalArtist = getArtistName(baseArtistInfo) || rawQuery.artist;
   const [artworkUrl, topTracks, topAlbums] = await Promise.all([
-    resolveArtistArtworkUrl(artistInfo),
+    resolveArtistArtworkUrl(baseArtistInfo),
     buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 5 }),
     buildArtistTopAlbumsDetailed(apiKey, canonicalArtist, nowMs, { limit: 12 })
   ]);
-  const artistSummary = buildArtistSummary(artistInfo, artworkUrl, topTracks);
-  const sourceStatus = artistSummary.summary || artistSummary.topTags.length || topTracks.length || topAlbums.length
-    ? "OK"
-    : "PARTIAL";
+  const artistSummary = buildArtistSummary(baseArtistInfo, artworkUrl, topTracks);
+  const hasArtistSignals = Boolean(
+    artistSummary.summary ||
+    artistSummary.topTags.length ||
+    topTracks.length ||
+    topAlbums.length ||
+    artistSummary.lastfmUrl ||
+    artistSummary.artworkUrl ||
+    artistSummary.listeners ||
+    artistSummary.playcount
+  );
+  const sourceStatus = artistInfo && hasArtistSignals ? "OK" : "PARTIAL";
   return {
     sourceStatus,
     stale: false,
@@ -852,18 +962,22 @@ export async function fetchLastFmAlbumDetails({
     artist: String(artist || "").trim(),
     album: String(album || "").trim()
   };
-  const albumInfo = await loadAlbumInfo(apiKey, rawQuery.artist, rawQuery.album, nowMs);
-  if (!albumInfo) {
-    throw new Error("Album details unavailable");
+  const albumInfo = await loadAlbumInfo(apiKey, rawQuery.artist, rawQuery.album, nowMs, {
+    throwOnUpstreamError: true
+  });
+  const baseAlbumInfo = albumInfo || buildFallbackAlbumInfo(rawQuery);
+  if (!baseAlbumInfo) {
+    return buildEmptyLastFmAlbumDetailsPayload(nowMs, "PARTIAL", rawQuery);
   }
-  const canonicalArtist = getAlbumArtistName(albumInfo) || rawQuery.artist;
-  const canonicalAlbum = getAlbumTitle(albumInfo) || rawQuery.album;
+  const canonicalArtist = getAlbumArtistName(baseAlbumInfo) || rawQuery.artist;
+  const canonicalAlbum = getAlbumTitle(baseAlbumInfo) || rawQuery.album;
   const artistInfo = await loadArtistInfo(apiKey, canonicalArtist, nowMs);
+  const summaryArtistInfo = artistInfo || buildFallbackArtistInfo({ artist: canonicalArtist });
   const trackItems = await buildAlbumTrackItems(
     apiKey,
     canonicalArtist,
-    albumInfo?.tracks?.track,
-    getArtistUrlFromEntry(artistInfo),
+    baseAlbumInfo?.tracks?.track,
+    getArtistUrlFromEntry(summaryArtistInfo),
     nowMs
   );
   const spotifySeedTrack = pickAlbumSpotifySeedTrack(trackItems);
@@ -880,10 +994,20 @@ export async function fetchLastFmAlbumDetails({
   const relatedTracks = (await buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 8 }))
     .filter((entry) => !albumTrackKeys.has(normalizeTrackKey(entry.artist, entry.title)))
     .slice(0, 4);
-  const albumSummary = buildAlbumSummary(albumInfo, artistInfo, trackItems);
-  const sourceStatus = trackItems.length || relatedTracks.length || albumSummary.summary || albumSummary.topTags.length
-    ? "OK"
-    : "PARTIAL";
+  const albumSummary = buildAlbumSummary(baseAlbumInfo, summaryArtistInfo, trackItems);
+  const hasAlbumSignals = Boolean(
+    trackItems.length ||
+    relatedTracks.length ||
+    albumSummary.summary ||
+    albumSummary.topTags.length ||
+    albumSummary.lastfmUrl ||
+    albumSummary.artistLastFmUrl ||
+    albumSummary.artworkUrl ||
+    albumSummary.listeners ||
+    albumSummary.playcount ||
+    albumSummary.releasedAt
+  );
+  const sourceStatus = albumInfo && hasAlbumSignals ? "OK" : "PARTIAL";
   return {
     sourceStatus,
     stale: false,
