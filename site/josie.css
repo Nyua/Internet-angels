@@ -4508,44 +4508,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     --desktop-link-aura-sheen-rgb: 255, 255, 255;
   }
 
-  .steam-sidebar-site-icon-shell::before,
-  .steam-sidebar-site-icon-shell::after {
-    content: "";
-    position: absolute;
-    border-radius: 999px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .steam-sidebar-site-icon-shell::before {
-    inset: -2px;
-    background:
-      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22) 0 18%, rgba(255, 255, 255, 0.12) 44%, rgba(255, 255, 255, 0.02) 74%, transparent 100%);
-    box-shadow:
-      0 0 14px rgba(255, 255, 255, 0.1),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-    opacity: 0.58;
-    transform: scale(0.9);
-    transition:
-      opacity 160ms ease,
-      transform 180ms cubic-bezier(0.2, 0.82, 0.2, 1),
-      box-shadow 180ms ease,
-      background 180ms ease;
-  }
-
-  .steam-sidebar-site-icon-shell::after {
-    inset: -10px;
-    opacity: 0.16;
-    transform: scale(0.86);
-    filter: blur(10px);
-    background:
-      radial-gradient(circle at center, rgba(255, 255, 255, 0.34) 0 24%, rgba(255, 255, 255, 0.08) 58%, transparent 82%);
-    transition:
-      opacity 180ms ease,
-      transform 200ms cubic-bezier(0.2, 0.82, 0.2, 1),
-      background 180ms ease;
-  }
-
   .steam-sidebar-row--twitter .steam-sidebar-site-icon,
   .steam-sidebar-row--steam .steam-sidebar-site-icon,
   .steam-sidebar-row--discord .steam-sidebar-site-icon,
@@ -4582,25 +4544,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     stroke-opacity: 0.14;
   }
 
-  .steam-sidebar-row:hover .steam-sidebar-site-icon-shell::before,
-  .steam-sidebar-row:focus-within .steam-sidebar-site-icon-shell::before {
-    opacity: 0.96;
-    transform: scale(1);
-    background:
-      radial-gradient(circle at 50% 50%, rgba(var(--desktop-link-aura-secondary-rgb), 0.3) 0 18%, rgba(var(--desktop-link-aura-rgb), 0.18) 44%, rgba(var(--desktop-link-aura-rgb), 0.02) 74%, transparent 100%);
-    box-shadow:
-      0 0 16px rgba(var(--desktop-link-aura-rgb), 0.24),
-      0 0 28px rgba(var(--desktop-link-aura-rgb), 0.14),
-      inset 0 0 0 1px rgba(var(--desktop-link-aura-secondary-rgb), 0.5);
-  }
-
-  .steam-sidebar-row:hover .steam-sidebar-site-icon-shell::after,
-  .steam-sidebar-row:focus-within .steam-sidebar-site-icon-shell::after {
-    opacity: 0.38;
-    transform: scale(1);
-    background:
-      radial-gradient(circle at center, rgba(var(--desktop-link-aura-secondary-rgb), 0.52) 0 18%, rgba(var(--desktop-link-aura-rgb), 0.28) 46%, rgba(var(--desktop-link-aura-rgb), 0) 78%);
-  }
 }
 
 @keyframes sidebarTwitterVector {

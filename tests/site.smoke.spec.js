@@ -1237,12 +1237,15 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const colorChannels = (styles.color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
     const shell = node.closest(".steam-sidebar-site-icon-shell");
     const shellBefore = shell instanceof Element ? window.getComputedStyle(shell, "::before") : null;
+    const shellAfter = shell instanceof Element ? window.getComputedStyle(shell, "::after") : null;
     return {
       color: styles.color,
       colorChannels,
       filter: styles.filter,
-      shellBeforeOpacity: shellBefore ? Number.parseFloat(shellBefore.opacity || "0") : 0,
-      shellBeforeBoxShadow: shellBefore?.boxShadow || ""
+      shellBeforeContent: shellBefore?.content || "",
+      shellBeforeBoxShadow: shellBefore?.boxShadow || "",
+      shellAfterContent: shellAfter?.content || "",
+      shellAfterBoxShadow: shellAfter?.boxShadow || ""
     };
   });
   await page.mouse.move(4, 4);
@@ -1256,8 +1259,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect.poll(async () => (await readDesktopSpotifyIcon()).color, { timeout: 1_000 }).toBe("rgb(155, 241, 191)");
   const desktopSpotifyIconHover = await readDesktopSpotifyIcon();
   expect(desktopSpotifyIconHover.filter).toContain("drop-shadow");
-  expect(desktopSpotifyIconHover.shellBeforeOpacity).toBeGreaterThan(desktopSpotifyIconResting.shellBeforeOpacity);
-  expect(desktopSpotifyIconHover.shellBeforeBoxShadow).toContain("rgba(116, 232, 154");
+  expect(desktopSpotifyIconHover.shellBeforeContent).toBe("none");
+  expect(desktopSpotifyIconHover.shellBeforeBoxShadow).toBe("none");
+  expect(desktopSpotifyIconHover.shellAfterContent).toBe("none");
+  expect(desktopSpotifyIconHover.shellAfterBoxShadow).toBe("none");
 
   await clearInteractionSfxLog(page);
   await page.locator(".steam-sidebar-link").first().hover();
