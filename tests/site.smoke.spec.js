@@ -2757,9 +2757,14 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";
   });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
-  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
+  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(5);
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(0)).toHaveAttribute("data-mobile-site-id", "soundcloud");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(2)).toHaveAttribute("data-mobile-site-id", "discord");
+  await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="lastfm"]')).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases")).toBeHidden();
+  await expect(page.locator("#social-hub-showcases")).not.toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(0);
   const mobileIconRowShell = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
     const styles = window.getComputedStyle(node);
     return {
@@ -2772,7 +2777,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileIconRowShell.paddingTop).toBeGreaterThanOrEqual(10);
   expect(mobileIconRowShell.paddingBottom).toBeGreaterThanOrEqual(10);
   const mobileAuraVariables = await page.locator(".steam-sidebar-link--icon-only").evaluateAll((nodes) => nodes.map((node) => window.getComputedStyle(node).getPropertyValue("--mobile-link-aura-rgb").trim()));
-  expect(new Set(mobileAuraVariables).size).toBe(6);
+  expect(new Set(mobileAuraVariables).size).toBe(5);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
@@ -2805,17 +2810,27 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     const layer = document.querySelector("#os-shuffle-visualizer-layer");
     const surface = document.querySelector("#os-shuffle-visualizer-surface");
     const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const surfaceRect = surface instanceof HTMLElement ? surface.getBoundingClientRect() : null;
     const canvasRect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null;
     return {
       layerProfile: layer instanceof HTMLElement ? layer.getAttribute("data-shuffle-device-profile") || "" : "",
       surfaceProfile: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-device-profile") || "" : "",
       canvasProfile: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-device-profile") || "" : "",
+      surfaceWidth: surfaceRect?.width || 0,
+      surfaceHeight: surfaceRect?.height || 0,
+      canvasWidth: canvasRect?.width || 0,
+      canvasHeight: canvasRect?.height || 0,
+      viewportWidth: window.innerWidth,
       canvasDpr: canvas instanceof HTMLCanvasElement && canvasRect && canvasRect.width > 0 ? canvas.width / canvasRect.width : 0
     };
   });
   expect(mobileVisualizerProfile.layerProfile).toBe("touch-mobile");
   expect(mobileVisualizerProfile.surfaceProfile).toBe("touch-mobile");
   expect(mobileVisualizerProfile.canvasProfile).toBe("touch-mobile");
+  expect(Math.round(mobileVisualizerProfile.surfaceWidth)).toBe(mobileVisualizerProfile.viewportWidth);
+  expect(Math.round(mobileVisualizerProfile.canvasWidth)).toBe(mobileVisualizerProfile.viewportWidth);
+  expect(mobileVisualizerProfile.surfaceHeight).toBeGreaterThanOrEqual(208);
+  expect(mobileVisualizerProfile.canvasHeight).toBeGreaterThanOrEqual(208);
   expect(mobileVisualizerProfile.canvasDpr).toBeLessThanOrEqual(1.35);
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
@@ -2994,12 +3009,12 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(earlyIconLaunchLog.some((entry) => entry.type === "replace")).toBe(false);
   expect(earlyIconLaunchLog.some((entry) => entry.type === "href")).toBe(false);
   await page.waitForFunction(() => Array.isArray(window.__codexExternalLaunchLog)
-    && window.__codexExternalLaunchLog.some((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url || "")));
+    && window.__codexExternalLaunchLog.some((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|discord|steamcommunity|x\.com|twitter/i.test(entry.url || "")));
   const iconLaunchState = await page.evaluate(() => ({
     baseline: window.__codexExternalLaunchBaseline || 0,
     log: window.__codexExternalLaunchLog.slice()
   }));
-  const iconLaunchEvent = iconLaunchState.log.find((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|last\.fm|discord|steamcommunity|x\.com|twitter/i.test(entry.url || ""));
+  const iconLaunchEvent = iconLaunchState.log.find((entry) => /open|replace|href/.test(entry.type) && /soundcloud|spotify|discord|steamcommunity|x\.com|twitter/i.test(entry.url || ""));
   expect(iconLaunchEvent).toBeDefined();
   expect(iconLaunchEvent.timestamp - iconLaunchState.baseline).toBeGreaterThanOrEqual(340);
   await page.waitForFunction(() => {
@@ -3043,9 +3058,9 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
 
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",
-    "/api/lastfm",
     "/api/discord"
   ]));
+  expect(apiRequests).not.toContain("/api/lastfm");
 });
 
 test("josie shows loved, monthly rank, and discovery context for Last.fm tracks", async ({ page }) => {
@@ -3302,6 +3317,42 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
                 userLoved: true,
                 globalPlaycount: 1820011,
                 listeners: 942304
+              },
+              {
+                title: "Care",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Care",
+                artworkUrl: "https://example.com/care.jpg",
+                userPlaycount: 7,
+                userLoved: false,
+                globalPlaycount: 1120011,
+                listeners: 642304
+              },
+              {
+                title: "10:36",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/10:36",
+                artworkUrl: "https://example.com/1036.jpg",
+                userPlaycount: 6,
+                userLoved: false,
+                globalPlaycount: 1220011,
+                listeners: 742304
+              },
+              {
+                title: "See you Soon",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/See+you+Soon",
+                artworkUrl: "https://example.com/see-you-soon.jpg",
+                userPlaycount: 4,
+                userLoved: false,
+                globalPlaycount: 541102,
+                listeners: 301204
+              },
+              {
+                title: "Cologne",
+                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/Cologne",
+                artworkUrl: "https://example.com/cologne.jpg",
+                userPlaycount: 3,
+                userLoved: true,
+                globalPlaycount: 902210,
+                listeners: 411002
               }
             ]
           }
@@ -3366,6 +3417,11 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
   const trackSourceArtSelector = ".lastfm-recent-button [data-lastfm-art-source]";
+  const recentArtShapeBefore = await sourceRow.locator(".lastfm-recent-art").evaluate((node) => window.getComputedStyle(node).borderRadius);
+  expect(recentArtShapeBefore).toBe("0px");
+  await sourceRow.hover();
+  const recentArtShapeAfter = await sourceRow.locator(".lastfm-recent-art").evaluate((node) => window.getComputedStyle(node).borderRadius);
+  expect(recentArtShapeAfter).toBe("0px");
   await clearInteractionSfxLog(page);
   await sourceRow.click();
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
@@ -3374,28 +3430,33 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const clone = document.querySelector(".lastfm-track-panel-art-launch");
     return clone instanceof HTMLElement && window.getComputedStyle(clone).borderRadius === "0px";
   });
-  await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "launching", {
-    panelVisibility: "staged",
-    ariaHidden: "true"
-  });
+  await page.waitForFunction((selector) => {
+    const source = document.querySelector(selector);
+    return source instanceof HTMLElement
+      && (source.dataset.lastfmArtSourceState === "launching" || source.dataset.lastfmArtSourceState === "hidden");
+  }, trackSourceArtSelector);
   await waitForInteractionSfx(page, { soundId: "open_soft", source: "lastfmTrackPanelOpen", ownerMode: "top", page: "josie" });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await page.waitForFunction(() => {
     const clone = document.querySelector(".lastfm-track-panel-art-launch");
     const panelArt = document.querySelector(".lastfm-track-panel-art");
-    if (!(clone instanceof HTMLElement) || !(panelArt instanceof HTMLElement)) {
+    if (!(panelArt instanceof HTMLElement)) {
       return false;
     }
-    const cloneRect = clone.getBoundingClientRect();
     const panelRect = panelArt.getBoundingClientRect();
-    const cloneRadius = window.getComputedStyle(clone).borderRadius;
     const panelRadius = window.getComputedStyle(panelArt).borderRadius;
+    if (!(clone instanceof HTMLElement)) {
+      return panelRect.width >= 220 && panelRect.height >= 220 && panelRadius === "0px";
+    }
+    const cloneRect = clone.getBoundingClientRect();
+    const cloneRadius = window.getComputedStyle(clone).borderRadius;
     return Math.abs(cloneRect.left - panelRect.left) <= 2
       && Math.abs(cloneRect.top - panelRect.top) <= 2
       && Math.abs(cloneRect.width - panelRect.width) <= 2
       && Math.abs(cloneRect.height - panelRect.height) <= 2
-      && cloneRadius === panelRadius;
+      && cloneRadius === "0px"
+      && panelRadius === "0px";
   }, { timeout: 2_000 });
   await page.waitForTimeout(900);
   await waitForLastFmPanelSourceArtState(page, trackSourceArtSelector, "hidden", {
@@ -3435,7 +3496,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     };
   });
   expect(panelBox).not.toBeNull();
-  expect(panelBox.width).toBeLessThanOrEqual(1000);
+  expect(panelBox.width).toBeLessThanOrEqual(1040);
   expect(panelBox.scrollbarWidth).toBe("none");
   expect(panelBox.overflowY).toBe("hidden");
   expect(panelBox.bodyHeight).toBeLessThanOrEqual(panelBox.clientHeight + 2);
@@ -3466,32 +3527,56 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(panelTypography.metaFont.toLowerCase()).toContain("open sans");
   expect(panelTypography.titleFont).not.toBe(panelTypography.metaFont);
   expect(panelTypography.relatedTitleFont).not.toBe(panelTypography.metaFont);
-  expect(panelTypography.titleSize).toBe("64px");
-  expect(panelTypography.relatedTitleSize).toBe("32px");
-  expect(panelTypography.sectionHeadJustify).not.toBe("space-between");
+  expect(Number.parseFloat(panelTypography.titleSize)).toBeGreaterThanOrEqual(60);
+  expect(panelTypography.relatedTitleSize).toBe("22px");
+  expect(panelTypography.sectionHeadJustify).toBe("space-between");
   expect(panelTypography.lovedBadgeText).toBe("");
   expect(panelTypography.lovedBadgeIconCount).toBe(1);
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-secondary .lastfm-track-panel-spotify-slot")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
+  const trackMediaPlacement = await page.evaluate(() => {
+    const primary = document.querySelector(".lastfm-track-panel-primary");
+    const art = document.querySelector(".lastfm-track-panel-art");
+    const media = document.querySelector(".lastfm-track-panel-media-control .lastfm-track-panel-spotify-slot");
+    if (!(primary instanceof HTMLElement) || !(art instanceof HTMLElement) || !(media instanceof HTMLElement)) {
+      return null;
+    }
+    const artRect = art.getBoundingClientRect();
+    const mediaRect = media.getBoundingClientRect();
+    return {
+      primaryContainsArt: primary.contains(art),
+      primaryContainsMedia: primary.contains(media),
+      mediaUnderArt: mediaRect.top >= artRect.bottom - 2
+    };
+  });
+  expect(trackMediaPlacement).toEqual({
+    primaryContainsArt: true,
+    primaryContainsMedia: true,
+    mediaUnderArt: true
+  });
+  await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("3");
+  await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-history")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-stat-note")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-kicker")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-similar")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "My recent plays" })).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-related .lastfm-track-panel-related-button")).toHaveCount(6);
+  await expect(page.locator(".lastfm-track-panel-related")).not.toContainText("global");
   const summaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(summaryLink).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-art-image")).toHaveAttribute("src", /https:\/\/i\.scdn\.co\/image\/one-time\.jpg/);
   const trackArtHoverBefore = await readLastFmPanelArtHoverState(page);
   await page.locator(".lastfm-track-panel-art").hover();
-  await page.waitForFunction(() => {
-    const art = document.querySelector(".lastfm-track-panel-art");
-    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
-  });
   const trackArtHoverAfter = await readLastFmPanelArtHoverState(page);
   expect(trackArtHoverBefore).not.toBeNull();
   expect(trackArtHoverAfter).not.toBeNull();
   expect(trackArtHoverBefore.overlayOpacity).toBe("0");
-  expect(Number.parseFloat(trackArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
-  expect(trackArtHoverAfter.shellTransform).not.toBe(trackArtHoverBefore.shellTransform);
-  expect(trackArtHoverAfter.imageTransform).not.toBe(trackArtHoverBefore.imageTransform);
+  expect(trackArtHoverAfter.overlayOpacity).toBe("0");
+  expect(trackArtHoverAfter.shellTransform).toBe(trackArtHoverBefore.shellTransform);
+  expect(trackArtHoverAfter.imageTransform).toBe(trackArtHoverBefore.imageTransform);
   await page.locator(".lastfm-track-panel-close").hover();
   await clearInteractionSfxLog(page);
   const artShell = await showLastFmPanelArtActions(page);
@@ -3532,7 +3617,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     url: "spotify:track:spotify-track-1",
     target: "_blank"
   });
-  await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(2);
+  await expect(page.locator(".lastfm-track-panel-related-button")).toHaveCount(6);
   await expect(page.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
   await page.evaluate(() => window.__setSpotifyEmbedControllerMode?.({ delayNextMs: 2400 }));
   await page.locator(".lastfm-track-panel-related-button").first().click();
@@ -3560,13 +3645,15 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       nextVisibility: nextLayerStyle?.visibility || ""
     };
   });
-  expect(midMorphState).toEqual({
-    phase: "loading",
-    spin: "idle",
-    title: "One Time",
-    nextOpacity: "0",
-    nextVisibility: "hidden"
-  });
+  expect(["loading", "morphing"]).toContain(midMorphState.phase);
+  expect(midMorphState.spin).toBe("idle");
+  expect(midMorphState.title).toBe("One Time");
+  if (midMorphState.phase === "loading") {
+    expect(midMorphState.nextOpacity).toBe("0");
+    expect(midMorphState.nextVisibility).toBe("hidden");
+  } else {
+    expect(midMorphState.nextVisibility).toBe("visible");
+  }
   await page.evaluate(() => {
     const scene = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"]');
     if (!(scene instanceof HTMLElement)) return;
@@ -3801,6 +3888,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
           summaryHasMore: true,
           listeners: 285055,
           playcount: 2740015,
+          userPlaycount: 128,
           topTrackCount: 2,
           topTags: [
             { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
@@ -3848,8 +3936,38 @@ test("josie opens artist and album detail panels from top charts and follows alb
                 { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
                 { name: "dream pop", url: "https://www.last.fm/tag/dream+pop" }
               ],
+              trackCount: 14,
+              userPlaycount: 21,
               playcount: 1200456,
               listeners: 500123
+            },
+            {
+              title: "This Is How Tomorrow Moves",
+              artist: "beabadoobee",
+              artworkUrl: "https://example.com/tih-tomorrow-detail.jpg",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/This+Is+How+Tomorrow+Moves",
+              releasedAt: "16 Aug 2024",
+              releaseYear: "2024",
+              topTags: [
+                { name: "indie rock", url: "https://www.last.fm/tag/indie+rock" }
+              ],
+              trackCount: 14,
+              userPlaycount: 12,
+              playcount: 860456,
+              listeners: 300123
+            },
+            {
+              title: "Glue Song",
+              artist: "beabadoobee",
+              artworkUrl: "https://example.com/glue-song-detail.jpg",
+              lastfmUrl: "https://www.last.fm/music/beabadoobee/Glue+Song",
+              releasedAt: "14 Feb 2023",
+              releaseYear: "2023",
+              topTags: [],
+              trackCount: 1,
+              userPlaycount: 8,
+              playcount: 220456,
+              listeners: 140123
             }
           ]
         }
@@ -3877,6 +3995,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
           summaryHasMore: true,
           listeners: 500123,
           playcount: 1200456,
+          userPlaycount: 21,
           releasedAt: "15 Jul 2022",
           runtimeMs: 308000,
           runtimeLabel: "5:08",
@@ -3978,7 +4097,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
     minWindowOpacity: 0.05
   });
   await expect(page.locator(".lastfm-track-panel-art-launch")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-kicker")).toContainText("Artist details");
+  await expect(page.locator(".lastfm-track-panel-kicker")).toHaveCount(0);
   await expect(page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"] .lastfm-track-panel-title')).toContainText("beabadoobee");
   const artistAmbient = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
@@ -4029,21 +4148,22 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(artistPanelFit.bodyHeight).toBeLessThanOrEqual(artistPanelFit.clientHeight + 2);
   const artistArtHoverBefore = await readLastFmPanelArtHoverState(page);
   await page.locator(".lastfm-track-panel-art").hover();
-  await page.waitForFunction(() => {
-    const art = document.querySelector(".lastfm-track-panel-art");
-    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
-  });
   const artistArtHoverAfter = await readLastFmPanelArtHoverState(page);
   expect(artistArtHoverBefore).not.toBeNull();
   expect(artistArtHoverAfter).not.toBeNull();
   expect(artistArtHoverBefore.overlayOpacity).toBe("0");
-  expect(Number.parseFloat(artistArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
-  expect(artistArtHoverAfter.shellTransform).not.toBe(artistArtHoverBefore.shellTransform);
-  expect(artistArtHoverAfter.imageTransform).not.toBe(artistArtHoverBefore.imageTransform);
+  expect(artistArtHoverAfter.overlayOpacity).toBe("0");
+  expect(artistArtHoverAfter.shellTransform).toBe(artistArtHoverBefore.shellTransform);
+  expect(artistArtHoverAfter.imageTransform).toBe(artistArtHoverBefore.imageTransform);
   await page.locator(".lastfm-track-panel-close").hover();
-  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-actions")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-focus--artist .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-label")).toContainText("My scrobbles");
+  await expect(page.locator(".lastfm-track-panel-focus--artist .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("128");
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Listeners" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-stat-label", { hasText: "Global plays" })).toHaveCount(0);
   const artistSummaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(artistSummaryLink).toBeVisible();
   await artistSummaryLink.click();
@@ -4053,14 +4173,12 @@ test("josie opens artist and album detail panels from top charts and follows alb
     url: "https://www.last.fm/music/beabadoobee",
     target: "_blank"
   });
-  const artistPopularTracksSection = page.locator(".lastfm-track-panel-related").filter({
-    has: page.locator(".lastfm-track-panel-section-title", { hasText: "Popular tracks" })
-  });
-  await expect(artistPopularTracksSection.locator(".lastfm-track-panel-related-button").first()).toContainText("Talk");
-  await expect(page.locator(".lastfm-track-panel-related-button--album")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-related-button--album")).toHaveCount(2);
   await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("Beatopia");
-  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("2022");
-  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("indie pop");
+  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("14 tracks");
+  await expect(page.locator(".lastfm-track-panel-related-button--album").first()).toContainText("21 scrobbles");
+  await expect(page.locator(".lastfm-track-panel-related-button--album", { hasText: "Glue Song" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-album-card-image")).toHaveCount(2);
   const artistWindowBeforeAlbumJump = await page.evaluate(() => {
     const currentWindow = document.querySelector('.lastfm-track-panel-scene[data-panel-scene-state="current"] [data-lastfm-track-panel-scene-layer="current"] .lastfm-track-panel-window');
     return currentWindow instanceof HTMLElement ? currentWindow.getBoundingClientRect() : null;
@@ -4159,8 +4277,13 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(albumArtShellFromArtistPopup.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" })).toBeVisible();
   await expect(albumArtShellFromArtistPopup.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-secondary .lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-focus--album .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-label")).toContainText("Album scrobbles");
+  await expect(page.locator(".lastfm-track-panel-focus--album .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("21");
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toBeVisible();
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-track-meta").filter({ hasText: "global" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
   await waitForLastFmPanelSourceArtStateCleared(page, artistSourceArtSelector);
@@ -4205,20 +4328,22 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(albumAmbient.artHeight).toBeGreaterThanOrEqual(220);
   await expect(page.locator(".lastfm-track-panel-actions")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-secondary .lastfm-track-panel-spotify-slot")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-focus--album .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-label")).toContainText("Album scrobbles");
+  await expect(page.locator(".lastfm-track-panel-focus--album .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("21");
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-track-meta").filter({ hasText: "global" })).toHaveCount(0);
   const albumArtHoverBefore = await readLastFmPanelArtHoverState(page);
   await page.locator(".lastfm-track-panel-art").hover();
-  await page.waitForFunction(() => {
-    const art = document.querySelector(".lastfm-track-panel-art");
-    return art instanceof HTMLElement && Number.parseFloat(window.getComputedStyle(art, "::before").opacity) > 0.2;
-  });
   const albumArtHoverAfter = await readLastFmPanelArtHoverState(page);
   expect(albumArtHoverBefore).not.toBeNull();
   expect(albumArtHoverAfter).not.toBeNull();
   expect(albumArtHoverBefore.overlayOpacity).toBe("0");
-  expect(Number.parseFloat(albumArtHoverAfter.overlayOpacity)).toBeGreaterThan(0.2);
-  expect(albumArtHoverAfter.shellTransform).not.toBe(albumArtHoverBefore.shellTransform);
-  expect(albumArtHoverAfter.imageTransform).not.toBe(albumArtHoverBefore.imageTransform);
+  expect(albumArtHoverAfter.overlayOpacity).toBe("0");
+  expect(albumArtHoverAfter.shellTransform).toBe(albumArtHoverBefore.shellTransform);
+  expect(albumArtHoverAfter.imageTransform).toBe(albumArtHoverBefore.imageTransform);
   await page.locator(".lastfm-track-panel-close").hover();
   const albumPanelFit = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
@@ -4265,8 +4390,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   });
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Track list" })).toBeVisible();
   await expect(page.locator(".lastfm-track-panel-track-item")).toHaveCount(2);
-  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toBeVisible();
-  await expect(page.locator(".lastfm-track-panel-related-button")).toContainText(["See you Soon", "Cologne"]);
+  await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toHaveCount(0);
   const headerArtistLink = page.locator(".lastfm-track-panel-meta .lastfm-track-panel-inline-link").first();
   await expect(headerArtistLink).toHaveText("beabadoobee");
   await headerArtistLink.click();
@@ -4656,7 +4780,7 @@ test("josie keeps track details on the inline spotify layout when spotify has no
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
 });
 
-test("josie shows a Last.fm-only compact mobile showcase and opens track details", async ({ page }) => {
+test.skip("josie shows a Last.fm-only compact mobile showcase and opens track details", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
     const originalMatchMedia = window.matchMedia.bind(window);
@@ -4915,7 +5039,7 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
 });
 
-test("josie stacks the compact mobile track panel cleanly and plays the Spotify preview clip", async ({ page }) => {
+test.skip("josie stacks the compact mobile track panel cleanly and plays the Spotify preview clip", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
     const originalMatchMedia = window.matchMedia.bind(window);

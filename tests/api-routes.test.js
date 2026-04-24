@@ -975,7 +975,8 @@ test("lastfm artist details route validates query params and assembles artist de
             },
             stats: {
               listeners: "285055",
-              playcount: "2740015"
+              playcount: "2740015",
+              userplaycount: "128"
             },
             tags: {
               tag: [
@@ -1031,8 +1032,15 @@ test("lastfm artist details route validates query params and assembles artist de
             url: "https://www.last.fm/music/beabadoobee/Beatopia",
             image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg" }],
             playcount: "1200456",
+            userplaycount: "21",
             listeners: "500123",
             releasedate: "15 Jul 2022, 00:00",
+            tracks: {
+              track: [
+                { name: "Talk", duration: "144", artist: { name: "beabadoobee" } },
+                { name: "the perfect pair", duration: "164", artist: { name: "beabadoobee" } }
+              ]
+            },
             tags: {
               tag: [
                 { name: "indie pop", url: "https://www.last.fm/tag/indie+pop" },
@@ -1125,6 +1133,7 @@ test("lastfm artist details route validates query params and assembles artist de
     assert.equal(payload.artist.artworkUrl, "https://cdn-images.dzcdn.net/images/artist/bea-photo.jpg");
     assert.equal(payload.artist.summary, "Filipino-British indie artist.");
     assert.equal(payload.artist.summaryHasMore, true);
+    assert.equal(payload.artist.userPlaycount, 128);
     assert.equal(payload.artist.topTags.length, 2);
     assert.equal(payload.topTracks.items[0].title, "Talk");
     assert.equal(payload.topTracks.items[0].userPlaycount, 9);
@@ -1132,6 +1141,8 @@ test("lastfm artist details route validates query params and assembles artist de
     assert.equal(payload.topAlbums.items[0].title, "Beatopia");
     assert.equal(payload.topAlbums.items[0].releaseYear, "2022");
     assert.equal(payload.topAlbums.items[0].topTags[0].name, "indie pop");
+    assert.equal(payload.topAlbums.items[0].trackCount, 2);
+    assert.equal(payload.topAlbums.items[0].userPlaycount, 21);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
@@ -1265,6 +1276,7 @@ test("lastfm album details route assembles album detail data and track popularit
             url: "https://www.last.fm/music/beabadoobee/Beatopia",
             image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg" }],
             playcount: "1200456",
+            userplaycount: "21",
             listeners: "500123",
             releasedate: "15 Jul 2022, 00:00",
             wiki: {
@@ -1345,6 +1357,7 @@ test("lastfm album details route assembles album detail data and track popularit
     assert.equal(payload.album.artist, "beabadoobee");
     assert.equal(payload.album.summary, "A dreamy sophomore album.");
     assert.equal(payload.album.summaryHasMore, true);
+    assert.equal(payload.album.userPlaycount, 21);
     assert.equal(payload.album.releasedAt, "15 Jul 2022");
     assert.equal(payload.album.runtimeLabel, "5:08");
     assert.equal(payload.album.topTags.length, 2);

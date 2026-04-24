@@ -411,7 +411,7 @@ async function loadArtistTopAlbums(apiKey, artist, nowMs = Date.now()) {
       const payload = await fetchLastFmJson("artist.gettopalbums", apiKey, {
         artist: safeArtist,
         autocorrect: 1,
-        limit: 16
+        limit: 24
       });
       return toList(payload?.topalbums?.album).map((albumEntry) => ({
         title: getAlbumTitle(albumEntry),
@@ -439,6 +439,7 @@ async function loadArtistInfo(apiKey, artist, nowMs = Date.now(), options = {}) 
     loader: async () => {
       const payload = await fetchLastFmJson("artist.getinfo", apiKey, {
         artist: safeArtist,
+        username: LASTFM_USER,
         autocorrect: 1
       });
       return payload?.artist && typeof payload.artist === "object" ? payload.artist : null;
@@ -463,6 +464,7 @@ async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now(), options 
       const payload = await fetchLastFmJson("album.getinfo", apiKey, {
         artist: safeArtist,
         album: safeAlbum,
+        username: LASTFM_USER,
         autocorrect: 1
       });
       return payload?.album && typeof payload.album === "object" ? payload.album : null;
@@ -536,6 +538,7 @@ async function buildArtistTopAlbumsDetailed(apiKey, artist, nowMs = Date.now(), 
     const albumInfo = await loadAlbumInfo(apiKey, entry.artist, entry.title, nowMs);
     const releasedAt = normalizeReleaseLabel(albumInfo?.releasedate || albumInfo?.wiki?.published);
     const topTags = normalizeTagList(albumInfo?.tags?.tag, 3);
+    const trackCount = toList(albumInfo?.tracks?.track).length;
     return {
       title: entry.title,
       artist: entry.artist,
@@ -544,11 +547,13 @@ async function buildArtistTopAlbumsDetailed(apiKey, artist, nowMs = Date.now(), 
       releasedAt,
       releaseYear: extractReleaseYear(releasedAt),
       topTags,
+      trackCount,
+      userPlaycount: parseInteger(albumInfo?.userplaycount),
       playcount: parseInteger(albumInfo?.playcount) || entry.playcount,
       listeners: parseInteger(albumInfo?.listeners)
     };
   }));
-  return enrichedAlbums;
+  return enrichedAlbums.filter((entry) => entry.trackCount !== 1).slice(0, limit);
 }
 
 function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks = []) {
@@ -600,6 +605,7 @@ function buildArtistSummary(artistInfo, artworkUrl, topTracks = []) {
     summaryHasMore: wikiExcerpt.hasMore,
     listeners: parseInteger(artistInfo?.stats?.listeners),
     playcount: parseInteger(artistInfo?.stats?.playcount),
+    userPlaycount: parseInteger(artistInfo?.stats?.userplaycount) || parseInteger(artistInfo?.userplaycount),
     topTags: normalizeTagList(artistInfo?.tags?.tag, 4),
     topTrackCount: Array.isArray(topTracks) ? topTracks.length : 0
   };
@@ -652,6 +658,7 @@ function buildAlbumSummary(albumInfo, artistInfo, trackItems) {
     summaryHasMore: wikiExcerpt.hasMore,
     listeners: parseInteger(albumInfo?.listeners),
     playcount: parseInteger(albumInfo?.playcount),
+    userPlaycount: parseInteger(albumInfo?.userplaycount),
     releasedAt: normalizeReleaseLabel(albumInfo?.releasedate || albumInfo?.wiki?.published),
     runtimeMs,
     runtimeLabel: formatDurationLabel(runtimeMs),

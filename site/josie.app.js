@@ -206,7 +206,7 @@
     const normalizedSiteId = String(siteId || "").trim().toLowerCase();
     if (!normalizedSiteId) return false;
     if (isCompactMobileLayout()) {
-      return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
+      return normalizedSiteId === "steam" || normalizedSiteId === "discord";
     }
     return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
   }
@@ -901,6 +901,7 @@
         summaryHasMore: Boolean(safeArtist.summaryHasMore),
         listeners: Number.isFinite(Number(safeArtist.listeners)) ? Number(safeArtist.listeners) : 0,
         playcount: Number.isFinite(Number(safeArtist.playcount)) ? Number(safeArtist.playcount) : 0,
+        userPlaycount: Number.isFinite(Number(safeArtist.userPlaycount)) ? Number(safeArtist.userPlaycount) : 0,
         topTrackCount: Number.isFinite(Number(safeArtist.topTrackCount)) ? Number(safeArtist.topTrackCount) : 0,
         topTags: Array.isArray(safeArtist.topTags) ? safeArtist.topTags.map((entry) => ({
           name: firstNonEmpty(entry?.name, ""),
@@ -936,6 +937,8 @@
             name: firstNonEmpty(tagEntry?.name, ""),
             url: sanitizeUrl(tagEntry?.url)
           })).filter((tagEntry) => tagEntry.name).slice(0, 3) : [],
+          trackCount: Number.isFinite(Number(entry?.trackCount)) ? Number(entry.trackCount) : 0,
+          userPlaycount: Number.isFinite(Number(entry?.userPlaycount)) ? Number(entry.userPlaycount) : 0,
           playcount: Number.isFinite(Number(entry?.playcount)) ? Number(entry.playcount) : 0,
           listeners: Number.isFinite(Number(entry?.listeners)) ? Number(entry.listeners) : 0
         })).filter((entry) => entry.title) : []
@@ -967,6 +970,7 @@
         summaryHasMore: Boolean(safeAlbum.summaryHasMore),
         listeners: Number.isFinite(Number(safeAlbum.listeners)) ? Number(safeAlbum.listeners) : 0,
         playcount: Number.isFinite(Number(safeAlbum.playcount)) ? Number(safeAlbum.playcount) : 0,
+        userPlaycount: Number.isFinite(Number(safeAlbum.userPlaycount)) ? Number(safeAlbum.userPlaycount) : 0,
         releasedAt: firstNonEmpty(safeAlbum.releasedAt, ""),
         runtimeMs: Number.isFinite(Number(safeAlbum.runtimeMs)) ? Number(safeAlbum.runtimeMs) : 0,
         runtimeLabel: firstNonEmpty(safeAlbum.runtimeLabel, ""),
@@ -4556,14 +4560,13 @@
     const layoutClassName = firstNonEmpty(safeViewModel.layoutClassName, "lastfm-track-panel-layout");
     const stackClassName = firstNonEmpty(safeViewModel.stackClassName, "lastfm-track-panel-stack");
     const ambientAttrs = renderLastFmPanelAmbientAttributes(safeViewModel.ambientImageUrl);
-    const titleText = firstNonEmpty(safeViewModel.title, "Last.fm details");
+    const titleText = firstNonEmpty(safeViewModel.title, "Last.fm");
     const mobileClassName = isCompactMobileLayout() ? " lastfm-track-panel-window--mobile" : "";
     if (safeViewModel.state === "error") {
       return `
       <div class="lastfm-track-panel-window${mobileClassName} lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}">
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-error">
-          <p class="lastfm-track-panel-kicker">${escapeHtml(firstNonEmpty(safeViewModel.kicker, "Details unavailable"))}</p>
           <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(titleText)}</h3>
           <p class="lastfm-track-panel-empty">${escapeHtml(firstNonEmpty(safeViewModel.errorMessage, "This panel could not be loaded right now. Try again in a moment."))}</p>
         </div>
@@ -4574,34 +4577,34 @@
     const metaText = firstNonEmpty(safeViewModel.metaText, "");
     const badgesMarkup = firstNonEmpty(safeViewModel.badgesMarkup, "");
     const primaryMarkup = firstNonEmpty(safeViewModel.primaryMarkup, "");
+    const mediaControlMarkup = firstNonEmpty(safeViewModel.mediaControlMarkup, "");
+    const focusMarkup = firstNonEmpty(safeViewModel.focusMarkup, "");
     const statsMarkup = firstNonEmpty(safeViewModel.statsMarkup, "");
     const tagsMarkup = firstNonEmpty(safeViewModel.tagsMarkup, "");
     const actionsMarkup = firstNonEmpty(safeViewModel.actionsMarkup, "");
     const stackMarkup = firstNonEmpty(safeViewModel.stackMarkup, "");
+    const supportMarkup = `${focusMarkup ? statsMarkup : ""}${tagsMarkup}${actionsMarkup}`;
     const loadingClassName = safeViewModel.state === "loading" ? " is-loading" : "";
     return `
-      <div class="lastfm-track-panel-window${loadingClassName}${mobileClassName}" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}"${ambientAttrs}>
+      <div class="lastfm-track-panel-window lastfm-track-panel-window--focus-menu${loadingClassName}${mobileClassName}" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}"${ambientAttrs}>
         <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-body">
-          <div class="${escapeHtml(layoutClassName)}">
+          <div class="${escapeHtml(layoutClassName)} lastfm-track-panel-layout--focus-menu">
             <div class="lastfm-track-panel-primary">
               ${primaryMarkup}
+              ${mediaControlMarkup ? `<div class="lastfm-track-panel-media-control">${mediaControlMarkup}</div>` : ""}
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
-                <p class="lastfm-track-panel-kicker">${escapeHtml(firstNonEmpty(safeViewModel.kicker, "Last.fm details"))}</p>
                 <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(titleText)}</h3>
                 ${metaMarkup ? `<p class="lastfm-track-panel-meta">${metaMarkup}</p>` : metaText ? `<p class="lastfm-track-panel-meta">${escapeHtml(metaText)}</p>` : ""}
                 ${badgesMarkup}
               </header>
-              ${statsMarkup}
-              ${tagsMarkup}
-              ${actionsMarkup}
+              ${focusMarkup || statsMarkup}
+              ${supportMarkup ? `<div class="lastfm-track-panel-secondary-support">${supportMarkup}</div>` : ""}
             </div>
           </div>
-          <div class="${escapeHtml(stackClassName)}">
-            ${stackMarkup}
-          </div>
+          ${stackMarkup ? `<div class="${escapeHtml(stackClassName)}">${stackMarkup}</div>` : ""}
         </div>
       </div>
     `;
@@ -4613,18 +4616,18 @@
       panelLayoutKey: "top-heavy",
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy",
       stackClassName: "lastfm-track-panel-stack lastfm-track-panel-stack--split",
-      kicker: "loading track details",
-      title: firstNonEmpty(query.track, "Track details"),
+      kicker: "loading track",
+      title: firstNonEmpty(query.track, "Loading track"),
       metaText: firstNonEmpty(query.artist, "Last.fm"),
       primaryMarkup: '<div class="lastfm-track-panel-art lastfm-track-panel-skeleton" data-lastfm-panel-art-anchor aria-hidden="true"></div>',
-      statsMarkup: `
-        <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify" aria-hidden="true">
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-          <div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton"></div>
-        </div>
+      mediaControlMarkup: '<div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton" aria-hidden="true"></div>',
+      focusMarkup: `
+        <section class="lastfm-track-panel-focus lastfm-track-panel-focus--track" aria-hidden="true">
+          <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus lastfm-track-panel-skeleton"></div>
+          <div class="lastfm-track-panel-history lastfm-track-panel-skeleton"></div>
+        </section>
       `,
       stackMarkup: `
-        <div class="lastfm-track-panel-history lastfm-track-panel-skeleton" aria-hidden="true"></div>
         <div class="lastfm-track-panel-related lastfm-track-panel-skeleton" aria-hidden="true"></div>
       `
     });
@@ -4634,8 +4637,8 @@
       state: "error",
       panelType: "track",
       panelLayoutKey: "top-heavy",
-      kicker: "Track details unavailable",
-      title: firstNonEmpty(query.track, "Track details"),
+      kicker: "Track unavailable",
+      title: firstNonEmpty(query.track, "Unknown track"),
       errorMessage: "This track could not be loaded right now. Try again in a moment."
     });
   }
@@ -4654,10 +4657,8 @@
       ? [...artistTopTracks.items].sort((left, right) => {
         const userPlayDelta = Number(right?.userPlaycount || 0) - Number(left?.userPlaycount || 0);
         if (userPlayDelta !== 0) return userPlayDelta;
-        const globalPlayDelta = Number(right?.globalPlaycount || 0) - Number(left?.globalPlaycount || 0);
-        if (globalPlayDelta !== 0) return globalPlayDelta;
         return String(left?.title || "").localeCompare(String(right?.title || ""));
-      }).slice(0, 3)
+      }).slice(0, 6)
       : [];
     const tagsMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
       <div class="lastfm-track-panel-tags" aria-label="Track tags">
@@ -4681,11 +4682,12 @@
       ]
     });
     const summaryMarkup = renderLastFmSummarySection("About this track", track.summary, track.lastfmUrl, track.summaryHasMore);
+    const scrobbleTotalLabel = formatCountNumber(scrobbles.total || track.userPlaycount, "0");
     const historyMarkup = `
       <section class="lastfm-track-panel-history">
         <div class="lastfm-track-panel-section-head">
           <h4 class="lastfm-track-panel-section-title">My recent plays</h4>
-          <span class="lastfm-track-panel-section-meta">${escapeHtml(formatCountNumber(scrobbles.total || track.userPlaycount, "0"))} total</span>
+          <span class="lastfm-track-panel-section-meta">${escapeHtml(scrobbleTotalLabel)} total</span>
         </div>
         ${scrobbleItems.length ? `
           <ul class="lastfm-track-panel-history-list">
@@ -4697,6 +4699,15 @@
             `).join("")}
           </ul>
         ` : `<p class="lastfm-track-panel-empty">Recent scrobble history is unavailable right now.</p>`}
+      </section>
+    `;
+    const focusMarkup = `
+      <section class="lastfm-track-panel-focus lastfm-track-panel-focus--track" aria-label="Track listening focus">
+        <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus">
+          <span class="lastfm-track-panel-stat-label">Scrobbles</span>
+          <span class="lastfm-track-panel-stat-value">${escapeHtml(scrobbleTotalLabel)}</span>
+        </div>
+        ${historyMarkup}
       </section>
     `;
     const relatedMarkup = `
@@ -4718,9 +4729,7 @@
                   <span class="lastfm-track-panel-related-copy">
                     <span class="lastfm-track-panel-related-title">${escapeHtml(entry.title)}</span>
                     <span class="lastfm-track-panel-related-meta">
-                      ${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} plays
-                      <span class="lastfm-track-panel-related-separator">&bull;</span>
-                      ${escapeHtml(formatCountNumber(entry.globalPlaycount, "0"))} global
+                      ${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles
                     </span>
                   </span>
                   <span class="lastfm-track-panel-related-status">
@@ -4740,7 +4749,7 @@
       ambientImageUrl: artworkUrl,
       layoutClassName: `lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy${compactMobile ? " lastfm-track-panel-layout--mobile" : ""}`,
       stackClassName: "lastfm-track-panel-stack lastfm-track-panel-stack--split",
-      kicker: "Track details",
+      kicker: "Track",
       title: track.title || "Unknown track",
       metaMarkup: `
         <span>${escapeHtml(track.artist || "Unknown artist")}</span>
@@ -4749,19 +4758,10 @@
       `,
       badgesMarkup: track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : "",
       primaryMarkup: artMarkup,
-      statsMarkup: compactMobile ? `
-        <div class="lastfm-track-panel-stats lastfm-track-panel-stats--mobile">
-          ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
-        </div>
-        ${previewMarkup || spotifySlotMarkup}
-      ` : `
-        <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
-          ${renderLastFmTrackPanelStat("Scrobbles", formatCountNumber(scrobbles.total || track.userPlaycount))}
-          ${spotifySlotMarkup}
-        </div>
-      `,
+      mediaControlMarkup: previewMarkup || spotifySlotMarkup,
+      focusMarkup,
       tagsMarkup,
-      stackMarkup: `${summaryMarkup}${historyMarkup}${relatedMarkup}`
+      stackMarkup: `${summaryMarkup}${relatedMarkup}`
     });
   }
   function renderLastFmDetailTagMarkup(tags, label = "Detail tags") {
@@ -4785,16 +4785,18 @@
       panelLayoutKey: "compact-primary",
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary",
       stackClassName: "lastfm-track-panel-stack",
-      kicker: "loading artist details",
-      title: firstNonEmpty(query.artist, "Artist details"),
+      kicker: "loading artist",
+      title: firstNonEmpty(query.artist, "Loading artist"),
       metaText: "Last.fm artist profile",
       primaryMarkup: '<div class="lastfm-track-panel-art lastfm-track-panel-skeleton" data-lastfm-panel-art-anchor aria-hidden="true"></div>',
-      statsMarkup: `
-        <div class="lastfm-track-panel-stats" aria-hidden="true">
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-        </div>
+      focusMarkup: `
+        <section class="lastfm-track-panel-focus lastfm-track-panel-focus--artist" aria-hidden="true">
+          <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus lastfm-track-panel-skeleton"></div>
+          <div class="lastfm-track-panel-focus-side">
+            <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+            <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+          </div>
+        </section>
       `,
       stackMarkup: '<div class="lastfm-track-panel-related lastfm-track-panel-skeleton" aria-hidden="true"></div>'
     });
@@ -4804,8 +4806,8 @@
       state: "error",
       panelType: "artist",
       panelLayoutKey: "compact-primary",
-      kicker: "Artist details unavailable",
-      title: firstNonEmpty(query.artist, "Artist details"),
+      kicker: "Artist unavailable",
+      title: firstNonEmpty(query.artist, "Unknown artist"),
       errorMessage: "This artist could not be loaded right now. Try again in a moment."
     });
   }
@@ -5103,76 +5105,49 @@
   }
   function renderLastFmArtistPanelContentShared(detail) {
     const artist = detail?.artist || {};
-    const topTracks = detail?.topTracks || {};
     const topAlbums = detail?.topAlbums || {};
-    const topTrackItems = Array.isArray(topTracks.items) ? topTracks.items.slice(0, 4) : [];
-    const topAlbumItems = Array.isArray(topAlbums.items) ? topAlbums.items.slice(0, 4) : [];
+    const topAlbumItems = Array.isArray(topAlbums.items)
+      ? topAlbums.items.filter((entry) => Number(entry?.trackCount || 0) !== 1).slice(0, 12)
+      : [];
     const artworkUrl = sanitizeUrl(artist.artworkUrl);
     const tagsMarkup = renderLastFmDetailTagMarkup(artist.topTags, "Artist genres");
     const summaryMarkup = renderLastFmSummarySection("About this artist", artist.summary, artist.lastfmUrl, artist.summaryHasMore);
-    const topTracksMarkup = `
-      <section class="lastfm-track-panel-related">
-        <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">Popular tracks</h4>
-        </div>
-        ${topTrackItems.length ? `
-          <ul class="lastfm-track-panel-related-list">
-            ${topTrackItems.map((entry) => `
-              <li class="lastfm-track-panel-related-item">
-                <button
-                  class="lastfm-track-panel-related-button"
-                  type="button"
-                  data-lastfm-track-title="${escapeHtml(entry.title)}"
-                  data-lastfm-track-artist="${escapeHtml(firstNonEmpty(entry.artist, artist.name))}"
-                  ${entry.lastfmUrl ? `data-item-url="${escapeHtml(entry.lastfmUrl)}"` : ""}
-                >
-                  <span class="lastfm-track-panel-related-copy">
-                    <span class="lastfm-track-panel-related-title">${escapeHtml(entry.title)}</span>
-                    <span class="lastfm-track-panel-related-meta">
-                      ${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles
-                      <span class="lastfm-track-panel-related-separator">&bull;</span>
-                      ${escapeHtml(formatCountNumber(entry.globalPlaycount, "0"))} global
-                    </span>
-                  </span>
-                  <span class="lastfm-track-panel-related-status">
-                    ${entry.userLoved ? '<span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1.58 2.51 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>' : ""}
-                  </span>
-                </button>
-              </li>
-            `).join("")}
-          </ul>
-        ` : `<p class="lastfm-track-panel-empty">No popular tracks available right now.</p>`}
-      </section>
-    `;
+    const artistPlaycountLabel = formatCountNumber(artist.userPlaycount, "0");
+    const artistActionMarkup = artist.lastfmUrl ? `
+      <div class="lastfm-track-panel-actions lastfm-track-panel-actions--under-art">
+        <button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(artist.lastfmUrl)}">Open Artist on Last.fm</button>
+      </div>
+    ` : "";
     const albumCatalogMarkup = `
       <section class="lastfm-track-panel-related lastfm-track-panel-related--albums">
         <div class="lastfm-track-panel-section-head">
           <h4 class="lastfm-track-panel-section-title">Albums</h4>
         </div>
         ${topAlbumItems.length ? `
-          <ul class="lastfm-track-panel-related-list">
+          <ul class="lastfm-track-panel-related-list lastfm-track-panel-related-list--album-cards">
             ${topAlbumItems.map((entry) => {
-              const genreLabel = Array.isArray(entry.topTags) && entry.topTags.length ? entry.topTags.map((tag) => tag.name).join(" / ") : "Genre unknown";
-              const releaseLabel = firstNonEmpty(entry.releaseYear, entry.releasedAt, "Year unknown");
+              const albumArtworkUrl = sanitizeUrl(entry.artworkUrl);
+              const trackCountLabel = entry.trackCount ? `${formatCountNumber(entry.trackCount, "0")} tracks` : "tracks unknown";
+              const scrobbleLabel = `${formatCountNumber(entry.userPlaycount, "0")} scrobbles`;
               return `
                 <li class="lastfm-track-panel-related-item">
                   <button
-                    class="lastfm-track-panel-related-button lastfm-track-panel-related-button--album"
+                    class="lastfm-track-panel-related-button lastfm-track-panel-related-button--album lastfm-track-panel-related-button--album-card"
                     type="button"
                     data-lastfm-album-title="${escapeHtml(entry.title)}"
                     data-lastfm-album-artist="${escapeHtml(firstNonEmpty(entry.artist, artist.name))}"
                     ${entry.lastfmUrl ? `data-item-url="${escapeHtml(entry.lastfmUrl)}"` : ""}
                   >
+                    <span class="lastfm-track-panel-album-card-art" aria-hidden="true">
+                      ${albumArtworkUrl ? `<img class="lastfm-track-panel-album-card-image" src="${escapeHtml(albumArtworkUrl)}" alt="" loading="lazy" decoding="async" />` : '<span class="lastfm-track-panel-album-card-fallback">No Art</span>'}
+                    </span>
                     <span class="lastfm-track-panel-related-copy">
                       <span class="lastfm-track-panel-related-title">${escapeHtml(entry.title)}</span>
                       <span class="lastfm-track-panel-related-meta">
-                        ${escapeHtml(releaseLabel)}
+                        ${escapeHtml(trackCountLabel)}
                         <span class="lastfm-track-panel-related-separator">&bull;</span>
-                        ${escapeHtml(genreLabel)}
+                        ${escapeHtml(scrobbleLabel)}
                       </span>
-                    </span>
-                    <span class="lastfm-track-panel-related-status">
-                      ${escapeHtml(`${formatCountNumber(entry.playcount, "--")} plays`)}
                     </span>
                   </button>
                 </li>
@@ -5182,6 +5157,14 @@
         ` : `<p class="lastfm-track-panel-empty">No albums available right now.</p>`}
       </section>
     `;
+    const focusMarkup = `
+      <section class="lastfm-track-panel-focus lastfm-track-panel-focus--artist" aria-label="Artist listening focus">
+        <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus">
+          <span class="lastfm-track-panel-stat-label">My scrobbles</span>
+          <span class="lastfm-track-panel-stat-value">${escapeHtml(artistPlaycountLabel)}</span>
+        </div>
+      </section>
+    `;
     return renderLastFmPanelViewModel({
       state: "content",
       panelType: "artist",
@@ -5189,7 +5172,6 @@
       ambientImageUrl: artworkUrl,
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary",
       stackClassName: "lastfm-track-panel-stack",
-      kicker: "Artist details",
       title: artist.name || "Unknown artist",
       metaText: "Last.fm artist profile",
       primaryMarkup: `
@@ -5197,16 +5179,10 @@
           ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">&#9733;</span>'}
         </div>
       `,
-      statsMarkup: `
-        <div class="lastfm-track-panel-stats">
-          ${renderLastFmTrackPanelStat("Global plays", formatCountNumber(artist.playcount))}
-          ${renderLastFmTrackPanelStat("Listeners", formatCountNumber(artist.listeners))}
-          ${renderLastFmTrackPanelStat("Popular tracks", formatCountNumber(artist.topTrackCount || topTrackItems.length, "0"))}
-        </div>
-      `,
+      mediaControlMarkup: artistActionMarkup,
+      focusMarkup,
       tagsMarkup,
-      actionsMarkup: artist.lastfmUrl ? `<div class="lastfm-track-panel-actions"><button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(artist.lastfmUrl)}">Open Artist on Last.fm</button></div>` : "",
-      stackMarkup: `${summaryMarkup}${albumCatalogMarkup}${topTracksMarkup}`
+      stackMarkup: `${summaryMarkup}${albumCatalogMarkup}`
     });
   }
   function renderLastFmAlbumPanelSkeletonShared(query = {}) {
@@ -5216,16 +5192,19 @@
       panelLayoutKey: "compact-primary",
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary",
       stackClassName: "lastfm-track-panel-stack",
-      kicker: "loading album details",
-      title: firstNonEmpty(query.album, "Album details"),
+      kicker: "loading album",
+      title: firstNonEmpty(query.album, "Loading album"),
       metaText: firstNonEmpty(query.artist, "Last.fm"),
       primaryMarkup: '<div class="lastfm-track-panel-art lastfm-track-panel-skeleton" data-lastfm-panel-art-anchor aria-hidden="true"></div>',
-      statsMarkup: `
-        <div class="lastfm-track-panel-stats" aria-hidden="true">
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-          <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
-        </div>
+      mediaControlMarkup: '<div class="lastfm-track-panel-spotify-slot lastfm-track-panel-skeleton" aria-hidden="true"></div>',
+      focusMarkup: `
+        <section class="lastfm-track-panel-focus lastfm-track-panel-focus--album" aria-hidden="true">
+          <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus lastfm-track-panel-skeleton"></div>
+          <div class="lastfm-track-panel-focus-side">
+            <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+            <div class="lastfm-track-panel-stat lastfm-track-panel-skeleton"></div>
+          </div>
+        </section>
       `,
       stackMarkup: '<div class="lastfm-track-panel-history lastfm-track-panel-skeleton" aria-hidden="true"></div>'
     });
@@ -5235,8 +5214,8 @@
       state: "error",
       panelType: "album",
       panelLayoutKey: "compact-primary",
-      kicker: "Album details unavailable",
-      title: firstNonEmpty(query.album, "Album details"),
+      kicker: "Album unavailable",
+      title: firstNonEmpty(query.album, "Unknown album"),
       errorMessage: "This album could not be loaded right now. Try again in a moment."
     });
   }
@@ -5244,11 +5223,14 @@
     const album = detail?.album || {};
     const spotify = detail?.spotify || {};
     const trackSection = detail?.tracks || {};
-    const relatedTracks = detail?.relatedTracks || {};
     const trackItems = Array.isArray(trackSection.items) ? trackSection.items : [];
-    const relatedItems = Array.isArray(relatedTracks.items) ? relatedTracks.items.slice(0, 3) : [];
     const artworkUrl = sanitizeUrl(album.artworkUrl || spotify.artworkUrl);
     const albumArtistInline = renderLastFmArtistLinkButton(album.artist, album.artistLastFmUrl);
+    const trackListUserScrobbleTotal = trackItems.reduce((total, entry) => total + (Number.isFinite(Number(entry?.userPlaycount)) ? Number(entry.userPlaycount) : 0), 0);
+    const albumUserScrobbleTotal = Number.isFinite(Number(album.userPlaycount)) && Number(album.userPlaycount) > 0
+      ? Number(album.userPlaycount)
+      : trackListUserScrobbleTotal;
+    const albumUserScrobbleLabel = formatCountNumber(albumUserScrobbleTotal, "0");
     const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
       unavailableMeta: "Spotify player unavailable for this album."
     });
@@ -5295,8 +5277,6 @@
                     ${entry.durationLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(entry.durationLabel)}</span>` : ""}
                     <span class="lastfm-track-panel-meta-separator">&bull;</span>
                     <span>${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles</span>
-                    <span class="lastfm-track-panel-meta-separator">&bull;</span>
-                    <span>${escapeHtml(formatCountNumber(entry.globalPlaycount, "0"))} global</span>
                   </div>
                 </div>
                 <span class="lastfm-track-panel-track-status">
@@ -5308,38 +5288,12 @@
         ` : `<p class="lastfm-track-panel-empty">No track list is available right now.</p>`}
       </section>
     `;
-    const relatedMarkup = `
-      <section class="lastfm-track-panel-related">
-        <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">Similar tracks</h4>
+    const focusMarkup = `
+      <section class="lastfm-track-panel-focus lastfm-track-panel-focus--album" aria-label="Album listening focus">
+        <div class="lastfm-track-panel-stat lastfm-track-panel-stat--scrobble-focus">
+          <span class="lastfm-track-panel-stat-label">Album scrobbles</span>
+          <span class="lastfm-track-panel-stat-value">${escapeHtml(albumUserScrobbleLabel)}</span>
         </div>
-        ${relatedItems.length ? `
-          <ul class="lastfm-track-panel-related-list">
-            ${relatedItems.map((entry) => `
-              <li class="lastfm-track-panel-related-item">
-                <button
-                  class="lastfm-track-panel-related-button"
-                  type="button"
-                  data-lastfm-track-title="${escapeHtml(entry.title)}"
-                  data-lastfm-track-artist="${escapeHtml(firstNonEmpty(entry.artist, relatedTracks.artist, album.artist))}"
-                  ${entry.lastfmUrl ? `data-item-url="${escapeHtml(entry.lastfmUrl)}"` : ""}
-                >
-                  <span class="lastfm-track-panel-related-copy">
-                    <span class="lastfm-track-panel-related-title">${escapeHtml(entry.title)}</span>
-                    <span class="lastfm-track-panel-related-meta">
-                      ${escapeHtml(firstNonEmpty(entry.artist, relatedTracks.artist, album.artist, "Unknown artist"))}
-                      <span class="lastfm-track-panel-related-separator">&bull;</span>
-                      ${escapeHtml(formatCountNumber(entry.globalPlaycount, "0"))} global
-                    </span>
-                  </span>
-                  <span class="lastfm-track-panel-related-status">
-                    ${entry.userLoved ? '<span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1.58 2.51 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>' : ""}
-                  </span>
-                </button>
-              </li>
-            `).join("")}
-          </ul>
-        ` : `<p class="lastfm-track-panel-empty">No similar tracks are available right now.</p>`}
       </section>
     `;
     return renderLastFmPanelViewModel({
@@ -5349,7 +5303,6 @@
       ambientImageUrl: artworkUrl,
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary",
       stackClassName: "lastfm-track-panel-stack",
-      kicker: "Album details",
       title: album.title || "Unknown album",
       metaMarkup: `
         ${albumArtistInline || `<span>${escapeHtml(album.artist || "Unknown artist")}</span>`}
@@ -5357,14 +5310,10 @@
         ${album.runtimeLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(album.runtimeLabel)}</span>` : ""}
       `,
       primaryMarkup: artMarkup,
-      statsMarkup: `
-        <div class="lastfm-track-panel-stats lastfm-track-panel-stats--with-spotify">
-          ${renderLastFmTrackPanelStat("Tracks", formatCountNumber(album.trackCount || trackItems.length, "0"))}
-          ${spotifySlotMarkup}
-        </div>
-      `,
+      mediaControlMarkup: spotifySlotMarkup,
+      focusMarkup,
       tagsMarkup,
-      stackMarkup: `${summaryMarkup}${trackListMarkup}${relatedMarkup}`
+      stackMarkup: `${summaryMarkup}${trackListMarkup}`
     });
   }
   function renderSiteShowcase(site, payload) {
@@ -5597,7 +5546,7 @@
     const compact = Boolean(options?.compact);
     const mobileLinksRevealState = compact ? String(options?.mobileLinksRevealState || "pending") : "";
     const shuffleState = options?.shuffleState || null;
-    const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
+    const renderSites = compact ? ["soundcloud", "spotify", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
     const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
@@ -6026,7 +5975,6 @@
       if (!isCompactMobileLayout()) return;
       if (mobileLinksRevealPlayed) {
         setMobileLinksRevealState("visible");
-        scheduleMobileLastFmReveal();
         return;
       }
       setMobileLinksRevealState("pending");
@@ -6035,7 +5983,6 @@
         mobileLinksRevealTimer = 0;
         mobileLinksRevealPlayed = true;
         setMobileLinksRevealState("visible");
-        scheduleMobileLastFmReveal();
       }, 320);
     }
     function getMobileLastFmRevealTargets() {
@@ -9262,34 +9209,13 @@
         });
       }
       if (compactMobile) {
-        const lastFmSite = sites.find((site) => site.id === "lastfm");
-        const lastFmPayload = lastFmSite ? payloadById.get("lastfm") : null;
-        if (lastFmSite) {
-          showcases.hidden = false;
-          showcases.classList.add("social-hub-showcases--mobile-lastfm");
-          showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, lastFmPayload), {
-            mobile: true,
-            mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending",
-            mobileRecentDropdownOpen: mobileLastFmDropdownOpen,
-            mobileTopArtistsDropdownOpen
-          });
-          if (mobileLastFmRevealPlayed) {
-            setMobileLastFmRevealState("visible");
-          }
-          ["recent-tracks", "top-artists"].forEach((dropdownKey) => {
-            const mobileLastFmDropdown = getMobileLastFmDropdown(dropdownKey);
-            if (mobileLastFmDropdown instanceof HTMLDetailsElement) {
-              mobileLastFmDropdown.dataset.mobileLastfmDropdownOpen = mobileLastFmDropdown.open ? "true" : "false";
-              if (mobileLastFmDropdown.open) {
-                animateMobileLastFmDropdown(mobileLastFmDropdown);
-              }
-            }
-          });
-        } else {
-          showcases.innerHTML = "";
-          showcases.hidden = true;
-          showcases.classList.remove("social-hub-showcases--mobile-lastfm");
-        }
+        clearMobileLastFmRevealTimer();
+        mobileLastFmRevealPlayed = false;
+        mobileLastFmDropdownOpen = false;
+        mobileTopArtistsDropdownOpen = false;
+        showcases.innerHTML = "";
+        showcases.hidden = true;
+        showcases.classList.remove("social-hub-showcases--mobile-lastfm");
       } else {
         showcases.classList.remove("social-hub-showcases--mobile-lastfm");
         showcases.hidden = false;
