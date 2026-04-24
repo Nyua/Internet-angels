@@ -327,6 +327,22 @@ async function loadTrackSimilar(apiKey, artist, track, nowMs = Date.now()) {
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
+function normalizeTrackScrobbleEntry(trackEntry) {
+  const playedAtText = String(trackEntry?.date?.["#text"] || "").trim();
+  const playedAtIso = (() => {
+    const uts = Number.parseInt(String(trackEntry?.date?.uts || "").trim(), 10);
+    if (!Number.isFinite(uts)) return "";
+    return new Date(uts * 1000).toISOString();
+  })();
+  return {
+    playedAtIso,
+    playedAtLabel: playedAtText,
+    album: getTrackAlbumName(trackEntry),
+    artworkUrl: pickLastFmImageUrl(trackEntry?.image),
+    lastfmUrl: getTrackUrl(trackEntry)
+  };
+}
+
 async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
   const safeArtist = String(artist || "").trim();
   const safeTrack = String(track || "").trim();
@@ -342,27 +358,32 @@ async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
       const payload = await fetchLastFmJson("user.gettrackscrobbles", apiKey, {
         artist: safeArtist,
         track: safeTrack,
-        limit: 8
+        limit: 30
       });
       const section = payload?.trackscrobbles;
-      const items = toList(section?.track).map((trackEntry) => {
-        const playedAtText = String(trackEntry?.date?.["#text"] || "").trim();
-        const playedAtIso = (() => {
-          const uts = Number.parseInt(String(trackEntry?.date?.uts || "").trim(), 10);
-          if (!Number.isFinite(uts)) return "";
-          return new Date(uts * 1000).toISOString();
-        })();
-        return {
-          playedAtIso,
-          playedAtLabel: playedAtText,
-          album: getTrackAlbumName(trackEntry),
-          artworkUrl: pickLastFmImageUrl(trackEntry?.image),
-          lastfmUrl: getTrackUrl(trackEntry)
-        };
-      });
+      const items = toList(section?.track).map(normalizeTrackScrobbleEntry);
+      const total = parseInteger(section?.["@attr"]?.total);
+      let firstRecorded = items.length ? items[items.length - 1] : null;
+      if (total > items.length) {
+        try {
+          const firstPayload = await fetchLastFmJson("user.gettrackscrobbles", apiKey, {
+            artist: safeArtist,
+            track: safeTrack,
+            limit: 1,
+            page: total
+          });
+          const firstEntry = toList(firstPayload?.trackscrobbles?.track)[0];
+          if (firstEntry) {
+            firstRecorded = normalizeTrackScrobbleEntry(firstEntry);
+          }
+        } catch {
+          firstRecorded = items.length ? items[items.length - 1] : null;
+        }
+      }
       return {
-        total: parseInteger(section?.["@attr"]?.total),
-        items
+        total,
+        items,
+        firstRecorded
       };
     }
   });
@@ -897,7 +918,13 @@ export async function fetchLastFmTrackDetails({
         playedAtLabel: String(entry?.playedAtLabel || "").trim(),
         album: String(entry?.album || "").trim(),
         lastfmUrl: String(entry?.lastfmUrl || "").trim()
-      }))
+      })),
+      firstRecorded: scrobbles?.firstRecorded ? {
+        playedAtIso: String(scrobbles.firstRecorded?.playedAtIso || "").trim(),
+        playedAtLabel: String(scrobbles.firstRecorded?.playedAtLabel || "").trim(),
+        album: String(scrobbles.firstRecorded?.album || "").trim(),
+        lastfmUrl: String(scrobbles.firstRecorded?.lastfmUrl || "").trim()
+      } : null
     },
     artistTopTracks: {
       artist: canonicalArtist,

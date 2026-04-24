@@ -3205,6 +3205,19 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await stubWindowOpen(page);
   await stubSpotifyIframeApi(page);
 
+  const trackScrobbleItems = Array.from({ length: 31 }, (_, index) => ({
+    playedAtIso: `2026-03-23T${String(Math.max(0, 23 - index)).padStart(2, "0")}:21:00.000Z`,
+    playedAtLabel: `Recent play ${String(index + 1).padStart(2, "0")}`,
+    album: index % 2 === 0 ? "This Is How Tomorrow Moves" : "Beatopia",
+    lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time"
+  }));
+  const trackFirstRecorded = {
+    playedAtIso: "2023-11-14T22:13:20.000Z",
+    playedAtLabel: "14 Nov 2023, 22:13",
+    album: "This Is How Tomorrow Moves",
+    lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time"
+  };
+
   await page.route("**/api/lastfm", async (route) => {
     await route.fulfill({
       status: 200,
@@ -3287,15 +3300,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
             artworkUrl: "https://i.scdn.co/image/one-time.jpg"
           },
           scrobbles: {
-            total: 3,
-            items: [
-              {
-                playedAtIso: "2026-03-23T07:21:00.000Z",
-                playedAtLabel: "23 Mar 2026, 07:21",
-                album: "This Is How Tomorrow Moves",
-                lastfmUrl: "https://www.last.fm/music/beabadoobee/_/One+Time"
-              }
-            ]
+            total: 31,
+            items: trackScrobbleItems,
+            firstRecorded: trackFirstRecorded
           },
           artistTopTracks: {
             artist: "beabadoobee",
@@ -3414,6 +3421,57 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const surface = document.getElementById("os-shuffle-visualizer-surface");
+    surface?.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true
+    }));
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "active");
+  await page.waitForTimeout(700);
+  const visualizerFocus = await page.evaluate(() => {
+    const surface = document.getElementById("os-shuffle-visualizer-surface");
+    const portal = document.querySelector(".josie-audio-player-bleed-layer");
+    const link = document.getElementById("os-shuffle-visualizer-angel-link");
+    const frame = document.getElementById("social-hub-scale-frame");
+    const surfaceRect = surface instanceof HTMLElement ? surface.getBoundingClientRect() : null;
+    const portalRect = portal instanceof HTMLElement ? portal.getBoundingClientRect() : null;
+    const focusRect = portalRect || surfaceRect;
+    const linkRect = link instanceof HTMLElement ? link.getBoundingClientRect() : null;
+    return {
+      layerMode: document.getElementById("os-shuffle-visualizer-layer")?.getAttribute("data-visualizer-focus-mode") || "",
+      linkText: link instanceof HTMLElement ? link.textContent?.trim() : "",
+      linkAriaHidden: link instanceof HTMLElement ? link.getAttribute("aria-hidden") : "",
+      linkOpacity: link instanceof HTMLElement ? window.getComputedStyle(link).opacity : "",
+      frameOpacity: frame instanceof HTMLElement ? window.getComputedStyle(frame).opacity : "",
+      portalHidden: portal instanceof HTMLElement ? portal.hidden : true,
+      centerDelta: focusRect ? Math.abs((focusRect.top + focusRect.height / 2) - window.innerHeight / 2) : 999,
+      linkGap: focusRect && linkRect ? linkRect.top - focusRect.bottom : 0
+    };
+  });
+  expect(visualizerFocus.layerMode).toBe("active");
+  expect(visualizerFocus.linkText).toBe("Internet-Angel.net");
+  expect(visualizerFocus.linkAriaHidden).toBe("false");
+  expect(Number.parseFloat(visualizerFocus.linkOpacity)).toBeGreaterThan(0.4);
+  expect(Number.parseFloat(visualizerFocus.frameOpacity)).toBeLessThan(0.05);
+  expect(visualizerFocus.portalHidden).toBe(false);
+  expect(visualizerFocus.centerDelta).toBeLessThanOrEqual(3);
+  expect(visualizerFocus.linkGap).toBeGreaterThan(40);
+  await page.evaluate(() => {
+    const surface = document.getElementById("os-shuffle-visualizer-surface");
+    surface?.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true
+    }));
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "idle");
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
   const trackSourceArtSelector = ".lastfm-recent-button [data-lastfm-art-source]";
@@ -3512,7 +3570,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const title = document.querySelector(".lastfm-track-panel-title");
     const meta = document.querySelector(".lastfm-track-panel-meta");
     const relatedTitle = document.querySelector(".lastfm-track-panel-related-title");
-    const lovedBadge = document.querySelector(".lastfm-track-panel-badge--loved");
+    const lovedTitle = document.querySelector(".lastfm-track-panel-loved-title");
     return {
       titleFont: title ? window.getComputedStyle(title).fontFamily : "",
       titleSize: title ? window.getComputedStyle(title).fontSize : "",
@@ -3520,8 +3578,9 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
       relatedTitleFont: relatedTitle ? window.getComputedStyle(relatedTitle).fontFamily : "",
       relatedTitleSize: relatedTitle ? window.getComputedStyle(relatedTitle).fontSize : "",
       sectionHeadJustify: document.querySelector(".lastfm-track-panel-section-head") ? window.getComputedStyle(document.querySelector(".lastfm-track-panel-section-head")).justifyContent : "",
-      lovedBadgeText: lovedBadge ? lovedBadge.textContent.trim() : "",
-      lovedBadgeIconCount: lovedBadge ? lovedBadge.querySelectorAll(".lastfm-loved-indicator").length : 0
+      lovedTitleText: lovedTitle ? lovedTitle.textContent.trim() : "",
+      lovedTitleIconCount: lovedTitle ? lovedTitle.querySelectorAll(".lastfm-loved-indicator").length : 0,
+      lovedTitleIconWidth: lovedTitle ? window.getComputedStyle(lovedTitle.querySelector(".lastfm-loved-indicator")).width : ""
     };
   });
   expect(panelTypography.metaFont.toLowerCase()).toContain("open sans");
@@ -3530,8 +3589,13 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(Number.parseFloat(panelTypography.titleSize)).toBeGreaterThanOrEqual(60);
   expect(panelTypography.relatedTitleSize).toBe("22px");
   expect(panelTypography.sectionHeadJustify).toBe("space-between");
-  expect(panelTypography.lovedBadgeText).toBe("");
-  expect(panelTypography.lovedBadgeIconCount).toBe(1);
+  expect(panelTypography.lovedTitleText).toBe("Loved");
+  expect(panelTypography.lovedTitleIconCount).toBe(1);
+  expect(Number.parseFloat(panelTypography.lovedTitleIconWidth)).toBeGreaterThanOrEqual(24);
+  await expect(page.locator(".lastfm-track-panel-badge--loved")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-meta-genres")).toContainText("indie pop");
+  await expect(page.locator(".lastfm-track-panel-meta-genres")).toContainText("bedroom pop");
+  await expect(page.locator(".lastfm-track-panel-tags", { hasText: "indie pop" })).toHaveCount(0);
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-primary .lastfm-track-panel-spotify-slot")).toHaveCount(1);
@@ -3557,8 +3621,21 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     primaryContainsMedia: true,
     mediaUnderArt: true
   });
-  await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("3");
+  await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value")).toHaveText("31");
   await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-history")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-focus--track .lastfm-track-panel-history-item")).toHaveCount(30);
+  await expect(page.locator(".lastfm-track-panel-first-play")).toContainText("First recorded play");
+  await expect(page.locator(".lastfm-track-panel-first-play")).toContainText("14 Nov 2023, 22:13");
+  const historyScroll = await page.locator(".lastfm-track-panel-history-scroll").evaluate((node) => {
+    const styles = window.getComputedStyle(node);
+    return {
+      overflowY: styles.overflowY,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight
+    };
+  });
+  expect(historyScroll.overflowY).toBe("auto");
+  expect(historyScroll.scrollHeight).toBeGreaterThan(historyScroll.clientHeight);
   await expect(page.locator(".lastfm-track-panel-stat-note")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-kicker")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-similar")).toHaveCount(0);
@@ -3635,12 +3712,13 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await page.waitForTimeout(1_600);
   const midMorphState = await page.locator('.lastfm-track-panel-scene[data-panel-scene-state="current"]').evaluate((scene) => {
     const currentTitle = scene.querySelector('[data-lastfm-track-panel-scene-layer="current"] .lastfm-track-panel-title');
+    const currentTitleText = scene.querySelector('[data-lastfm-track-panel-scene-layer="current"] .lastfm-track-panel-title-text');
     const nextLayer = scene.querySelector('[data-lastfm-track-panel-scene-layer="next"]');
     const nextLayerStyle = nextLayer instanceof HTMLElement ? window.getComputedStyle(nextLayer) : null;
     return {
       phase: scene.getAttribute("data-panel-scene-phase"),
       spin: scene.getAttribute("data-panel-scene-spin"),
-      title: currentTitle instanceof HTMLElement ? currentTitle.textContent.trim() : "",
+      title: currentTitleText instanceof HTMLElement ? currentTitleText.textContent.trim() : currentTitle instanceof HTMLElement ? currentTitle.textContent.trim() : "",
       nextOpacity: nextLayerStyle?.opacity || "",
       nextVisibility: nextLayerStyle?.visibility || ""
     };
@@ -4125,7 +4203,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
       artWidth: art instanceof HTMLElement ? art.getBoundingClientRect().width : 0,
       artHeight: art instanceof HTMLElement ? art.getBoundingClientRect().height : 0,
       artBackground: art instanceof HTMLElement ? window.getComputedStyle(art).backgroundColor : "",
-      artBorderWidth: art instanceof HTMLElement ? window.getComputedStyle(art).borderTopWidth : ""
+      artBorderWidth: art instanceof HTMLElement ? window.getComputedStyle(art).borderTopWidth : "",
+      primaryPaddingLeft: primary instanceof HTMLElement ? window.getComputedStyle(primary).paddingLeft : ""
     };
   });
   expect(artistPanelLayout.className).toContain("lastfm-track-panel-layout--compact-primary");
@@ -4134,6 +4213,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(artistPanelLayout.artHeight).toBeGreaterThanOrEqual(220);
   expect(artistPanelLayout.artBackground).toBe("rgba(0, 0, 0, 0)");
   expect(artistPanelLayout.artBorderWidth).toBe("0px");
+  expect(Number.parseFloat(artistPanelLayout.primaryPaddingLeft)).toBeGreaterThan(0);
   const artistPanelFit = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     const bodyEl = document.querySelector(".lastfm-track-panel-body");
@@ -4284,6 +4364,16 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "Similar tracks" })).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-track-meta").filter({ hasText: "global" })).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-tracklist-head")).toContainText("Title");
+  await expect(page.locator(".lastfm-track-panel-tracklist-head")).toContainText("Scrobbles");
+  await expect(page.locator(".lastfm-track-panel-track-scrobbles").first()).toHaveText("9 scrobbles");
+  await expect(page.locator(".lastfm-track-panel-track-duration").first()).toHaveText("2:24");
+  const spotifyTracklistLayout = await page.locator(".lastfm-track-panel-track-item").first().evaluate((node) => ({
+    columns: window.getComputedStyle(node).gridTemplateColumns,
+    borderTopWidth: window.getComputedStyle(node).borderTopWidth
+  }));
+  expect(spotifyTracklistLayout.columns.split(" ").length).toBeGreaterThanOrEqual(5);
+  expect(spotifyTracklistLayout.borderTopWidth).toBe("0px");
   await page.keyboard.press("Escape");
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
   await waitForLastFmPanelSourceArtStateCleared(page, artistSourceArtSelector);

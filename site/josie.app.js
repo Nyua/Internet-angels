@@ -863,7 +863,14 @@
           playedAtLabel: firstNonEmpty(entry?.playedAtLabel, ""),
           album: firstNonEmpty(entry?.album, ""),
           lastfmUrl: sanitizeUrl(entry?.lastfmUrl)
-        })).filter((entry) => entry.playedAtLabel || entry.playedAtIso) : []
+        })).filter((entry) => entry.playedAtLabel || entry.playedAtIso) : [],
+        firstRecorded: safeScrobbles.firstRecorded && typeof safeScrobbles.firstRecorded === "object" ? {
+          id: `first-scrobble-${hashText(`${safeScrobbles.firstRecorded?.playedAtIso || safeScrobbles.firstRecorded?.playedAtLabel || ""}-${safeScrobbles.firstRecorded?.album || ""}`).slice(0, 10)}`,
+          playedAtIso: firstNonEmpty(safeScrobbles.firstRecorded?.playedAtIso, ""),
+          playedAtLabel: firstNonEmpty(safeScrobbles.firstRecorded?.playedAtLabel, ""),
+          album: firstNonEmpty(safeScrobbles.firstRecorded?.album, ""),
+          lastfmUrl: sanitizeUrl(safeScrobbles.firstRecorded?.lastfmUrl)
+        } : null
       },
       artistTopTracks: {
         artist: firstNonEmpty(safeArtistTopTracks.artist, safeTrack.artist, fallbackQuery.artist, ""),
@@ -1882,6 +1889,8 @@
       sampled: false
     };
     let visualizerLayerHost = null;
+    let visualizerFocusMode = false;
+    let visualizerFocusKeydownListener = null;
     let appliedVisualizerMode = "";
     let appliedVisualizerModePlayerRoot = null;
     let appliedVisualizerModeWaveSurface = null;
@@ -2694,6 +2703,52 @@
       appliedVisualizerModePlayerRoot = playerRoot;
       appliedVisualizerModeWaveSurface = waveSurface;
     }
+    function resolveVisualizerFocusLayer() {
+      const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
+        ? visualizerLayerHost
+        : document.getElementById("os-shuffle-visualizer-layer");
+      visualizerLayerHost = layerHost instanceof HTMLElement ? layerHost : null;
+      return visualizerLayerHost;
+    }
+    function syncVisualizerFocusMode() {
+      if (visualizerFocusMode && (compactPlayerMode || isCompactMobileLayout())) {
+        visualizerFocusMode = false;
+        invalidateWaveLayout();
+      }
+      const mode = visualizerFocusMode ? "active" : "idle";
+      const layerHost = resolveVisualizerFocusLayer();
+      document.body?.setAttribute("data-visualizer-focus-mode", mode);
+      if (layerHost instanceof HTMLElement) {
+        layerHost.setAttribute("data-visualizer-focus-mode", mode);
+        const angelLink = layerHost.querySelector("[data-visualizer-angel-link]");
+        if (angelLink instanceof HTMLElement) {
+          angelLink.setAttribute("aria-hidden", visualizerFocusMode ? "false" : "true");
+        }
+      }
+      if (playerRoot instanceof HTMLElement) {
+        playerRoot.setAttribute("data-visualizer-focus-mode", mode);
+      }
+      if (waveSurface instanceof HTMLElement) {
+        waveSurface.setAttribute("data-visualizer-focus-mode", mode);
+        waveSurface.setAttribute("aria-label", visualizerFocusMode ? "Exit fullscreen visualizer" : "Audio visualizer");
+      }
+    }
+    function setVisualizerFocusMode(active) {
+      const nextActive = Boolean(active) && !compactPlayerMode && !isCompactMobileLayout();
+      if (visualizerFocusMode === nextActive) {
+        syncVisualizerFocusMode();
+        return;
+      }
+      visualizerFocusMode = nextActive;
+      invalidateWaveLayout();
+      syncVisualizerFocusMode();
+      if (playbackUnlocked && !compactPlayerMode) {
+        ensureWaveCanvasSize();
+      }
+    }
+    function toggleVisualizerFocusMode() {
+      setVisualizerFocusMode(!visualizerFocusMode);
+    }
     function resolveShuffleTheme(track) {
       const themeKey = firstNonEmpty(
         track?.queueId,
@@ -3000,6 +3055,7 @@
     }
     function syncUi() {
       syncVisualizerPerformanceMode();
+      syncVisualizerFocusMode();
       const state = buildPublicState();
       const previousState = lastUiState;
       if (titleEl instanceof HTMLElement) {
@@ -3153,8 +3209,11 @@
         invalidateWaveLayout();
         return null;
       }
+      const targetDrawTop = visualizerFocusMode
+        ? Math.round(surfaceRect.top)
+        : Math.round(viewportHeight - drawHeight - SHUFFLE_STAGE_BOTTOM_OFFSET_PX);
       const drawTop = clamp2(
-        Math.round(viewportHeight - drawHeight - SHUFFLE_STAGE_BOTTOM_OFFSET_PX),
+        targetDrawTop,
         0,
         Math.max(0, viewportHeight - drawHeight)
       );
@@ -3408,12 +3467,35 @@
           if (!currentTrack) {
             await ensureManifest();
             await queueInitialTrackPlayback();
+            if (currentTrack && !compactPlayerMode) {
+              event.preventDefault();
+              event.stopPropagation();
+              setVisualizerFocusMode(true);
+            }
+            return;
+          }
+          if (!compactPlayerMode) {
+            event.preventDefault();
+            event.stopPropagation();
+            const wasFocused = visualizerFocusMode;
+            toggleVisualizerFocusMode();
+            if (!wasFocused && (loadState === "blocked" || audioEl.paused)) {
+              await attemptPlay();
+            }
             return;
           }
           if (loadState === "blocked" || audioEl.paused) {
             await attemptPlay();
           }
         });
+      }
+      if (!visualizerFocusKeydownListener) {
+        visualizerFocusKeydownListener = (event) => {
+          if (!(event instanceof KeyboardEvent) || event.key !== "Escape" || !visualizerFocusMode) return;
+          event.preventDefault();
+          setVisualizerFocusMode(false);
+        };
+        window.addEventListener("keydown", visualizerFocusKeydownListener, true);
       }
       if ("ResizeObserver" in window && playerRoot) {
         resizeObserver = new ResizeObserver(() => {
@@ -3427,6 +3509,7 @@
       }
       viewportGeometryListener = () => {
         invalidateWaveLayout();
+        syncVisualizerFocusMode();
         if (playbackUnlocked && !compactPlayerMode) {
           ensureWaveCanvasSize();
           return;
@@ -3455,6 +3538,11 @@
         window.visualViewport?.removeEventListener("scroll", viewportGeometryListener);
         viewportGeometryListener = null;
       }
+      if (visualizerFocusKeydownListener) {
+        window.removeEventListener("keydown", visualizerFocusKeydownListener, true);
+        visualizerFocusKeydownListener = null;
+      }
+      setVisualizerFocusMode(false);
       playerRoot = null;
       waveSurface = null;
       lastUiState = null;
@@ -4561,6 +4649,7 @@
     const stackClassName = firstNonEmpty(safeViewModel.stackClassName, "lastfm-track-panel-stack");
     const ambientAttrs = renderLastFmPanelAmbientAttributes(safeViewModel.ambientImageUrl);
     const titleText = firstNonEmpty(safeViewModel.title, "Last.fm");
+    const titleMarkup = firstNonEmpty(safeViewModel.titleMarkup, "");
     const mobileClassName = isCompactMobileLayout() ? " lastfm-track-panel-window--mobile" : "";
     if (safeViewModel.state === "error") {
       return `
@@ -4596,7 +4685,7 @@
             </div>
             <div class="lastfm-track-panel-secondary">
               <header class="lastfm-track-panel-header">
-                <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(titleText)}</h3>
+                <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${titleMarkup || escapeHtml(titleText)}</h3>
                 ${metaMarkup ? `<p class="lastfm-track-panel-meta">${metaMarkup}</p>` : metaText ? `<p class="lastfm-track-panel-meta">${escapeHtml(metaText)}</p>` : ""}
                 ${badgesMarkup}
               </header>
@@ -4652,7 +4741,11 @@
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
     const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
-    const scrobbleItems = Array.isArray(scrobbles.items) ? scrobbles.items.slice(0, 3) : [];
+    const scrobbleItems = Array.isArray(scrobbles.items) ? scrobbles.items.slice(0, 30) : [];
+    const firstRecordedScrobble = scrobbles.firstRecorded && typeof scrobbles.firstRecorded === "object"
+      && (scrobbles.firstRecorded.playedAtLabel || scrobbles.firstRecorded.playedAtIso)
+      ? scrobbles.firstRecorded
+      : null;
     const relatedItems = Array.isArray(artistTopTracks.items)
       ? [...artistTopTracks.items].sort((left, right) => {
         const userPlayDelta = Number(right?.userPlaycount || 0) - Number(left?.userPlaycount || 0);
@@ -4660,10 +4753,16 @@
         return String(left?.title || "").localeCompare(String(right?.title || ""));
       }).slice(0, 6)
       : [];
-    const tagsMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
-      <div class="lastfm-track-panel-tags" aria-label="Track tags">
-        ${track.topTags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}
-      </div>
+    const genreMetaMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
+      <span class="lastfm-track-panel-meta-genres" aria-label="Track genres">
+        ${track.topTags.map((tag) => `<span class="lastfm-track-panel-meta-genre">${escapeHtml(tag.name)}</span>`).join("")}
+      </span>
+    ` : "";
+    const lovedTitleMarkup = track.userLoved ? `
+      <span class="lastfm-track-panel-loved-title" aria-label="Loved track" title="Loved">
+        <span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>
+        <span class="lastfm-track-panel-loved-title-label">Loved</span>
+      </span>
     ` : "";
     const previewMarkup = compactMobile ? renderLastFmTrackPanelPreviewPlayer(track, spotify) : "";
     const spotifySlotMarkup = previewMarkup ? "" : renderLastFmTrackPanelSpotifySlot(spotify, {
@@ -4684,21 +4783,30 @@
     const summaryMarkup = renderLastFmSummarySection("About this track", track.summary, track.lastfmUrl, track.summaryHasMore);
     const scrobbleTotalLabel = formatCountNumber(scrobbles.total || track.userPlaycount, "0");
     const historyMarkup = `
-      <section class="lastfm-track-panel-history">
+      <section class="lastfm-track-panel-history lastfm-track-panel-history--scrollable">
         <div class="lastfm-track-panel-section-head">
           <h4 class="lastfm-track-panel-section-title">My recent plays</h4>
           <span class="lastfm-track-panel-section-meta">${escapeHtml(scrobbleTotalLabel)} total</span>
         </div>
-        ${scrobbleItems.length ? `
-          <ul class="lastfm-track-panel-history-list">
-            ${scrobbleItems.map((entry) => `
-              <li class="lastfm-track-panel-history-item">
-                <span class="lastfm-track-panel-history-time">${escapeHtml(entry.playedAtLabel || entry.playedAtIso)}</span>
-                <span class="lastfm-track-panel-history-album">${escapeHtml(firstNonEmpty(entry.album, "Album unknown"))}</span>
-              </li>
-            `).join("")}
-          </ul>
-        ` : `<p class="lastfm-track-panel-empty">Recent scrobble history is unavailable right now.</p>`}
+        <div class="lastfm-track-panel-history-scroll" role="region" aria-label="Recent plays for ${escapeHtml(track.title || "this track")}">
+          ${scrobbleItems.length ? `
+            <ul class="lastfm-track-panel-history-list">
+              ${scrobbleItems.map((entry) => `
+                <li class="lastfm-track-panel-history-item">
+                  <span class="lastfm-track-panel-history-time">${escapeHtml(entry.playedAtLabel || entry.playedAtIso)}</span>
+                  <span class="lastfm-track-panel-history-album">${escapeHtml(firstNonEmpty(entry.album, "Album unknown"))}</span>
+                </li>
+              `).join("")}
+            </ul>
+          ` : `<p class="lastfm-track-panel-empty">Recent scrobble history is unavailable right now.</p>`}
+          ${firstRecordedScrobble ? `
+            <div class="lastfm-track-panel-first-play">
+              <span class="lastfm-track-panel-first-play-label">First recorded play</span>
+              <span class="lastfm-track-panel-first-play-time">${escapeHtml(firstRecordedScrobble.playedAtLabel || firstRecordedScrobble.playedAtIso)}</span>
+              <span class="lastfm-track-panel-first-play-album">${escapeHtml(firstNonEmpty(firstRecordedScrobble.album, "Album unknown"))}</span>
+            </div>
+          ` : ""}
+        </div>
       </section>
     `;
     const focusMarkup = `
@@ -4751,16 +4859,19 @@
       stackClassName: "lastfm-track-panel-stack lastfm-track-panel-stack--split",
       kicker: "Track",
       title: track.title || "Unknown track",
+      titleMarkup: `
+        <span class="lastfm-track-panel-title-text">${escapeHtml(track.title || "Unknown track")}</span>
+        ${lovedTitleMarkup}
+      `,
       metaMarkup: `
         <span>${escapeHtml(track.artist || "Unknown artist")}</span>
         ${track.album ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(track.album)}</span>` : ""}
         ${track.durationLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(track.durationLabel)}</span>` : ""}
+        ${genreMetaMarkup ? `<span class="lastfm-track-panel-meta-separator">&bull;</span>${genreMetaMarkup}` : ""}
       `,
-      badgesMarkup: track.userLoved ? '<div class="lastfm-track-panel-badges"><span class="lastfm-track-panel-badge lastfm-track-panel-badge--loved" aria-label="Loved track" title="Loved track"><span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span></span></div>' : "",
       primaryMarkup: artMarkup,
       mediaControlMarkup: previewMarkup || spotifySlotMarkup,
       focusMarkup,
-      tagsMarkup,
       stackMarkup: `${summaryMarkup}${relatedMarkup}`
     });
   }
@@ -5002,6 +5113,13 @@
           <span class="lastfm-track-panel-section-meta">${escapeHtml(formatCountNumber(trackItems.length, "0"))} songs</span>
         </div>
         ${trackItems.length ? `
+          <div class="lastfm-track-panel-tracklist-head" aria-hidden="true">
+            <span>#</span>
+            <span>Title</span>
+            <span>Scrobbles</span>
+            <span>Time</span>
+            <span></span>
+          </div>
           <ol class="lastfm-track-panel-tracklist">
             ${trackItems.map((entry) => `
               <li class="lastfm-track-panel-track-item">
@@ -5257,6 +5375,13 @@
           <span class="lastfm-track-panel-section-meta">${escapeHtml(formatCountNumber(trackItems.length, "0"))} songs</span>
         </div>
         ${trackItems.length ? `
+          <div class="lastfm-track-panel-tracklist-head" aria-hidden="true">
+            <span>#</span>
+            <span>Title</span>
+            <span>Scrobbles</span>
+            <span>Time</span>
+            <span></span>
+          </div>
           <ol class="lastfm-track-panel-tracklist">
             ${trackItems.map((entry) => `
               <li class="lastfm-track-panel-track-item">
@@ -5274,11 +5399,10 @@
                   </button>
                   <div class="lastfm-track-panel-track-meta">
                     ${renderLastFmArtistLinkButton(entry.artist, entry.artistLastFmUrl)}
-                    ${entry.durationLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(entry.durationLabel)}</span>` : ""}
-                    <span class="lastfm-track-panel-meta-separator">&bull;</span>
-                    <span>${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles</span>
                   </div>
                 </div>
+                <span class="lastfm-track-panel-track-scrobbles">${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles</span>
+                <span class="lastfm-track-panel-track-duration">${escapeHtml(entry.durationLabel || "")}</span>
                 <span class="lastfm-track-panel-track-status">
                   ${entry.userLoved ? '<span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1.58 2.51 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>' : ""}
                 </span>

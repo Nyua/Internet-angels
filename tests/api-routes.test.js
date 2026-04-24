@@ -584,6 +584,29 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
         });
       }
       if (method === "user.gettrackscrobbles") {
+        const page = requestUrl.searchParams.get("page");
+        if (page === "3") {
+          return Response.json({
+            trackscrobbles: {
+              track: [
+                {
+                  name: "One Time",
+                  artist: { "#text": "beabadoobee" },
+                  album: { "#text": "This Is How Tomorrow Moves" },
+                  url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+                  image: [{ "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/scrobble-art.jpg" }],
+                  date: {
+                    uts: "1700000000",
+                    "#text": "14 Nov 2023, 22:13"
+                  }
+                }
+              ],
+              "@attr": {
+                total: "3"
+              }
+            }
+          });
+        }
         return Response.json({
           trackscrobbles: {
             track: [
@@ -664,6 +687,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.spotify.previewUrl, "https://p.scdn.co/mp3-preview/one-time-preview.mp3");
     assert.equal(payload.scrobbles.total, 3);
     assert.equal(payload.scrobbles.items[0].playedAtLabel, "23 Mar 2026, 07:21");
+    assert.equal(payload.scrobbles.firstRecorded.playedAtLabel, "14 Nov 2023, 22:13");
     assert.equal(payload.artistTopTracks.artist, "beabadoobee");
     assert.equal(payload.artistTopTracks.items.length, 2);
     assert.equal(payload.artistTopTracks.items[0].title, "Talk");
@@ -672,7 +696,7 @@ test("lastfm track details route assembles track, scrobble, related-track, and s
     assert.equal(payload.artistTopTracks.items[1].globalPlaycount, 29424507);
     assert.equal(callUrls.filter((url) => url === "https://accounts.spotify.com/api/token").length, 1);
     assert.equal(callUrls.filter((url) => url.includes("method=track.getsimilar")).length, 1);
-    assert.equal(callUrls.filter((url) => url.includes("method=user.gettrackscrobbles")).length, 1);
+    assert.equal(callUrls.filter((url) => url.includes("method=user.gettrackscrobbles")).length, 2);
     assert.equal(callUrls.filter((url) => url.includes("method=artist.gettoptracks")).length, 1);
   } finally {
     globalThis.fetch = originalFetch;
