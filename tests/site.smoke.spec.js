@@ -3630,12 +3630,24 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const styles = window.getComputedStyle(node);
     return {
       overflowY: styles.overflowY,
+      scrollbarWidth: styles.getPropertyValue("scrollbar-width").trim(),
       scrollHeight: node.scrollHeight,
       clientHeight: node.clientHeight
     };
   });
   expect(historyScroll.overflowY).toBe("auto");
+  expect(historyScroll.scrollbarWidth).toBe("none");
   expect(historyScroll.scrollHeight).toBeGreaterThan(historyScroll.clientHeight);
+  const historyJumpButton = page.locator(".lastfm-track-panel-history-jump");
+  await expect(historyJumpButton).toHaveAttribute("data-lastfm-history-jump-state", "first");
+  await expect(historyJumpButton).toHaveAttribute("aria-label", "Jump to first recorded play");
+  await historyJumpButton.click();
+  await expect(historyJumpButton).toHaveAttribute("data-lastfm-history-jump-state", "top");
+  await expect(historyJumpButton).toHaveAttribute("aria-label", "Jump to recent plays");
+  await expect.poll(async () => page.locator(".lastfm-track-panel-history-scroll").evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await historyJumpButton.click();
+  await expect(historyJumpButton).toHaveAttribute("data-lastfm-history-jump-state", "first");
+  await expect.poll(async () => page.locator(".lastfm-track-panel-history-scroll").evaluate((node) => Math.round(node.scrollTop))).toBe(0);
   await expect(page.locator(".lastfm-track-panel-stat-note")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-kicker")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-similar")).toHaveCount(0);

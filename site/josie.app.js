@@ -4784,9 +4784,21 @@
     const scrobbleTotalLabel = formatCountNumber(scrobbles.total || track.userPlaycount, "0");
     const historyMarkup = `
       <section class="lastfm-track-panel-history lastfm-track-panel-history--scrollable">
-        <div class="lastfm-track-panel-section-head">
+        <div class="lastfm-track-panel-section-head lastfm-track-panel-section-head--with-jump">
           <h4 class="lastfm-track-panel-section-title">My recent plays</h4>
-          <span class="lastfm-track-panel-section-meta">${escapeHtml(scrobbleTotalLabel)} total</span>
+          <span class="lastfm-track-panel-history-tools">
+            <span class="lastfm-track-panel-section-meta">${escapeHtml(scrobbleTotalLabel)} total</span>
+            ${firstRecordedScrobble ? `
+              <button class="lastfm-track-panel-history-jump" type="button" data-lastfm-history-jump data-lastfm-history-jump-state="first" aria-label="Jump to first recorded play" title="Jump to first recorded play">
+                <span class="lastfm-track-panel-history-jump-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" focusable="false">
+                    <path d="M8 2v10M4.5 8.5 8 12l3.5-3.5" />
+                  </svg>
+                </span>
+                <span class="sr-only" data-lastfm-history-jump-label>Jump to first recorded play</span>
+              </button>
+            ` : ""}
+          </span>
         </div>
         <div class="lastfm-track-panel-history-scroll" role="region" aria-label="Recent plays for ${escapeHtml(track.title || "this track")}">
           ${scrobbleItems.length ? `
@@ -8853,6 +8865,35 @@
         toggle.focus({ preventScroll: true });
       }
     }
+    function syncLastFmHistoryJumpButton(button, nextState) {
+      if (!(button instanceof HTMLElement)) return;
+      const state = nextState === "top" ? "top" : "first";
+      const label = state === "top" ? "Jump to recent plays" : "Jump to first recorded play";
+      button.dataset.lastfmHistoryJumpState = state;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("title", label);
+      const labelNode = button.querySelector("[data-lastfm-history-jump-label]");
+      if (labelNode instanceof HTMLElement) {
+        labelNode.textContent = label;
+      }
+    }
+    function handleLastFmHistoryJumpButton(button) {
+      if (!(button instanceof HTMLElement)) return;
+      const historySection = button.closest(".lastfm-track-panel-history--scrollable");
+      const scrollRegion = historySection?.querySelector(".lastfm-track-panel-history-scroll");
+      if (!(scrollRegion instanceof HTMLElement)) return;
+      const firstPlay = scrollRegion.querySelector(".lastfm-track-panel-first-play");
+      const nextState = button.dataset.lastfmHistoryJumpState === "top" ? "first" : "top";
+      const targetTop = nextState === "top" && firstPlay instanceof HTMLElement
+        ? Math.max(0, firstPlay.offsetTop - scrollRegion.offsetTop)
+        : 0;
+      const reducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+      scrollRegion.scrollTo({
+        top: targetTop,
+        behavior: reducedMotion ? "auto" : "smooth"
+      });
+      syncLastFmHistoryJumpButton(button, nextState);
+    }
     function setTrackPanelOpenState(isOpen) {
       document.body?.classList.toggle("lastfm-track-panel-open", isOpen);
     }
@@ -8887,6 +8928,13 @@
           event.preventDefault();
           playInteractionSfx("preview_soft", "trackPreviewToggle");
           void toggleTrackPreview(previewToggle.closest("[data-track-preview-player]"));
+          return;
+        }
+        const historyJumpButton = target.closest("[data-lastfm-history-jump]");
+        if (historyJumpButton instanceof HTMLElement) {
+          event.preventDefault();
+          playInteractionSfx("toggle_soft", "lastfmHistoryJump");
+          handleLastFmHistoryJumpButton(historyJumpButton);
           return;
         }
         const artToggle = target.closest("[data-lastfm-panel-art-toggle]");

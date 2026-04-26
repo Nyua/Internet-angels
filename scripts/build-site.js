@@ -12,6 +12,8 @@ const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
+const josieHtmlPath = path.join(distDir, "josie.html");
+const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
@@ -152,6 +154,10 @@ fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
 writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
 rewriteHtmlAssetVersions();
+if (fs.existsSync(josieHtmlPath)) {
+  fs.mkdirSync(path.dirname(josieDirectoryIndexPath), { recursive: true });
+  fs.copyFileSync(josieHtmlPath, josieDirectoryIndexPath);
+}
 
 const oversizedFiles = collectOversizedFiles(distDir);
 if (oversizedFiles.length) {
