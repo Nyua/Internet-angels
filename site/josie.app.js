@@ -7939,10 +7939,23 @@
           title="Spotify preview for ${escapeHtml(trackTitle || "track")}"
           loading="lazy"
           allow="autoplay; clipboard-write; fullscreen; picture-in-picture"
+          scrolling="no"
         ></iframe>
       `;
+      suppressSpotifyEmbedScrollbars(embedTarget);
       scheduleLastFmTrackPanelFit();
       return true;
+    }
+    function suppressSpotifyEmbedScrollbars(embedTarget) {
+      if (!(embedTarget instanceof HTMLElement)) return;
+      embedTarget.style.overflow = "hidden";
+      embedTarget.style.scrollbarWidth = "none";
+      const iframe = embedTarget.querySelector("iframe");
+      if (!(iframe instanceof HTMLIFrameElement)) return;
+      iframe.classList.add("lastfm-track-panel-spotify-embed");
+      iframe.setAttribute("scrolling", "no");
+      iframe.style.overflow = "hidden";
+      iframe.style.scrollbarWidth = "none";
     }
     async function mountSpotifyEmbedController(detail, cacheKey) {
       const spotify = detail?.spotify || {};
@@ -8007,6 +8020,7 @@
                 return;
               }
               lastFmSpotifyEmbedController = controller;
+              suppressSpotifyEmbedScrollbars(embedTarget);
               controller?.addListener?.("playback_started", () => {
                 if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
                 pauseShuffleForTrackPreview();

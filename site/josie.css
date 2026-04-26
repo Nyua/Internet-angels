@@ -2714,6 +2714,15 @@ body.lastfm-track-panel-open {
   background: #000000;
   border-radius: 999px;
   overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lastfm-track-panel-spotify-embed-host::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .lastfm-track-panel-spotify-embed-host > iframe,
@@ -2724,6 +2733,16 @@ body.lastfm-track-panel-open {
   border: 0;
   background: #000000;
   transform: translateY(-14px);
+  overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lastfm-track-panel-spotify-embed-host > iframe::-webkit-scrollbar,
+.lastfm-track-panel-spotify-embed::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .lastfm-track-panel-history-list,

@@ -4864,6 +4864,23 @@ test("josie keeps track details on the inline spotify layout when spotify has no
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-spotify-embed")).toHaveCount(1);
+  const spotifyEmbedScrollbarState = await page.locator(".lastfm-track-panel-spotify-embed").evaluate((iframe) => {
+    const iframeStyles = window.getComputedStyle(iframe);
+    const host = iframe.closest(".lastfm-track-panel-spotify-embed-host");
+    const hostStyles = host instanceof Element ? window.getComputedStyle(host) : null;
+    return {
+      hostOverflow: hostStyles?.overflow,
+      hostScrollbarWidth: hostStyles?.getPropertyValue("scrollbar-width").trim(),
+      iframeOverflow: iframeStyles.overflow,
+      iframeScrollbarWidth: iframeStyles.getPropertyValue("scrollbar-width").trim(),
+      iframeScrolling: iframe.getAttribute("scrolling")
+    };
+  });
+  expect(spotifyEmbedScrollbarState.hostOverflow).toBe("hidden");
+  expect(spotifyEmbedScrollbarState.hostScrollbarWidth).toBe("none");
+  expect(["hidden", "clip"]).toContain(spotifyEmbedScrollbarState.iframeOverflow);
+  expect(spotifyEmbedScrollbarState.iframeScrollbarWidth).toBe("none");
+  expect(spotifyEmbedScrollbarState.iframeScrolling).toBe("no");
   const noPreviewArtShell = await showLastFmPanelArtActions(page);
   await expect(noPreviewArtShell.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" })).toBeVisible();
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
