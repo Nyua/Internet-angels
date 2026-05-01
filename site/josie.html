@@ -383,7 +383,7 @@
             window.innerWidth || Number.POSITIVE_INFINITY,
             window.visualViewport?.width || Number.POSITIVE_INFINITY
           );
-          if (viewportWidth > compactMobileBreakpointPx) return false;
+          if (viewportWidth <= compactMobileBreakpointPx) return true;
           if (typeof window.matchMedia !== "function") return false;
           return Boolean(
             window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches

@@ -283,6 +283,17 @@ async function setDesktopPerformanceOverride(page, tier = "full") {
   }, tier);
 }
 
+async function installGraphicsAccelerationOverride(page, override = {}) {
+  await page.addInitScript((nextOverride) => {
+    window.__internetAngelGraphicsAccelerationOverride = {
+      accelerated: nextOverride?.accelerated !== false,
+      reason: String(nextOverride?.reason || ""),
+      renderer: String(nextOverride?.renderer || ""),
+      vendor: String(nextOverride?.vendor || "")
+    };
+  }, override);
+}
+
 async function installWindowFocusOverride(page) {
   await page.addInitScript(() => {
     const originalHasFocus = Document.prototype.hasFocus;
@@ -830,6 +841,55 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
   expect(degradedVisualizerState.title).toBe(expectedTrack?.title || "");
   expect(degradedVisualizerState.artist).toBe(expectedTrack?.artist || "");
+});
+
+test("desktop Josie optimizes rendering only when graphics acceleration is unavailable", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await installGraphicsAccelerationOverride(page, {
+    accelerated: false,
+    reason: "software-renderer",
+    renderer: "ANGLE (Google, SwiftShader)",
+    vendor: "Google Inc. (Google)"
+  });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "degraded");
+  await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "software-renderer");
+  await expect(page.locator("body")).toHaveAttribute("data-graphics-acceleration", "software");
+  await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-shuffle-device-profile", "software-desktop");
+
+  await page.locator(".steam-sidebar-link").first().hover();
+  const softwareCursorState = await page.evaluate(() => {
+    const cursor = document.querySelector(".site-pointer");
+    const trailCanvas = document.querySelector(".site-pointer-trail-canvas");
+    return {
+      degraded: cursor instanceof HTMLElement ? cursor.classList.contains("is-degraded") : null,
+      trailDisplay: trailCanvas instanceof HTMLCanvasElement ? window.getComputedStyle(trailCanvas).display : ""
+    };
+  });
+  expect(softwareCursorState.degraded).toBe(true);
+  expect(softwareCursorState.trailDisplay).toBe("none");
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  const softwareVisualizerState = await page.evaluate(() => {
+    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+    const rect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null;
+    const performanceState = window.__internetAngelPerformanceState?.getState?.() || null;
+    return {
+      canvasProfile: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-device-profile") || "" : "",
+      canvasDpr: canvas instanceof HTMLCanvasElement && rect && rect.width > 0 ? canvas.width / rect.width : 0,
+      performanceState
+    };
+  });
+  expect(softwareVisualizerState.canvasProfile).toBe("software-desktop");
+  expect(softwareVisualizerState.canvasDpr).toBeLessThanOrEqual(1.05);
+  expect(softwareVisualizerState.performanceState?.tier).toBe("degraded");
+  expect(softwareVisualizerState.performanceState?.graphicsAcceleration).toBe("software");
+  expect(softwareVisualizerState.performanceState?.graphicsRenderer).toContain("SwiftShader");
 });
 
 test("desktop Josie ignores legacy frame-budget downgrade requests", async ({ page }) => {

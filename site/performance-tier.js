@@ -6,10 +6,18 @@
     "internetAngelPerformanceReason",
     "internetAngelPerformanceOverride"
   ];
+  const SOFTWARE_RENDERER_PATTERN = /\b(swiftshader|llvmpipe|softpipe|software rasterizer|software renderer|microsoft basic render driver|warp|gdi generic|mesa offscreen)\b/i;
   const state = {
     eligible: false,
-    ready: false
+    ready: false,
+    tier: "full",
+    reason: "disabled",
+    graphicsAcceleration: "unknown",
+    graphicsRenderer: "",
+    graphicsVendor: "",
+    graphicsChecked: false
   };
+  let cachedGraphicsDetail = null;
   const desktopQuery = typeof window.matchMedia === "function"
     ? window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX + 1}px)`)
     : null;
@@ -28,11 +36,92 @@
   function getBody() {
     return document.body instanceof HTMLElement ? document.body : null;
   }
+  function normalizeRendererText(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+  function readGraphicsOverride() {
+    const override = window.__internetAngelGraphicsAccelerationOverride;
+    if (!override || typeof override !== "object") return null;
+    const accelerated = override.accelerated !== false && override.tier !== "degraded";
+    return {
+      degraded: !accelerated,
+      reason: !accelerated
+        ? normalizeRendererText(override.reason) || "software-renderer"
+        : "disabled",
+      acceleration: accelerated ? "hardware" : "software",
+      renderer: normalizeRendererText(override.renderer),
+      vendor: normalizeRendererText(override.vendor),
+      checked: true
+    };
+  }
+  function createWebGlContext(canvas) {
+    const contextOptions = {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: "high-performance",
+      stencil: false
+    };
+    return canvas.getContext("webgl2", contextOptions)
+      || canvas.getContext("webgl", contextOptions)
+      || canvas.getContext("experimental-webgl", contextOptions);
+  }
+  function inspectGraphicsAcceleration() {
+    const override = readGraphicsOverride();
+    if (override) return override;
+    const isAutomation = Boolean(navigator.webdriver);
+    const canvas = document.createElement("canvas");
+    let gl = null;
+    try {
+      gl = createWebGlContext(canvas);
+    } catch {
+      gl = null;
+    }
+    if (!gl) {
+      return {
+        degraded: !isAutomation,
+        reason: isAutomation ? "disabled" : "webgl-unavailable",
+        acceleration: isAutomation ? "unknown" : "software",
+        renderer: "",
+        vendor: "",
+        checked: true
+      };
+    }
+    let renderer = "";
+    let vendor = "";
+    try {
+      const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+      renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+      vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+    } catch {
+    }
+    const rendererText = `${normalizeRendererText(vendor)} ${normalizeRendererText(renderer)}`;
+    const softwareRenderer = SOFTWARE_RENDERER_PATTERN.test(rendererText);
+    return {
+      degraded: softwareRenderer && !isAutomation,
+      reason: softwareRenderer && !isAutomation ? "software-renderer" : "disabled",
+      acceleration: softwareRenderer && !isAutomation ? "software" : softwareRenderer ? "unknown" : "hardware",
+      renderer: normalizeRendererText(renderer),
+      vendor: normalizeRendererText(vendor),
+      checked: true
+    };
+  }
+  function getGraphicsDetail() {
+    if (!cachedGraphicsDetail) {
+      cachedGraphicsDetail = inspectGraphicsAcceleration();
+    }
+    return cachedGraphicsDetail;
+  }
   function getDetail() {
     return {
       eligible: state.eligible,
-      tier: "full",
-      reason: "disabled",
+      tier: state.tier,
+      reason: state.reason,
+      graphicsAcceleration: state.graphicsAcceleration,
+      graphicsRenderer: state.graphicsRenderer,
+      graphicsVendor: state.graphicsVendor,
+      graphicsChecked: state.graphicsChecked,
       backgroundThrottled: false
     };
   }
@@ -42,10 +131,12 @@
     if (!state.eligible) {
       body.removeAttribute("data-performance-tier");
       body.removeAttribute("data-performance-reason");
+      body.removeAttribute("data-graphics-acceleration");
       return;
     }
-    body.setAttribute("data-performance-tier", "full");
-    body.setAttribute("data-performance-reason", "disabled");
+    body.setAttribute("data-performance-tier", state.tier);
+    body.setAttribute("data-performance-reason", state.reason);
+    body.setAttribute("data-graphics-acceleration", state.graphicsAcceleration);
   }
   function emitChange() {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {
@@ -57,8 +148,27 @@
   }
   function syncEligibility(options = {}) {
     const nextEligible = canUseDesktopPerformanceTier();
-    const changed = state.eligible !== nextEligible;
+    const graphics = nextEligible ? getGraphicsDetail() : {
+      degraded: false,
+      reason: "disabled",
+      acceleration: "unknown",
+      renderer: "",
+      vendor: "",
+      checked: false
+    };
+    const nextTier = nextEligible && graphics.degraded ? "degraded" : "full";
+    const nextReason = nextTier === "degraded" ? graphics.reason : "disabled";
+    const changed = state.eligible !== nextEligible
+      || state.tier !== nextTier
+      || state.reason !== nextReason
+      || state.graphicsAcceleration !== graphics.acceleration;
     state.eligible = nextEligible;
+    state.tier = nextTier;
+    state.reason = nextReason;
+    state.graphicsAcceleration = graphics.acceleration;
+    state.graphicsRenderer = graphics.renderer;
+    state.graphicsVendor = graphics.vendor;
+    state.graphicsChecked = graphics.checked;
     applyBodyState();
     updateWindowGlobal();
     if (!options.silent && changed) {
@@ -71,10 +181,14 @@
         eligible: state.eligible,
         ready: state.ready,
         monitoring: false,
-        tier: "full",
-        reason: "disabled",
-        baseTier: "full",
-        baseReason: "disabled",
+        tier: state.tier,
+        reason: state.reason,
+        baseTier: state.tier,
+        baseReason: state.reason,
+        graphicsAcceleration: state.graphicsAcceleration,
+        graphicsRenderer: state.graphicsRenderer,
+        graphicsVendor: state.graphicsVendor,
+        graphicsChecked: state.graphicsChecked,
         backgroundThrottled: false,
         consecutiveBadWindows: 0
       };
@@ -83,7 +197,7 @@
       return state.eligible;
     },
     isDegraded() {
-      return false;
+      return state.eligible && state.tier === "degraded";
     },
     isBackgroundThrottled() {
       return false;

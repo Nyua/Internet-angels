@@ -5734,6 +5734,33 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     opacity: 0;
   }
 
+  body[data-performance-tier="degraded"] .os-stage::before {
+    opacity: 0.08;
+    mix-blend-mode: normal;
+  }
+
+  body[data-performance-tier="degraded"] .os-ambient-canvas--glow {
+    display: none !important;
+    filter: none !important;
+  }
+
+  body[data-performance-tier="degraded"] .josie-audio-player-bleed-layer {
+    transform: none;
+    will-change: auto;
+  }
+
+  body[data-performance-tier="degraded"] .lastfm-track-panel[data-panel-visibility="visible"] .lastfm-track-panel-backdrop {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body[data-performance-tier="degraded"] .os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-surface,
+  body[data-performance-tier="degraded"] .os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-copy,
+  body[data-performance-tier="degraded"][data-visualizer-focus-mode="active"] .social-hub-scale-frame,
+  body[data-performance-tier="degraded"][data-visualizer-focus-mode="active"] .site-audio-control {
+    filter: none !important;
+  }
+
   body[data-performance-tier="degraded"] :is(
     .site-audio-control,
     .external-link-confirm-backdrop,

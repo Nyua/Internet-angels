@@ -1892,6 +1892,7 @@
     let visualizerFocusMode = false;
     let visualizerFocusKeydownListener = null;
     let appliedVisualizerMode = "";
+    let appliedVisualizerDeviceProfile = "";
     let appliedVisualizerModePlayerRoot = null;
     let appliedVisualizerModeWaveSurface = null;
     let lastUiState = null;
@@ -1905,13 +1906,16 @@
     const SHUFFLE_VISUAL_STYLE = "ascii";
     const SHUFFLE_MAX_CANVAS_DPR = 1.25;
     const SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR = 1.25;
+    const SHUFFLE_SOFTWARE_MAX_CANVAS_DPR = 1;
     const SHUFFLE_TRACE_OPACITY_SCALE = 2.7;
     const SHUFFLE_TRACE_POINT_LIMIT = 320;
+    const SHUFFLE_SOFTWARE_TRACE_POINT_LIMIT = 144;
     const SHUFFLE_ASCII_CHAR_RAMP = ".:-=+*#%@";
     const SHUFFLE_ASCII_ALPHA_CACHE_STEPS = 64;
     const SHUFFLE_ASCII_MIN_CELL_PX = 1;
     const SHUFFLE_ASCII_MAX_CELL_PX = 2;
     const SHUFFLE_TOUCH_ASCII_MAX_CELL_PX = 3;
+    const SHUFFLE_SOFTWARE_ASCII_MAX_CELL_PX = 5;
     const SHUFFLE_BAR_MIN_COUNT = 40;
     const SHUFFLE_BAR_MAX_COUNT = 88;
     const SHUFFLE_BAR_MIN_WIDTH_PX = 3;
@@ -1921,7 +1925,7 @@
     const SHUFFLE_WAVEFORM_AVOIDANCE_SAMPLE_LIMIT = 40;
     const SHUFFLE_BAR_CELL_HEIGHT_PX = 4;
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 60;
-    const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 30;
+    const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 24;
     const SHUFFLE_COPY_HOLD_MS = 5e3;
     const SHUFFLE_MAX_VOLUME = 0.077;
@@ -2258,11 +2262,128 @@
     function usesTouchMobileVisualizerProfile() {
       return isCompactMobileLayout() && hasCompactMobileInput();
     }
+    function usesSoftwareGraphicsVisualizerProfile() {
+      return performanceDegraded && !usesTouchMobileVisualizerProfile();
+    }
     function getShuffleVisualizerDeviceProfile() {
+      if (usesSoftwareGraphicsVisualizerProfile()) return "software-desktop";
       return usesTouchMobileVisualizerProfile() ? "touch-mobile" : "default";
+    }
+    function getShuffleVisualizerMaxCanvasDpr() {
+      if (usesSoftwareGraphicsVisualizerProfile()) return SHUFFLE_SOFTWARE_MAX_CANVAS_DPR;
+      return usesTouchMobileVisualizerProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
+    }
+    function drawSoftwareAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
+      if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
+      const asciiCellWidth = clamp2(
+        Math.round(width / 150),
+        2,
+        SHUFFLE_SOFTWARE_ASCII_MAX_CELL_PX
+      );
+      const asciiCellHeight = Math.max(3, Math.round(asciiCellWidth * 1.5));
+      const pointCount = Math.max(24, Math.min(Math.floor(width / asciiCellWidth), SHUFFLE_SOFTWARE_TRACE_POINT_LIMIT));
+      const pointSpacing = (width - 1) / Math.max(pointCount - 1, 1);
+      if (!(traceValues instanceof Float32Array) || traceValues.length !== pointCount) {
+        traceValues = new Float32Array(pointCount);
+      }
+      if (!(traceDisplayValues instanceof Float32Array) || traceDisplayValues.length !== pointCount) {
+        traceDisplayValues = new Float32Array(pointCount);
+      }
+      const shouldSampleLive = Boolean(!audioEl.paused && analyserNode instanceof AnalyserNode && analyserSamples.length);
+      const sampleIndexLookup = shouldSampleLive ? ensureTraceSampleLookup(pointCount) : traceSampleIndexLookup;
+      let peak = 0;
+      if (shouldSampleLive) {
+        if (!reuseCurrentFrameSamples) {
+          analyserNode.getFloatTimeDomainData(analyserSamples);
+        }
+        let filteredValue = 0;
+        for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+          const sampleIndex = sampleIndexLookup[pointIndex] || 0;
+          const currentSample = analyserSamples[sampleIndex] || 0;
+          const previousSample = analyserSamples[Math.max(0, sampleIndex - 5)] || currentSample;
+          const nextSample = analyserSamples[Math.min(analyserSamples.length - 1, sampleIndex + 5)] || currentSample;
+          filteredValue = filteredValue * 0.38 + (previousSample * 0.22 + currentSample * 0.56 + nextSample * 0.22) * 0.62;
+          const shapedValue = clamp2(Math.tanh(filteredValue * 3.1), -1, 1);
+          traceValues[pointIndex] = shapedValue;
+          peak = Math.max(peak, Math.abs(shapedValue));
+        }
+      }
+      const attackMix = 0.58;
+      const releaseMix = 0.18;
+      let rms = 0;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const targetValue = shouldSampleLive ? traceValues[pointIndex] || 0 : 0;
+        const previousValue = traceDisplayValues[pointIndex] || 0;
+        const smoothingMix = Math.abs(targetValue) >= Math.abs(previousValue) ? attackMix : releaseMix;
+        const displayValue = previousValue + (targetValue - previousValue) * smoothingMix;
+        traceDisplayValues[pointIndex] = displayValue;
+        rms += displayValue * displayValue;
+      }
+      rms = Math.sqrt(rms / Math.max(pointCount, 1));
+      const rowCount = Math.max(8, Math.floor(height / asciiCellHeight));
+      const verticalInset = Math.max(0, Math.round((height - rowCount * asciiCellHeight) / 2));
+      const baselineRow = clamp2(Math.round(rowCount * 0.52), 2, rowCount - 3);
+      const amplitudeRows = clamp2(
+        Math.round(rowCount * (0.18 + peak * 0.1 + rms * 0.22)),
+        2,
+        Math.max(2, Math.min(baselineRow - 1, rowCount - baselineRow - 1))
+      );
+      const glyphMaxIndex = SHUFFLE_ASCII_CHAR_RAMP.length - 1;
+      const fontSize = Math.max(5, Math.round(asciiCellWidth * 1.72));
+      waveCtx.save();
+      waveCtx.font = `700 ${fontSize}px "Space Mono", "IBM Plex Mono", Consolas, Menlo, monospace`;
+      waveCtx.textBaseline = "top";
+      waveCtx.textAlign = "center";
+      waveCtx.globalCompositeOperation = "screen";
+      let previousTargetRow = null;
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const value = traceDisplayValues[pointIndex] || 0;
+        const magnitude = Math.abs(value);
+        if (magnitude < 0.012) {
+          previousTargetRow = null;
+          continue;
+        }
+        const x = originX + pointIndex * pointSpacing;
+        const targetRow = clamp2(
+          baselineRow - Math.round(value * amplitudeRows),
+          0,
+          rowCount - 1
+        );
+        const intensity = clamp2(0.18 + magnitude * 0.76 + peak * 0.12, 0, 1);
+        const glyphIndex = clamp2(Math.round(intensity * glyphMaxIndex), 0, glyphMaxIndex);
+        const glyph = SHUFFLE_ASCII_CHAR_RAMP[glyphIndex] || ".";
+        const paintGlyph = (rowIndex, alphaScale = 1) => {
+          const safeRow = clamp2(rowIndex, 0, rowCount - 1);
+          waveCtx.fillStyle = getAsciiAlphaFillStyle(clamp2((0.18 + intensity * 0.58) * alphaScale, 0, 0.9));
+          waveCtx.fillText(glyph, x, originY + verticalInset + safeRow * asciiCellHeight);
+        };
+        paintGlyph(targetRow, 1);
+        if (magnitude > 0.16) {
+          const baselineDirection = targetRow < baselineRow ? 1 : -1;
+          paintGlyph(targetRow + baselineDirection, 0.52);
+        }
+        if (magnitude > 0.44) {
+          const crestDirection = targetRow < baselineRow ? -1 : 1;
+          paintGlyph(targetRow + crestDirection, 0.34);
+        }
+        if (previousTargetRow !== null && Math.abs(previousTargetRow - targetRow) > 1) {
+          paintGlyph(Math.round((previousTargetRow + targetRow) / 2), 0.32);
+        }
+        previousTargetRow = targetRow;
+      }
+      const edgeMarkerHeight = Math.max(2, Math.round(Math.min(height * 0.18, amplitudeRows * asciiCellHeight * 0.28)));
+      const edgeMarkerTop = Math.round(originY + verticalInset + baselineRow * asciiCellHeight + asciiCellHeight / 2 - edgeMarkerHeight / 2);
+      waveCtx.fillStyle = getAsciiAlphaFillStyle(0.1);
+      waveCtx.fillRect(originX, edgeMarkerTop, 1, edgeMarkerHeight);
+      waveCtx.fillRect(originX + width - 1, edgeMarkerTop, 1, edgeMarkerHeight);
+      waveCtx.restore();
     }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
+      if (usesSoftwareGraphicsVisualizerProfile()) {
+        drawSoftwareAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples);
+        return;
+      }
       const touchMobileProfile = usesTouchMobileVisualizerProfile();
       const asciiCellWidth = clamp2(
         Math.round(width / (touchMobileProfile ? 172 : 208)),
@@ -2675,13 +2796,17 @@
       return cachedReactiveTargets;
     }
     function syncVisualizerPerformanceMode() {
-      const mode = performanceDegraded ? "degraded" : "full";
+      const mode = document.body?.classList.contains("lastfm-track-panel-open")
+        ? "panel"
+        : performanceDegraded ? "degraded" : "full";
+      const deviceProfile = getShuffleVisualizerDeviceProfile();
       const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
         ? visualizerLayerHost
         : document.getElementById("os-shuffle-visualizer-layer");
       visualizerLayerHost = layerHost instanceof HTMLElement ? layerHost : null;
       if (
         mode === appliedVisualizerMode
+        && deviceProfile === appliedVisualizerDeviceProfile
         && playerRoot === appliedVisualizerModePlayerRoot
         && waveSurface === appliedVisualizerModeWaveSurface
       ) {
@@ -2689,17 +2814,18 @@
       }
       if (layerHost instanceof HTMLElement) {
         layerHost.setAttribute("data-visualizer-mode", mode);
-        layerHost.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
+        layerHost.setAttribute("data-shuffle-device-profile", deviceProfile);
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.setAttribute("data-visualizer-mode", mode);
-        playerRoot.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
+        playerRoot.setAttribute("data-shuffle-device-profile", deviceProfile);
       }
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-visualizer-mode", mode);
-        waveSurface.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
+        waveSurface.setAttribute("data-shuffle-device-profile", deviceProfile);
       }
       appliedVisualizerMode = mode;
+      appliedVisualizerDeviceProfile = deviceProfile;
       appliedVisualizerModePlayerRoot = playerRoot;
       appliedVisualizerModeWaveSurface = waveSurface;
     }
@@ -2981,6 +3107,15 @@
         return reactivePulseMetrics;
       }
       analyserNode.getFloatTimeDomainData(analyserSamples);
+      if (performanceDegraded) {
+        previousBassEnergy = 0;
+        reactivePulseMetrics.beat = 0;
+        reactivePulseMetrics.flash = 0;
+        reactivePulseMetrics.bass = 0;
+        reactivePulseMetrics.bassFlash = 0;
+        reactivePulseMetrics.sampled = true;
+        return reactivePulseMetrics;
+      }
       if (analyserFrequencyData.length) {
         analyserNode.getByteFrequencyData(analyserFrequencyData);
       }
@@ -3251,7 +3386,7 @@
       }
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
-      const maxCanvasDpr = usesTouchMobileVisualizerProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
+      const maxCanvasDpr = getShuffleVisualizerMaxCanvasDpr();
       const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
@@ -3784,6 +3919,7 @@
       isMuted,
       getState: buildPublicState,
       seekToDisplayTime,
+      syncVisualizerMode: syncVisualizerPerformanceMode,
       subscribe,
       pauseForExternalAudio,
       resumeAfterExternalAudio
@@ -8910,6 +9046,7 @@
     }
     function setTrackPanelOpenState(isOpen) {
       document.body?.classList.toggle("lastfm-track-panel-open", isOpen);
+      shufflePlayerController.syncVisualizerMode?.();
     }
     function ensureLastFmTrackDetailsOverlay() {
       if (lastFmTrackPanelRoot instanceof HTMLElement) return lastFmTrackPanelRoot;
@@ -9819,7 +9956,7 @@
     let performanceDegraded = isDesktopPerformanceDegraded();
     let scrollTargetOffsetY = 0;
     let scrollCurrentOffsetY = 0;
-    const ambientScrollParallaxFactor = 0.26;
+    const ambientScrollParallaxFactorBase = 0.26;
     const bodyObserver = new MutationObserver(() => {
       sync();
     });
@@ -9848,8 +9985,11 @@
       const windowScrollTop = Number(window.scrollY) || Number(document.documentElement?.scrollTop) || 0;
       return Math.max(0, stageScrollTop, viewportScrollTop, windowScrollTop);
     }
+    function getAmbientScrollParallaxFactor() {
+      return performanceDegraded ? 0 : ambientScrollParallaxFactorBase;
+    }
     function updateAmbientScrollState(force = false) {
-      scrollTargetOffsetY = readAmbientScrollOffset() * dpr * ambientScrollParallaxFactor;
+      scrollTargetOffsetY = readAmbientScrollOffset() * dpr * getAmbientScrollParallaxFactor();
       if (force) {
         scrollCurrentOffsetY = scrollTargetOffsetY;
       }
@@ -10495,10 +10635,15 @@
     function rebuildField() {
       const area = cssWidth * cssHeight;
       const rng = createSeededRandom((cssWidth * 73856093 ^ cssHeight * 19349663 ^ 2654435761) >>> 0);
-      const starCount = compactMobileLayout ? Math.max(34, Math.min(72, Math.round(area / 42e3))) : Math.max(54, Math.min(168, Math.round(area / 28e3)));
-      const glintCount = compactMobileLayout ? Math.max(0, Math.min(4, Math.round(area / 34e4))) : Math.max(7, Math.min(16, Math.round(area / 19e4)));
-      const flareCount = compactMobileLayout ? 0 : Math.max(1, Math.min(2, Math.round(area / 14e5)));
-      const shootingStarCount = compactMobileLayout ? 1 : 2;
+      const softwareDesktopProfile = performanceDegraded && !compactMobileLayout;
+      const starCount = softwareDesktopProfile
+        ? Math.max(40, Math.min(104, Math.round(area / 46e3)))
+        : compactMobileLayout ? Math.max(34, Math.min(72, Math.round(area / 42e3))) : Math.max(54, Math.min(168, Math.round(area / 28e3)));
+      const glintCount = softwareDesktopProfile
+        ? Math.max(2, Math.min(7, Math.round(area / 42e4)))
+        : compactMobileLayout ? Math.max(0, Math.min(4, Math.round(area / 34e4))) : Math.max(7, Math.min(16, Math.round(area / 19e4)));
+      const flareCount = softwareDesktopProfile ? 0 : compactMobileLayout ? 0 : Math.max(1, Math.min(2, Math.round(area / 14e5)));
+      const shootingStarCount = softwareDesktopProfile ? 0 : compactMobileLayout ? 1 : 2;
       stars = Array.from({ length: starCount }, (_, index) => buildStarPrototype(rng, index));
       glints = Array.from({ length: glintCount }, (_, index) => buildGlintPrototype(rng, index));
       flares = Array.from({ length: flareCount }, (_, index) => buildFlarePrototype(rng, index));
@@ -10512,7 +10657,8 @@
     function resize() {
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
-      dpr = Math.max(1, Math.min(compactMobileLayout ? 1.25 : 2, window.devicePixelRatio || 1));
+      const maxAmbientDpr = performanceDegraded && !compactMobileLayout ? 1 : compactMobileLayout ? 1.25 : 2;
+      dpr = Math.max(1, Math.min(maxAmbientDpr, window.devicePixelRatio || 1));
       renderWidth = Math.max(1, Math.round(cssWidth * dpr));
       renderHeight = Math.max(1, Math.round(cssHeight * dpr));
       if (ambientCanvas.width !== renderWidth || ambientCanvas.height !== renderHeight) {
@@ -10799,6 +10945,10 @@
     function handleAmbientScroll() {
       if (disposed) return;
       updateAmbientScrollState();
+      if (performanceDegraded) {
+        scrollCurrentOffsetY = scrollTargetOffsetY;
+        return;
+      }
       if (!rafId && !document.hidden && !document.body.classList.contains("site-load-playing")) {
         drawStaticFrame(performance.now());
       }
@@ -10850,6 +11000,7 @@
     }
     function handlePerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
+      resize();
       sync();
     }
     window.addEventListener("resize", resize, { passive: true });
