@@ -1,5 +1,14 @@
 import { readCachedPayload, toStalePayload, writeCachedPayload } from "./cache.js";
-import { browserCacheControl, isSameOriginRequest, jsonResponse, methodNotAllowedResponse } from "./response.js";
+import {
+  browserCacheControl,
+  isSameOriginRequest,
+  jsonResponse,
+  methodNotAllowedResponse,
+  resolveTimeoutMs,
+  runWithTimeout
+} from "./response.js";
+
+const LASTFM_DETAILS_CACHE_VERSION = "spotify-credentialless-v2";
 
 export function normalizeLastFmDetailsQueryValue(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -14,6 +23,7 @@ export function buildLastFmDetailsCacheRequest(request, query, keys) {
     if (!value) continue;
     cacheUrl.searchParams.set(key, value.toLowerCase());
   }
+  cacheUrl.searchParams.set("__v", LASTFM_DETAILS_CACHE_VERSION);
   return new Request(cacheUrl.toString(), { method: "GET" });
 }
 
@@ -64,12 +74,21 @@ export function createLastFmDetailsRouteHandler(options) {
     }
 
     try {
-      const payload = await config.fetchPayload({
-        apiKey,
-        env,
-        query,
-        nowMs
+      const routeTimeoutMs = resolveTimeoutMs(env?.LASTFM_DETAILS_ROUTE_TIMEOUT_MS, config.routeTimeoutMs, {
+        min: 500,
+        max: config.routeTimeoutMs
       });
+      const payload = await runWithTimeout(
+        (signal) => config.fetchPayload({
+          apiKey,
+          env,
+          query,
+          nowMs,
+          signal
+        }),
+        routeTimeoutMs,
+        config.timeoutError
+      );
       await writeCachedPayload({
         cache: caches.default,
         request: cacheRequest,

@@ -2,6 +2,7 @@ import {
   LASTFM_API_BASE,
   LASTFM_SIMILAR_TRACKS_FRESH_TTL_SEC,
   LASTFM_SIMILAR_TRACKS_RETAIN_TTL_SEC,
+  LASTFM_SECONDARY_TIMEOUT_MS,
   LASTFM_TIMEOUT_MS,
   LASTFM_TOP_TRACKS_FRESH_TTL_SEC,
   LASTFM_TOP_TRACKS_RETAIN_TTL_SEC,
@@ -12,7 +13,7 @@ import {
   LASTFM_USER
 } from "./config.js";
 import { readCachedPayload, writeCachedPayload } from "./cache.js";
-import { fetchWithTimeout } from "./response.js";
+import { fetchWithTimeout, throwIfAborted } from "./response.js";
 
 const LASTFM_GENERIC_IMAGE_TOKEN = "2a96cbd8b46e442fc41c2b86b821562f";
 const DEEZER_ARTIST_SEARCH_BASE = "https://api.deezer.com/search/artist";
@@ -43,13 +44,23 @@ export function buildLastFmEndpoint(method, apiKey, extraParams = {}) {
   return endpoint.toString();
 }
 
-export async function fetchLastFmJson(method, apiKey, extraParams = {}) {
+function getSecondaryFetchOptions(options = {}) {
+  return {
+    signal: options?.signal,
+    timeoutMs: options?.secondaryTimeoutMs ?? LASTFM_SECONDARY_TIMEOUT_MS
+  };
+}
+
+export async function fetchLastFmJson(method, apiKey, extraParams = {}, options = {}) {
+  const fetchOptions = typeof options === "number" ? { timeoutMs: options } : (options || {});
+  throwIfAborted(fetchOptions.signal);
   const response = await fetchWithTimeout(buildLastFmEndpoint(method, apiKey, extraParams), {
     method: "GET",
+    signal: fetchOptions.signal,
     headers: {
       Accept: "application/json"
     }
-  }, LASTFM_TIMEOUT_MS);
+  }, fetchOptions.timeoutMs ?? LASTFM_TIMEOUT_MS);
 
   if (!response.ok) {
     throw new Error(`Last.fm upstream failed (${response.status})`);
@@ -86,19 +97,21 @@ export function isLastFmGenericImageUrl(url) {
   return String(url || "").includes(LASTFM_GENERIC_IMAGE_TOKEN);
 }
 
-export async function findArtistPhotoUrlViaDeezer(artistName) {
+export async function findArtistPhotoUrlViaDeezer(artistName, options = {}) {
   const query = String(artistName || "").trim();
   if (!query) {
     return "";
   }
+  throwIfAborted(options?.signal);
   const endpoint = new URL(DEEZER_ARTIST_SEARCH_BASE);
   endpoint.searchParams.set("q", query);
   const response = await fetchWithTimeout(endpoint.toString(), {
     method: "GET",
+    signal: options?.signal,
     headers: {
       Accept: "application/json"
     }
-  }, LASTFM_TIMEOUT_MS);
+  }, options?.timeoutMs ?? LASTFM_SECONDARY_TIMEOUT_MS);
   if (!response.ok) {
     throw new Error(`Deezer upstream failed (${response.status})`);
   }
@@ -264,7 +277,7 @@ function enrichRecentTracksWithMonthlyContext(recenttracksSection, topTracksSect
   };
 }
 
-async function loadTrackLovedStateFallback(apiKey, trackEntry, nowMs = Date.now()) {
+async function loadTrackLovedStateFallback(apiKey, trackEntry, nowMs = Date.now(), options = {}) {
   const artist = getTrackArtistName(trackEntry);
   const title = getTrackTitle(trackEntry);
   if (!artist || !title) {
@@ -281,14 +294,14 @@ async function loadTrackLovedStateFallback(apiKey, trackEntry, nowMs = Date.now(
         track: title,
         username: LASTFM_USER,
         autocorrect: 1
-      });
+      }, getSecondaryFetchOptions(options));
       return String(payload?.track?.userloved || "").trim() === "1";
     }
   });
   return cachedValue === true;
 }
 
-async function enrichRecentTracksWithLovedState(recenttracksSection, apiKey, nowMs = Date.now()) {
+async function enrichRecentTracksWithLovedState(recenttracksSection, apiKey, nowMs = Date.now(), options = {}) {
   const rawTrack = recenttracksSection?.track;
   const tracks = toLastFmTrackArray(recenttracksSection);
   if (!tracks.length) {
@@ -300,7 +313,7 @@ async function enrichRecentTracksWithLovedState(recenttracksSection, apiKey, now
       const directLovedState = parseTrackUserLoved(trackEntry);
       const isLoved = directLovedState !== null
         ? directLovedState
-        : await loadTrackLovedStateFallback(apiKey, trackEntry, nowMs);
+        : await loadTrackLovedStateFallback(apiKey, trackEntry, nowMs, options);
       return {
         ...trackEntry,
         userloved: directLovedState !== null ? (directLovedState ? "1" : "0") : (isLoved ? "1" : "0"),
@@ -323,7 +336,7 @@ function pickReferenceTrack(recenttracksSection) {
   return tracks.find((trackEntry) => trackEntry?.["@attr"]?.nowplaying === "true") || tracks[0] || null;
 }
 
-async function loadTopTracksSection(apiKey, nowMs = Date.now()) {
+async function loadTopTracksSection(apiKey, nowMs = Date.now(), options = {}) {
   const cachedValue = await loadCachedValue({
     cacheKeyParts: ["top-tracks", LASTFM_USER, "1month", "12"],
     freshTtlSec: LASTFM_TOP_TRACKS_FRESH_TTL_SEC,
@@ -333,14 +346,14 @@ async function loadTopTracksSection(apiKey, nowMs = Date.now()) {
       const payload = await fetchLastFmJson("user.gettoptracks", apiKey, {
         period: "1month",
         limit: 12
-      });
+      }, getSecondaryFetchOptions(options));
       return payload?.toptracks && typeof payload.toptracks === "object" ? payload.toptracks : { track: [] };
     }
   });
   return cachedValue && typeof cachedValue === "object" ? cachedValue : { track: [] };
 }
 
-async function loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs = Date.now()) {
+async function loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs = Date.now(), options = {}) {
   const artist = getTrackArtistName(referenceTrack);
   const title = getTrackTitle(referenceTrack);
   if (!artist || !title) {
@@ -357,7 +370,7 @@ async function loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs = Date.no
         track: title,
         autocorrect: 1,
         limit: 3
-      });
+      }, getSecondaryFetchOptions(options));
       const similarTracks = toLastFmList(payload?.similartracks?.track);
       return similarTracks.slice(0, 3).map((trackEntry) => ({
         title: String(trackEntry?.name || "").trim(),
@@ -370,7 +383,7 @@ async function loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs = Date.no
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
-async function loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs = Date.now()) {
+async function loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs = Date.now(), options = {}) {
   const artist = getTrackArtistName(referenceTrack);
   const title = getTrackTitle(referenceTrack);
   if (!artist || !title) {
@@ -386,7 +399,7 @@ async function loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs = Date.no
         artist,
         track: title,
         autocorrect: 1
-      });
+      }, getSecondaryFetchOptions(options));
       const tags = toLastFmList(payload?.toptags?.tag);
       return tags.slice(0, 3).map((tagEntry) => ({
         name: String(tagEntry?.name || "").trim(),
@@ -397,15 +410,15 @@ async function loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs = Date.no
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
-async function buildReferenceTrackDiscovery(apiKey, recenttracksSection, nowMs = Date.now()) {
+async function buildReferenceTrackDiscovery(apiKey, recenttracksSection, nowMs = Date.now(), options = {}) {
   const referenceTrack = pickReferenceTrack(recenttracksSection);
   if (!referenceTrack) {
     return { referenceTrack: null };
   }
 
   const [similarTracks, topTags] = await Promise.all([
-    loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs),
-    loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs)
+    loadReferenceTrackSimilar(apiKey, referenceTrack, nowMs, options),
+    loadReferenceTrackTopTags(apiKey, referenceTrack, nowMs, options)
   ]);
 
   return {
@@ -463,7 +476,7 @@ export function buildEmptyLastFmPayload(nowMs = Date.now(), sourceStatus = "ERRO
   };
 }
 
-async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
+async function enrichTopArtistsWithArtistPhotos(topartistsSection, options = {}) {
   const rawArtists = topartistsSection?.artist;
   const artists = Array.isArray(rawArtists) ? rawArtists : rawArtists ? [rawArtists] : [];
   if (!artists.length) {
@@ -475,7 +488,7 @@ async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
       if (existingImageUrl && !isLastFmGenericImageUrl(existingImageUrl)) {
         return "";
       }
-      return await findArtistPhotoUrlViaDeezer(artistEntry?.name);
+      return await findArtistPhotoUrlViaDeezer(artistEntry?.name, getSecondaryFetchOptions(options));
     })
   );
 
@@ -497,17 +510,19 @@ async function enrichTopArtistsWithArtistPhotos(topartistsSection) {
   };
 }
 
-export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
+export async function fetchLastFmPayload(apiKey, nowMs = Date.now(), options = {}) {
+  throwIfAborted(options?.signal);
   const settled = await Promise.allSettled([
-    fetchLastFmJson("user.getrecenttracks", apiKey, { limit: 10, extended: 1 }),
-    fetchLastFmJson("user.gettopartists", apiKey, { period: "1month", limit: 8 }),
-    fetchLastFmJson("user.gettopalbums", apiKey, { period: "1month", limit: 8 }),
-    fetchLastFmJson("user.getinfo", apiKey),
-    fetchLastFmJson("user.getlovedtracks", apiKey, { limit: 1 })
+    fetchLastFmJson("user.getrecenttracks", apiKey, { limit: 10, extended: 1 }, { signal: options?.signal }),
+    fetchLastFmJson("user.gettopartists", apiKey, { period: "1month", limit: 8 }, { signal: options?.signal }),
+    fetchLastFmJson("user.gettopalbums", apiKey, { period: "1month", limit: 8 }, { signal: options?.signal }),
+    fetchLastFmJson("user.getinfo", apiKey, {}, { signal: options?.signal }),
+    fetchLastFmJson("user.getlovedtracks", apiKey, { limit: 1 }, { signal: options?.signal })
   ]);
 
   const fulfilledCount = settled.filter((entry) => entry.status === "fulfilled").length;
   if (!fulfilledCount) {
+    throwIfAborted(options?.signal, "Last.fm route timed out");
     throw new Error("Last.fm upstream unavailable");
   }
 
@@ -519,20 +534,20 @@ export async function fetchLastFmPayload(apiKey, nowMs = Date.now()) {
     lovedtracksResult
   ] = settled;
 
-  const topTracksSection = await loadTopTracksSection(apiKey, nowMs);
+  const topTracksSection = await loadTopTracksSection(apiKey, nowMs, options);
   const rawRecentTracksSection = pickSettledSection(recenttracksResult, "recenttracks", { track: [] });
   const lovedRecentTracksSection = recenttracksResult.status === "fulfilled"
-    ? await enrichRecentTracksWithLovedState(rawRecentTracksSection, apiKey, nowMs)
+    ? await enrichRecentTracksWithLovedState(rawRecentTracksSection, apiKey, nowMs, options)
     : rawRecentTracksSection;
   const recentTracksSection = recenttracksResult.status === "fulfilled"
     ? enrichRecentTracksWithMonthlyContext(lovedRecentTracksSection, topTracksSection)
     : lovedRecentTracksSection;
   const topArtistsSection = pickSettledSection(topartistsResult, "topartists", { artist: [] });
   const enrichedTopArtistsSection = topartistsResult.status === "fulfilled"
-    ? await enrichTopArtistsWithArtistPhotos(topArtistsSection)
+    ? await enrichTopArtistsWithArtistPhotos(topArtistsSection, options)
     : topArtistsSection;
   const discovery = recenttracksResult.status === "fulfilled"
-    ? await buildReferenceTrackDiscovery(apiKey, recentTracksSection, nowMs)
+    ? await buildReferenceTrackDiscovery(apiKey, recentTracksSection, nowMs, options)
     : { referenceTrack: null };
 
   return {

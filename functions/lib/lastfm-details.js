@@ -13,6 +13,7 @@ import {
   LASTFM_TRACK_INFO_RETAIN_TTL_SEC,
   LASTFM_SIMILAR_TRACKS_FRESH_TTL_SEC,
   LASTFM_SIMILAR_TRACKS_RETAIN_TTL_SEC,
+  LASTFM_SECONDARY_TIMEOUT_MS,
   LASTFM_TRACK_SCROBBLES_FRESH_TTL_SEC,
   LASTFM_TRACK_SCROBBLES_RETAIN_TTL_SEC,
   LASTFM_TRACK_TAGS_FRESH_TTL_SEC,
@@ -30,8 +31,16 @@ import {
   pickLastFmImageUrl
 } from "./lastfm.js";
 import { findSpotifyTrackMatch } from "./spotify.js";
+import { throwIfAborted } from "./response.js";
 
 const LASTFM_INTERNAL_CACHE_BASE = "https://internet-angel.internal/__lastfm-details";
+
+function getSecondaryFetchOptions(options = {}) {
+  return {
+    signal: options?.signal,
+    timeoutMs: options?.secondaryTimeoutMs ?? LASTFM_SECONDARY_TIMEOUT_MS
+  };
+}
 
 function buildInternalCacheRequest(parts) {
   const safeParts = (Array.isArray(parts) ? parts : [parts]).map((part) => encodeURIComponent(String(part || "").trim().toLowerCase()));
@@ -267,12 +276,15 @@ async function loadTrackInfo(apiKey, artist, track, nowMs = Date.now(), options 
       track: safeTrack,
       username: LASTFM_USER,
       autocorrect: 1
+    }, {
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs
     }))
   });
   return cachedValue && typeof cachedValue === "object" ? cachedValue : null;
 }
 
-async function loadTrackTopTags(apiKey, artist, track, nowMs = Date.now()) {
+async function loadTrackTopTags(apiKey, artist, track, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   const safeTrack = String(track || "").trim();
   if (!safeArtist || !safeTrack) {
@@ -288,7 +300,7 @@ async function loadTrackTopTags(apiKey, artist, track, nowMs = Date.now()) {
         artist: safeArtist,
         track: safeTrack,
         autocorrect: 1
-      });
+      }, getSecondaryFetchOptions(options));
       return toList(payload?.toptags?.tag).slice(0, 3).map((tagEntry) => ({
         name: String(tagEntry?.name || "").trim(),
         url: String(tagEntry?.url || "").trim()
@@ -298,7 +310,7 @@ async function loadTrackTopTags(apiKey, artist, track, nowMs = Date.now()) {
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
-async function loadTrackSimilar(apiKey, artist, track, nowMs = Date.now()) {
+async function loadTrackSimilar(apiKey, artist, track, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   const safeTrack = String(track || "").trim();
   if (!safeArtist || !safeTrack) {
@@ -315,7 +327,7 @@ async function loadTrackSimilar(apiKey, artist, track, nowMs = Date.now()) {
         track: safeTrack,
         autocorrect: 1,
         limit: 4
-      });
+      }, getSecondaryFetchOptions(options));
       return toList(payload?.similartracks?.track).map((trackEntry) => ({
         title: getTrackTitle(trackEntry),
         artist: getTrackArtistName(trackEntry),
@@ -343,7 +355,7 @@ function normalizeTrackScrobbleEntry(trackEntry) {
   };
 }
 
-async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
+async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   const safeTrack = String(track || "").trim();
   if (!safeArtist || !safeTrack) {
@@ -359,7 +371,7 @@ async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
         artist: safeArtist,
         track: safeTrack,
         limit: 30
-      });
+      }, getSecondaryFetchOptions(options));
       const section = payload?.trackscrobbles;
       const items = toList(section?.track).map(normalizeTrackScrobbleEntry);
       const total = parseInteger(section?.["@attr"]?.total);
@@ -371,7 +383,7 @@ async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
             track: safeTrack,
             limit: 1,
             page: total
-          });
+          }, getSecondaryFetchOptions(options));
           const firstEntry = toList(firstPayload?.trackscrobbles?.track)[0];
           if (firstEntry) {
             firstRecorded = normalizeTrackScrobbleEntry(firstEntry);
@@ -390,7 +402,7 @@ async function loadTrackScrobbles(apiKey, artist, track, nowMs = Date.now()) {
   return cachedValue && typeof cachedValue === "object" ? cachedValue : null;
 }
 
-async function loadArtistTopTracks(apiKey, artist, nowMs = Date.now()) {
+async function loadArtistTopTracks(apiKey, artist, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   if (!safeArtist) {
     return [];
@@ -405,7 +417,7 @@ async function loadArtistTopTracks(apiKey, artist, nowMs = Date.now()) {
         artist: safeArtist,
         autocorrect: 1,
         limit: 8
-      });
+      }, getSecondaryFetchOptions(options));
       return toList(payload?.toptracks?.track).map((trackEntry) => ({
         title: String(trackEntry?.name || "").trim(),
         artist: getTrackArtistName(trackEntry) || safeArtist,
@@ -418,7 +430,7 @@ async function loadArtistTopTracks(apiKey, artist, nowMs = Date.now()) {
   return Array.isArray(cachedValue) ? cachedValue : [];
 }
 
-async function loadArtistTopAlbums(apiKey, artist, nowMs = Date.now()) {
+async function loadArtistTopAlbums(apiKey, artist, nowMs = Date.now(), options = {}) {
   const safeArtist = String(artist || "").trim();
   if (!safeArtist) {
     return [];
@@ -433,7 +445,7 @@ async function loadArtistTopAlbums(apiKey, artist, nowMs = Date.now()) {
         artist: safeArtist,
         autocorrect: 1,
         limit: 24
-      });
+      }, getSecondaryFetchOptions(options));
       return toList(payload?.topalbums?.album).map((albumEntry) => ({
         title: getAlbumTitle(albumEntry),
         artist: getAlbumArtistName(albumEntry) || safeArtist,
@@ -462,6 +474,9 @@ async function loadArtistInfo(apiKey, artist, nowMs = Date.now(), options = {}) 
         artist: safeArtist,
         username: LASTFM_USER,
         autocorrect: 1
+      }, {
+        signal: options?.signal,
+        timeoutMs: options?.timeoutMs
       });
       return payload?.artist && typeof payload.artist === "object" ? payload.artist : null;
     }
@@ -487,6 +502,9 @@ async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now(), options 
         album: safeAlbum,
         username: LASTFM_USER,
         autocorrect: 1
+      }, {
+        signal: options?.signal,
+        timeoutMs: options?.timeoutMs
       });
       return payload?.album && typeof payload.album === "object" ? payload.album : null;
     }
@@ -494,12 +512,12 @@ async function loadAlbumInfo(apiKey, artist, album, nowMs = Date.now(), options 
   return cachedValue && typeof cachedValue === "object" ? cachedValue : null;
 }
 
-async function resolveArtistArtworkUrl(artistInfo) {
+async function resolveArtistArtworkUrl(artistInfo, options = {}) {
   const lastFmImageUrl = pickLastFmImageUrl(artistInfo?.image);
   if (lastFmImageUrl && !isLastFmGenericImageUrl(lastFmImageUrl)) {
     return lastFmImageUrl;
   }
-  const deezerImageUrl = await findArtistPhotoUrlViaDeezer(getArtistName(artistInfo)).catch(() => "");
+  const deezerImageUrl = await findArtistPhotoUrlViaDeezer(getArtistName(artistInfo), getSecondaryFetchOptions(options)).catch(() => "");
   return deezerImageUrl || lastFmImageUrl || "";
 }
 
@@ -510,7 +528,7 @@ async function buildArtistTopTracksDetailed(apiKey, artist, nowMs = Date.now(), 
   }
   const excludeTrackKey = String(options.excludeTrackKey || "").trim().toLowerCase();
   const limit = Math.max(1, Number.parseInt(String(options.limit || 5), 10) || 5);
-  const topTracks = await loadArtistTopTracks(apiKey, safeArtist, nowMs);
+  const topTracks = await loadArtistTopTracks(apiKey, safeArtist, nowMs, options);
   const filteredTracks = topTracks
     .filter((entry) => normalizeTrackKey(entry.artist, entry.title) !== excludeTrackKey)
     .slice(0, Math.max(limit, 8));
@@ -521,7 +539,8 @@ async function buildArtistTopTracksDetailed(apiKey, artist, nowMs = Date.now(), 
     const trackInfo = await loadTrackInfo(apiKey, entry.artist, entry.title, nowMs, {
       cachePrefix: "track-related-info",
       freshTtlSec: LASTFM_TRACK_INFO_FRESH_TTL_SEC,
-      retainTtlSec: LASTFM_TRACK_INFO_RETAIN_TTL_SEC
+      retainTtlSec: LASTFM_TRACK_INFO_RETAIN_TTL_SEC,
+      ...getSecondaryFetchOptions(options)
     });
     return {
       title: entry.title,
@@ -550,13 +569,13 @@ async function buildArtistTopAlbumsDetailed(apiKey, artist, nowMs = Date.now(), 
     return [];
   }
   const limit = Math.max(1, Number.parseInt(String(options.limit || 12), 10) || 12);
-  const topAlbums = await loadArtistTopAlbums(apiKey, safeArtist, nowMs);
+  const topAlbums = await loadArtistTopAlbums(apiKey, safeArtist, nowMs, options);
   const filteredAlbums = topAlbums.slice(0, limit);
   if (!filteredAlbums.length) {
     return [];
   }
   const enrichedAlbums = await Promise.all(filteredAlbums.map(async (entry) => {
-    const albumInfo = await loadAlbumInfo(apiKey, entry.artist, entry.title, nowMs);
+    const albumInfo = await loadAlbumInfo(apiKey, entry.artist, entry.title, nowMs, getSecondaryFetchOptions(options));
     const releasedAt = normalizeReleaseLabel(albumInfo?.releasedate || albumInfo?.wiki?.published);
     const topTags = normalizeTagList(albumInfo?.tags?.tag, 3);
     const trackCount = toList(albumInfo?.tracks?.track).length;
@@ -602,10 +621,11 @@ function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal
   };
 }
 
-async function buildRelatedArtistTracks(apiKey, artist, selectedTrackKey, nowMs = Date.now()) {
+async function buildRelatedArtistTracks(apiKey, artist, selectedTrackKey, nowMs = Date.now(), options = {}) {
   return await buildArtistTopTracksDetailed(apiKey, artist, nowMs, {
     excludeTrackKey: selectedTrackKey,
-    limit: 5
+    limit: 5,
+    ...options
   });
 }
 
@@ -632,7 +652,7 @@ function buildArtistSummary(artistInfo, artworkUrl, topTracks = []) {
   };
 }
 
-async function buildAlbumTrackItems(apiKey, artist, rawTracks, artistLastFmUrl, nowMs = Date.now()) {
+async function buildAlbumTrackItems(apiKey, artist, rawTracks, artistLastFmUrl, nowMs = Date.now(), options = {}) {
   const tracks = toList(rawTracks).map((trackEntry, index) => ({
     rank: parseInteger(trackEntry?.["@attr"]?.rank) || index + 1,
     title: getTrackTitle(trackEntry),
@@ -647,7 +667,8 @@ async function buildAlbumTrackItems(apiKey, artist, rawTracks, artistLastFmUrl, 
     const trackInfo = await loadTrackInfo(apiKey, entry.artist, entry.title, nowMs, {
       cachePrefix: "album-track-info",
       freshTtlSec: LASTFM_TRACK_INFO_FRESH_TTL_SEC,
-      retainTtlSec: LASTFM_TRACK_INFO_RETAIN_TTL_SEC
+      retainTtlSec: LASTFM_TRACK_INFO_RETAIN_TTL_SEC,
+      ...getSecondaryFetchOptions(options)
     });
     const durationMs = normalizeDurationMsValue(trackInfo?.duration) || entry.durationMs;
     return {
@@ -833,8 +854,10 @@ export async function fetchLastFmTrackDetails({
   artist,
   track,
   album = "",
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  signal
 }) {
+  throwIfAborted(signal);
   const rawQuery = {
     artist: String(artist || "").trim(),
     track: String(track || "").trim(),
@@ -845,7 +868,8 @@ export async function fetchLastFmTrackDetails({
     cachePrefix: "track-core",
     freshTtlSec: LASTFM_TRACK_DETAILS_CORE_FRESH_TTL_SEC,
     retainTtlSec: LASTFM_TRACK_DETAILS_CORE_RETAIN_TTL_SEC,
-    throwOnUpstreamError: true
+    throwOnUpstreamError: true,
+    signal
   });
   const baseTrackInfo = selectedTrackInfo || buildFallbackTrackInfo(rawQuery);
   if (!baseTrackInfo) {
@@ -857,15 +881,16 @@ export async function fetchLastFmTrackDetails({
   const canonicalAlbum = getTrackAlbumName(baseTrackInfo) || rawQuery.album;
 
   const [topTags, similarTracks, scrobbles, spotifyMatch] = await Promise.all([
-    loadTrackTopTags(apiKey, canonicalArtist, canonicalTrack, nowMs),
-    loadTrackSimilar(apiKey, canonicalArtist, canonicalTrack, nowMs),
-    loadTrackScrobbles(apiKey, canonicalArtist, canonicalTrack, nowMs),
+    loadTrackTopTags(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
+    loadTrackSimilar(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
+    loadTrackScrobbles(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
     findSpotifyTrackMatch({
       artist: canonicalArtist,
       track: canonicalTrack,
       album: canonicalAlbum,
       env,
-      nowMs
+      nowMs,
+      signal
     }).catch(() => ({
       matchStatus: "unavailable",
       embedUrl: "",
@@ -883,7 +908,7 @@ export async function fetchLastFmTrackDetails({
   const scrobbleTotal = parseInteger(scrobbles?.total);
   const fallbackArtworkUrl = String(scrobbleItems[0]?.artworkUrl || "").trim();
   const trackSummary = buildTrackSummary(baseTrackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks);
-  const artistTopTracks = await buildRelatedArtistTracks(apiKey, canonicalArtist, normalizeTrackKey(canonicalArtist, canonicalTrack), nowMs);
+  const artistTopTracks = await buildRelatedArtistTracks(apiKey, canonicalArtist, normalizeTrackKey(canonicalArtist, canonicalTrack), nowMs, { signal });
   const hasTrackSignals = Boolean(
     artistTopTracks.length ||
     topTags.length ||
@@ -936,13 +961,16 @@ export async function fetchLastFmTrackDetails({
 export async function fetchLastFmArtistDetails({
   apiKey,
   artist,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  signal
 }) {
+  throwIfAborted(signal);
   const rawQuery = {
     artist: String(artist || "").trim()
   };
   const artistInfo = await loadArtistInfo(apiKey, rawQuery.artist, nowMs, {
-    throwOnUpstreamError: true
+    throwOnUpstreamError: true,
+    signal
   });
   const baseArtistInfo = artistInfo || buildFallbackArtistInfo(rawQuery);
   if (!baseArtistInfo) {
@@ -950,9 +978,9 @@ export async function fetchLastFmArtistDetails({
   }
   const canonicalArtist = getArtistName(baseArtistInfo) || rawQuery.artist;
   const [artworkUrl, topTracks, topAlbums] = await Promise.all([
-    resolveArtistArtworkUrl(baseArtistInfo),
-    buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 5 }),
-    buildArtistTopAlbumsDetailed(apiKey, canonicalArtist, nowMs, { limit: 12 })
+    resolveArtistArtworkUrl(baseArtistInfo, { signal }),
+    buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 5, signal }),
+    buildArtistTopAlbumsDetailed(apiKey, canonicalArtist, nowMs, { limit: 12, signal })
   ]);
   const artistSummary = buildArtistSummary(baseArtistInfo, artworkUrl, topTracks);
   const hasArtistSignals = Boolean(
@@ -990,14 +1018,17 @@ export async function fetchLastFmAlbumDetails({
   env,
   artist,
   album,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  signal
 }) {
+  throwIfAborted(signal);
   const rawQuery = {
     artist: String(artist || "").trim(),
     album: String(album || "").trim()
   };
   const albumInfo = await loadAlbumInfo(apiKey, rawQuery.artist, rawQuery.album, nowMs, {
-    throwOnUpstreamError: true
+    throwOnUpstreamError: true,
+    signal
   });
   const baseAlbumInfo = albumInfo || buildFallbackAlbumInfo(rawQuery);
   if (!baseAlbumInfo) {
@@ -1005,14 +1036,15 @@ export async function fetchLastFmAlbumDetails({
   }
   const canonicalArtist = getAlbumArtistName(baseAlbumInfo) || rawQuery.artist;
   const canonicalAlbum = getAlbumTitle(baseAlbumInfo) || rawQuery.album;
-  const artistInfo = await loadArtistInfo(apiKey, canonicalArtist, nowMs);
+  const artistInfo = await loadArtistInfo(apiKey, canonicalArtist, nowMs, { signal });
   const summaryArtistInfo = artistInfo || buildFallbackArtistInfo({ artist: canonicalArtist });
   const trackItems = await buildAlbumTrackItems(
     apiKey,
     canonicalArtist,
     baseAlbumInfo?.tracks?.track,
     getArtistUrlFromEntry(summaryArtistInfo),
-    nowMs
+    nowMs,
+    { signal }
   );
   const spotifySeedTrack = pickAlbumSpotifySeedTrack(trackItems);
   const spotifyMatch = spotifySeedTrack
@@ -1021,11 +1053,12 @@ export async function fetchLastFmAlbumDetails({
       track: spotifySeedTrack.title,
       album: canonicalAlbum,
       env,
-      nowMs
+      nowMs,
+      signal
     }).catch(() => buildEmptySpotifyTrackMatch())
     : buildEmptySpotifyTrackMatch();
   const albumTrackKeys = new Set(trackItems.map((entry) => normalizeTrackKey(entry.artist, entry.title)));
-  const relatedTracks = (await buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 8 }))
+  const relatedTracks = (await buildArtistTopTracksDetailed(apiKey, canonicalArtist, nowMs, { limit: 8, signal }))
     .filter((entry) => !albumTrackKeys.has(normalizeTrackKey(entry.artist, entry.title)))
     .slice(0, 4);
   const albumSummary = buildAlbumSummary(baseAlbumInfo, summaryArtistInfo, trackItems);

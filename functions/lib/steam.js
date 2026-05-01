@@ -40,9 +40,10 @@ function buildJinaMirrorUrl(targetUrl) {
   return `https://r.jina.ai/http://${normalized.replace(/^https?:\/\//i, "")}`;
 }
 
-async function fetchTextWithTimeout(url, timeoutMs = STEAM_TIMEOUT_MS) {
+async function fetchTextWithTimeout(url, timeoutMs = STEAM_TIMEOUT_MS, options = {}) {
   const response = await fetchWithTimeout(url, {
     method: "GET",
+    signal: options?.signal,
     headers: {
       Accept: "text/plain, text/markdown;q=0.9, */*;q=0.8"
     }
@@ -53,12 +54,12 @@ async function fetchTextWithTimeout(url, timeoutMs = STEAM_TIMEOUT_MS) {
   return await response.text();
 }
 
-async function fetchJinaMirrorMarkdown(targetUrl) {
+async function fetchJinaMirrorMarkdown(targetUrl, options = {}) {
   const mirrorUrl = buildJinaMirrorUrl(targetUrl);
   if (!mirrorUrl) {
     return "";
   }
-  return await fetchTextWithTimeout(mirrorUrl, STEAM_TIMEOUT_MS);
+  return await fetchTextWithTimeout(mirrorUrl, options?.timeoutMs ?? STEAM_TIMEOUT_MS, options);
 }
 
 function parseMarkdownImageUrl(line) {
@@ -218,7 +219,7 @@ function parseSteamMirrorAppTitle(markdown) {
   return titleMatch?.[1] ? titleMatch[1].trim() : "";
 }
 
-async function fetchSteamAppTitleFromMirror(appId) {
+async function fetchSteamAppTitleFromMirror(appId, options = {}) {
   const safeAppId = String(appId || "").trim();
   if (!safeAppId) {
     return "";
@@ -228,7 +229,7 @@ async function fetchSteamAppTitleFromMirror(appId) {
   if (cached?.title && nowMs - cached.fetchedAtMs <= STEAM_APP_TITLE_CACHE_TTL_MS) {
     return cached.title;
   }
-  const markdown = await fetchJinaMirrorMarkdown(`https://steamcommunity.com/app/${safeAppId}`);
+  const markdown = await fetchJinaMirrorMarkdown(`https://steamcommunity.com/app/${safeAppId}`, options);
   const title = parseSteamMirrorAppTitle(markdown);
   if (title) {
     steamAppTitleCache.set(safeAppId, {
@@ -239,7 +240,7 @@ async function fetchSteamAppTitleFromMirror(appId) {
   return title;
 }
 
-async function hydrateSteamMirrorRecentGameTitles(items) {
+async function hydrateSteamMirrorRecentGameTitles(items, options = {}) {
   const sourceItems = Array.isArray(items) ? items : [];
   const unresolvedAppIds = [...new Set(sourceItems.map((item) => String(item?.appId || "").trim()).filter((appId) => {
     if (!appId) {
@@ -253,7 +254,7 @@ async function hydrateSteamMirrorRecentGameTitles(items) {
   }
 
   const resolvedEntries = await Promise.allSettled(
-    unresolvedAppIds.map(async (appId) => [appId, await fetchSteamAppTitleFromMirror(appId)])
+    unresolvedAppIds.map(async (appId) => [appId, await fetchSteamAppTitleFromMirror(appId, options)])
   );
   const titleByAppId = new Map(
     resolvedEntries
@@ -519,17 +520,17 @@ export function buildSteamRecentActivityPayloadFromMarkdown(markdown, profileUrl
   };
 }
 
-export async function fetchSteamRecentActivityPayload(nowMs = Date.now()) {
+export async function fetchSteamRecentActivityPayload(nowMs = Date.now(), options = {}) {
   const profileUrl = normalizeSteamProfileUrl(STEAM_PROFILE_URL);
   if (!profileUrl) {
     throw new Error("Invalid Steam profile URL");
   }
-  const markdown = await fetchJinaMirrorMarkdown(profileUrl);
+  const markdown = await fetchJinaMirrorMarkdown(profileUrl, options);
   const payload = buildSteamRecentActivityPayloadFromMarkdown(markdown, profileUrl, nowMs);
   if (!payload) {
     throw new Error("Steam recent-activity parse failed");
   }
-  const hydratedItems = await hydrateSteamMirrorRecentGameTitles(payload.items);
+  const hydratedItems = await hydrateSteamMirrorRecentGameTitles(payload.items, options);
   return {
     ...payload,
     items: hydratedItems,

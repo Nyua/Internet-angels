@@ -36,16 +36,81 @@ export function browserCacheControl(maxAgeSec) {
   return `public, max-age=${safeMaxAge}, must-revalidate`;
 }
 
+export function createTimeoutError(message = "Request timed out") {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+export function throwIfAborted(signal, message = "Request aborted") {
+  if (!signal?.aborted) {
+    return;
+  }
+  const reason = signal.reason;
+  if (reason instanceof Error) {
+    throw reason;
+  }
+  throw createTimeoutError(reason ? String(reason) : message);
+}
+
+export function resolveTimeoutMs(value, fallback, { min = 1, max = 60_000 } = {}) {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  const safeMax = Number.isFinite(Number(max)) ? Number(max) : 60_000;
+  const safeFallback = Math.max(min, Math.min(safeMax, Number.parseInt(String(fallback ?? min), 10) || min));
+  if (!Number.isFinite(parsed)) {
+    return safeFallback;
+  }
+  return Math.max(min, Math.min(safeMax, parsed));
+}
+
+export async function runWithTimeout(task, timeoutMs = 10_000, message = "Request timed out") {
+  const controller = new AbortController();
+  const safeTimeoutMs = Math.max(1, Number(timeoutMs) || 1);
+  let timeoutId = 0;
+  const taskPromise = Promise.resolve().then(() => task(controller.signal));
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = createTimeoutError(message);
+      controller.abort(error);
+      reject(error);
+    }, safeTimeoutMs);
+  });
+  try {
+    return await Promise.race([taskPromise, timeoutPromise]);
+  } catch (error) {
+    if (controller.signal.aborted && error?.name !== "AbortError") {
+      throwIfAborted(controller.signal, message);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    taskPromise.catch(() => {});
+  }
+}
+
 export async function fetchWithTimeout(resource, init = {}, timeoutMs = 10_000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+  const upstreamSignal = init?.signal;
+  const abortFromUpstream = () => {
+    const reason = upstreamSignal?.reason;
+    controller.abort(reason instanceof Error ? reason : createTimeoutError(reason ? String(reason) : "Request aborted"));
+  };
+  if (upstreamSignal?.aborted) {
+    abortFromUpstream();
+  } else {
+    upstreamSignal?.addEventListener?.("abort", abortFromUpstream, { once: true });
+  }
+  const timeoutId = setTimeout(() => {
+    controller.abort(createTimeoutError("Request timed out"));
+  }, Math.max(1, Number(timeoutMs) || 1));
+  const { signal: _signal, ...fetchInit } = init || {};
   try {
     return await fetch(resource, {
-      ...init,
+      ...fetchInit,
       signal: controller.signal
     });
   } finally {
     clearTimeout(timeoutId);
+    upstreamSignal?.removeEventListener?.("abort", abortFromUpstream);
   }
 }
-

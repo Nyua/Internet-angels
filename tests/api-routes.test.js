@@ -131,6 +131,41 @@ test("lastfm route returns retained stale payload when upstream fails", async ()
   }
 });
 
+test("lastfm route aborts hung upstreams before the browser request timeout", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm");
+  const startedAt = Date.now();
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (_resource, init = {}) => {
+      return await new Promise((resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          reject(init.signal.reason || new Error("aborted"));
+        }, { once: true });
+      });
+    };
+
+    const response = await onLastFmRequest({
+      request,
+      env: {
+        LASTFM_API_KEY: "test-key",
+        LASTFM_ROUTE_TIMEOUT_MS: "25"
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 504);
+    assert.equal(payload.error, "Last.fm upstream timed out");
+    assert.ok(Date.now() - startedAt < 1_000);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("lastfm route prefers userloved from recent tracks and enriches discovery data", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
@@ -834,7 +869,7 @@ test("lastfm track details route falls back to partial query data when core trac
     assert.equal(payload.track.topTags.length, 1);
     assert.equal(payload.artistTopTracks.artist, "beabadoobee");
     assert.equal(payload.artistTopTracks.items.length, 1);
-    assert.equal(payload.spotify.matchStatus, "not_configured");
+    assert.equal(payload.spotify.matchStatus, "unavailable");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
@@ -915,7 +950,7 @@ test("lastfm track details route returns retained stale payload when upstream fa
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
   const cachedPayload = {
     sourceStatus: "OK",
     stale: false,
@@ -944,6 +979,59 @@ test("lastfm track details route returns retained stale payload when upstream fa
     const response = await onLastFmTrackDetailsRequest({
       request,
       env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, true);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.track.title, "One Time");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm track details route returns retained stale payload when upstream hangs", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
+  const cachedPayload = {
+    sourceStatus: "OK",
+    stale: false,
+    fetchedAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    query: { artist: "beabadoobee", track: "One Time", album: "" },
+    track: {
+      title: "One Time",
+      artist: "beabadoobee",
+      album: "This Is How Tomorrow Moves",
+      userPlaycount: 3
+    },
+    spotify: { matchStatus: "matched" },
+    scrobbles: { total: 3, items: [] },
+    artistTopTracks: { artist: "beabadoobee", items: [] }
+  };
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (_resource, init = {}) => {
+      return await new Promise((resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          reject(init.signal.reason || new Error("aborted"));
+        }, { once: true });
+      });
+    };
+
+    await primeCache(cache, cacheRequest, cachedPayload, 24 * 60 * 60);
+
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: {
+        LASTFM_API_KEY: "test-key",
+        LASTFM_DETAILS_ROUTE_TIMEOUT_MS: "25"
+      }
     });
     const payload = await response.json();
 

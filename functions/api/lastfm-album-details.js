@@ -1,4 +1,5 @@
 import {
+  LASTFM_DETAILS_ROUTE_TIMEOUT_MS,
   LASTFM_ALBUM_DETAILS_FRESH_TTL_SEC,
   LASTFM_ALBUM_DETAILS_RETAIN_TTL_SEC
 } from "../lib/config.js";
@@ -22,6 +23,7 @@ function validateQuery(query) {
 }
 
 export const onRequest = createLastFmDetailsRouteHandler({
+  routeTimeoutMs: LASTFM_DETAILS_ROUTE_TIMEOUT_MS,
   freshTtlSec: LASTFM_ALBUM_DETAILS_FRESH_TTL_SEC,
   retainTtlSec: LASTFM_ALBUM_DETAILS_RETAIN_TTL_SEC,
   readQuery(requestUrl) {
@@ -35,13 +37,14 @@ export const onRequest = createLastFmDetailsRouteHandler({
     return buildLastFmDetailsCacheRequest(request, query, ["artist", "album"]);
   },
   buildEmptyPayload: buildEmptyLastFmAlbumDetailsPayload,
-  fetchPayload({ apiKey, env, query, nowMs }) {
+  fetchPayload({ apiKey, env, query, nowMs, signal }) {
     return fetchLastFmAlbumDetails({
       apiKey,
       env,
       artist: query.artist,
       album: query.album,
-      nowMs
+      nowMs,
+      signal
     });
   },
   timeoutError: "Last.fm album details timed out",

@@ -1,13 +1,21 @@
 import {
   DISCORD_FRESH_TTL_SEC,
-  DISCORD_RETAIN_TTL_SEC
+  DISCORD_RETAIN_TTL_SEC,
+  DISCORD_ROUTE_TIMEOUT_MS
 } from "../lib/config.js";
 import { buildCacheRequest, readCachedPayload, toStalePayload, writeCachedPayload } from "../lib/cache.js";
 import { buildDiscordProxyErrorPayload, fetchDiscordPayload } from "../lib/discord.js";
-import { browserCacheControl, isSameOriginRequest, jsonResponse, methodNotAllowedResponse } from "../lib/response.js";
+import {
+  browserCacheControl,
+  isSameOriginRequest,
+  jsonResponse,
+  methodNotAllowedResponse,
+  resolveTimeoutMs,
+  runWithTimeout
+} from "../lib/response.js";
 
 export async function onRequest(context) {
-  const { request } = context;
+  const { request, env } = context;
   if (request.method !== "GET") {
     return methodNotAllowedResponse();
   }
@@ -33,7 +41,15 @@ export async function onRequest(context) {
   }
 
   try {
-    const payload = await fetchDiscordPayload(nowMs);
+    const routeTimeoutMs = resolveTimeoutMs(env?.DISCORD_ROUTE_TIMEOUT_MS, DISCORD_ROUTE_TIMEOUT_MS, {
+      min: 500,
+      max: DISCORD_ROUTE_TIMEOUT_MS
+    });
+    const payload = await runWithTimeout(
+      (signal) => fetchDiscordPayload(nowMs, { signal }),
+      routeTimeoutMs,
+      "Discord route timed out"
+    );
     await writeCachedPayload({
       cache: caches.default,
       request: cacheRequest,

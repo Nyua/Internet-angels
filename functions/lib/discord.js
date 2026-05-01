@@ -202,7 +202,7 @@ export function normalizeDiscordPayload(rawPayload, nowMs = Date.now()) {
   };
 }
 
-export async function fetchDiscordPayload(nowMs = Date.now()) {
+export async function fetchDiscordPayload(nowMs = Date.now(), options = {}) {
   const endpoint = buildDiscordLanyardUrl();
   if (!endpoint) {
     return buildDiscordProxyErrorPayload(nowMs);
@@ -210,10 +210,11 @@ export async function fetchDiscordPayload(nowMs = Date.now()) {
 
   const response = await fetchWithTimeout(endpoint, {
     method: "GET",
+    signal: options?.signal,
     headers: {
       Accept: "application/json"
     }
-  }, DISCORD_TIMEOUT_MS);
+  }, options?.timeoutMs ?? DISCORD_TIMEOUT_MS);
 
   if (!response.ok) {
     throw new Error(`Discord upstream failed (${response.status})`);

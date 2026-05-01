@@ -1,10 +1,18 @@
 import {
   LASTFM_FRESH_TTL_SEC,
-  LASTFM_RETAIN_TTL_SEC
+  LASTFM_RETAIN_TTL_SEC,
+  LASTFM_ROUTE_TIMEOUT_MS
 } from "../lib/config.js";
 import { buildCacheRequest, readCachedPayload, toStalePayload, writeCachedPayload } from "../lib/cache.js";
 import { buildEmptyLastFmPayload, fetchLastFmPayload } from "../lib/lastfm.js";
-import { browserCacheControl, isSameOriginRequest, jsonResponse, methodNotAllowedResponse } from "../lib/response.js";
+import {
+  browserCacheControl,
+  isSameOriginRequest,
+  jsonResponse,
+  methodNotAllowedResponse,
+  resolveTimeoutMs,
+  runWithTimeout
+} from "../lib/response.js";
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -41,7 +49,15 @@ export async function onRequest(context) {
   }
 
   try {
-    const payload = await fetchLastFmPayload(apiKey, nowMs);
+    const routeTimeoutMs = resolveTimeoutMs(env.LASTFM_ROUTE_TIMEOUT_MS, LASTFM_ROUTE_TIMEOUT_MS, {
+      min: 500,
+      max: LASTFM_ROUTE_TIMEOUT_MS
+    });
+    const payload = await runWithTimeout(
+      (signal) => fetchLastFmPayload(apiKey, nowMs, { signal }),
+      routeTimeoutMs,
+      "Last.fm route timed out"
+    );
     await writeCachedPayload({
       cache: caches.default,
       request: cacheRequest,
