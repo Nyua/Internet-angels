@@ -9,10 +9,9 @@ export default defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: "npm run build && wrangler pages dev dist --port 8788",
+    command: "npm run build:e2e && wrangler pages dev dist --port 8788",
     url: "http://127.0.0.1:8788",
     reuseExistingServer: true,
     timeout: 120_000
   }
 });
-

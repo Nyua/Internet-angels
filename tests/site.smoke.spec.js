@@ -425,6 +425,7 @@ async function readFirstSelectableShuffleTrack(page) {
 
 test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
+  await installShuffleAudioMock(page);
 });
 
 test("root loads the Wings intro page centered on black with no intro ASCII overlay", async ({ page }) => {

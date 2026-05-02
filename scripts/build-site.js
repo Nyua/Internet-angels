@@ -14,7 +14,8 @@ const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
 const josieHtmlPath = path.join(distDir, "josie.html");
 const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
-const maxPagesAssetBytes = 100 * 1024 * 1024;
+const maxPagesAssetBytes = 25 * 1024 * 1024;
+const allowOversizedAssets = process.argv.includes("--allow-oversized-assets");
 const rawSourceVideoPattern = /\(\s*1080p\s*,\s*h264\s*\)/i;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
@@ -95,6 +96,9 @@ function shouldExcludeDeployPath(relativePath, sourcePath) {
   }
   if (rawSourceVideoPattern.test(path.basename(relativePath))) {
     return true;
+  }
+  if (allowOversizedAssets) {
+    return false;
   }
   try {
     return fs.statSync(sourcePath).size > maxPagesAssetBytes;
@@ -185,12 +189,12 @@ if (fs.existsSync(josieHtmlPath)) {
 }
 
 const oversizedFiles = collectOversizedFiles(distDir);
-if (oversizedFiles.length) {
+if (oversizedFiles.length && !allowOversizedAssets) {
   const details = oversizedFiles
     .map((file) => `- ${file.path} (${file.size} bytes)`)
     .join("\n");
   throw new Error(
-    `Static assets must stay below ${maxPagesAssetBytes} bytes (100 MiB).\n${details}`
+    `Static assets must stay below ${maxPagesAssetBytes} bytes (25 MiB). Upload oversized Shuffle videos to R2 instead of Pages.\n${details}`
   );
 }
 
