@@ -11,3 +11,6 @@ static-local.log
 tmp-*.cjs
 playwright-report/
 test-results/
+
+# Raw downloaded shuffle videos are kept local; optimized copies are committed.
+site/Shuffle/*(1080p, h264).mp4

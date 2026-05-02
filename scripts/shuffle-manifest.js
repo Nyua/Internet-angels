@@ -10,6 +10,13 @@ const SHUFFLE_AUDIO_EXTENSIONS = new Set([
   ".opus",
   ".wav"
 ]);
+const SHUFFLE_VIDEO_EXTENSIONS = new Set([
+  ".m4v",
+  ".mov",
+  ".mp4",
+  ".webm"
+]);
+const MAX_DEPLOY_ASSET_BYTES = 25 * 1024 * 1024;
 
 function safeDecodeURIComponent(value) {
   try {
@@ -54,6 +61,14 @@ function normalizeShufflePath(value) {
 
 function isSupportedShuffleAudioFile(fileName) {
   return SHUFFLE_AUDIO_EXTENSIONS.has(path.extname(String(fileName || "")).toLowerCase());
+}
+
+function isSupportedShuffleVideoFile(fileName) {
+  return SHUFFLE_VIDEO_EXTENSIONS.has(path.extname(String(fileName || "")).toLowerCase());
+}
+
+function isSupportedShuffleMediaFile(fileName) {
+  return isSupportedShuffleAudioFile(fileName) || isSupportedShuffleVideoFile(fileName);
 }
 
 function parseShuffleDisplayCopy(fileName) {
@@ -129,6 +144,8 @@ function normalizeManualTrackEntry(entry, normalizedPath, availableFilesByPath) 
     id,
     groupId,
     path: normalizedPath,
+    mediaType: availableFile.mediaType,
+    videoPath: String(entry?.videoPath || "").trim() || (availableFile.mediaType === "video" ? normalizedPath : ""),
     title: String(entry?.title || "").trim() || fallbackCopy.title,
     displayTitle: String(entry?.displayTitle || "").trim() || String(entry?.title || "").trim() || fallbackCopy.title,
     artist: String(entry?.artist || "").trim() || fallbackCopy.artist,
@@ -157,6 +174,8 @@ function buildAutoTrackEntry(fileRecord, usedIds) {
   return {
     id,
     groupId: id,
+    mediaType: fileRecord.mediaType,
+    videoPath: fileRecord.mediaType === "video" ? fileRecord.path : "",
     title: displayCopy.title,
     displayTitle: displayCopy.title,
     artist: displayCopy.artist,
@@ -177,16 +196,18 @@ export function buildShuffleManifest({
 }) {
   const availableFiles = fs.existsSync(shuffleDir)
     ? fs.readdirSync(shuffleDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && isSupportedShuffleAudioFile(entry.name))
+      .filter((entry) => entry.isFile() && isSupportedShuffleMediaFile(entry.name))
       .map((entry) => {
         const filePath = path.join(shuffleDir, entry.name);
         return {
           fileName: entry.name,
           filePath,
           path: createShufflePath(entry.name),
-          stats: fs.statSync(filePath)
+          stats: fs.statSync(filePath),
+          mediaType: isSupportedShuffleVideoFile(entry.name) ? "video" : "audio"
         };
       })
+      .filter((fileRecord) => fileRecord.stats.size <= MAX_DEPLOY_ASSET_BYTES)
     : [];
   const availableFilesByPath = new Map(availableFiles.map((fileRecord) => [fileRecord.path, fileRecord]));
   const manualGroups = new Map();

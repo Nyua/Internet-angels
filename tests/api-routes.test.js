@@ -992,6 +992,62 @@ test("lastfm track details route returns retained stale payload when upstream fa
   }
 });
 
+test("lastfm track details route serves retained details immediately while refreshing in the background", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
+  const waitUntilPromises = [];
+  let fetchCalls = 0;
+  const cachedPayload = {
+    sourceStatus: "OK",
+    stale: false,
+    fetchedAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    query: { artist: "beabadoobee", track: "One Time", album: "" },
+    track: {
+      title: "One Time",
+      artist: "beabadoobee",
+      album: "This Is How Tomorrow Moves",
+      userPlaycount: 3
+    },
+    spotify: { matchStatus: "matched" },
+    scrobbles: { total: 3, items: [] },
+    artistTopTracks: { artist: "beabadoobee", items: [] }
+  };
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      throw new Error("background refresh failed");
+    };
+
+    await primeCache(cache, cacheRequest, cachedPayload, 24 * 60 * 60);
+
+    const startedAt = Date.now();
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" },
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, true);
+    assert.equal(payload.track.title, "One Time");
+    assert.ok(Date.now() - startedAt < 200);
+    assert.equal(waitUntilPromises.length, 1);
+    await Promise.all(waitUntilPromises);
+    assert.ok(fetchCalls >= 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("lastfm track details route returns retained stale payload when upstream hangs", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;

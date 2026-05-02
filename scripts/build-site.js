@@ -18,6 +18,12 @@ const maxPagesAssetBytes = 25 * 1024 * 1024;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
 ]);
+const deployVideoExtensions = /* @__PURE__ */ new Set([
+  ".m4v",
+  ".mov",
+  ".mp4",
+  ".webm"
+]);
 const avatarExtensions = /* @__PURE__ */ new Set([
   ".avif",
   ".gif",
@@ -76,6 +82,21 @@ function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = [])
     }
   }
   return oversized;
+}
+
+function shouldExcludeDeployPath(relativePath, sourcePath) {
+  if (excludedDeployPaths.has(relativePath)) {
+    return true;
+  }
+  const extension = path.extname(relativePath).toLowerCase();
+  if (!deployVideoExtensions.has(extension)) {
+    return false;
+  }
+  try {
+    return fs.statSync(sourcePath).size > maxPagesAssetBytes;
+  } catch {
+    return false;
+  }
 }
 
 function buildAvatarManifest() {
@@ -140,7 +161,7 @@ fs.cpSync(siteDir, distDir, {
     if (!relativePath || relativePath === ".") {
       return true;
     }
-    return !excludedDeployPaths.has(relativePath);
+    return !shouldExcludeDeployPath(relativePath, sourcePath);
   }
 });
 

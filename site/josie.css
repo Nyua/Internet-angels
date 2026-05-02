@@ -214,6 +214,7 @@ body.has-custom-cursor * {
 .site-pointer-pool,
 .site-pointer-hand,
 .site-pointer-cross,
+.site-pointer-expand,
 .site-pointer-arrow {
   position: absolute;
   inset: 0;
@@ -302,6 +303,34 @@ body.has-custom-cursor * {
   stroke-linejoin: miter;
   vector-effect: non-scaling-stroke;
   shape-rendering: geometricPrecision;
+}
+
+.site-pointer-expand {
+  inset: -8px;
+  opacity: 0;
+  display: grid;
+  place-items: center;
+  transform: scale(0.56);
+  transition:
+    opacity 160ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease;
+}
+
+.site-pointer-expand svg {
+  width: 30px;
+  height: 30px;
+  display: block;
+  overflow: visible;
+}
+
+.site-pointer-expand-shape {
+  fill: none;
+  stroke: rgb(var(--site-cursor-cross-rgb));
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .site-pointer-hand svg {
@@ -460,6 +489,11 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
   transform: scale(0.24);
 }
 
+.site-pointer.is-scroll .site-pointer-expand {
+  opacity: 0;
+  transform: scale(0.42);
+}
+
 .site-pointer.is-scroll .site-pointer-arrow {
   opacity: 1;
   transform: scale(1.12);
@@ -482,6 +516,11 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
   --site-cursor-core-radius: 999px;
   --site-cursor-ring-radius: 999px;
   --site-cursor-pool-radius: 999px;
+}
+
+.site-pointer[data-cursor-morph="expand"] {
+  --site-cursor-scale: 1.44;
+  --site-cursor-rotate: 0deg;
 }
 
 .site-pointer[data-cursor-morph="selection"] {
@@ -629,6 +668,25 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 }
 
 .site-pointer.is-interactive.is-pressed[data-cursor-morph="x"] .site-pointer-cross {
+  transform: scale(0.9);
+}
+
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-core,
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-ring,
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-pool,
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-hand,
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-cross,
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-arrow {
+  opacity: 0;
+}
+
+.site-pointer.is-interactive[data-cursor-morph="expand"] .site-pointer-expand {
+  opacity: 1;
+  transform: scale(1);
+  filter: drop-shadow(0 0 6px rgba(var(--site-cursor-cross-shadow-rgb), 0.2));
+}
+
+.site-pointer.is-interactive.is-pressed[data-cursor-morph="expand"] .site-pointer-expand {
   transform: scale(0.9);
 }
 
@@ -802,6 +860,80 @@ body.site-load-playing .os-ambient-backdrop {
   opacity: 0;
 }
 
+.shuffle-video-background {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: #000;
+  transition:
+    opacity 260ms ease,
+    visibility 0ms linear 260ms;
+}
+
+.shuffle-video-background-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  filter: brightness(0.62) contrast(1.08) saturate(1.08);
+  transform: translate3d(0, 0, 0);
+}
+
+.shuffle-video-background::after {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  pointer-events: none;
+  opacity: 0.34;
+  mix-blend-mode: overlay;
+  background:
+    repeating-radial-gradient(circle at 17% 23%, rgba(255, 255, 255, 0.16) 0 1px, rgba(255, 255, 255, 0) 1px 3px),
+    repeating-linear-gradient(94deg, rgba(255, 255, 255, 0.06) 0 1px, rgba(0, 0, 0, 0.08) 1px 2px, rgba(255, 255, 255, 0) 2px 5px);
+  animation: shuffleVideoGrain 620ms steps(5) infinite;
+}
+
+body.shuffle-video-background-active .shuffle-video-background {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0ms;
+}
+
+body.shuffle-video-background-active .os-ambient-backdrop,
+body.shuffle-video-background-active #os-ambient-overlay {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@keyframes shuffleVideoGrain {
+  0% {
+    transform: translate3d(-2%, 1%, 0);
+  }
+
+  20% {
+    transform: translate3d(1%, -3%, 0);
+  }
+
+  40% {
+    transform: translate3d(3%, 2%, 0);
+  }
+
+  60% {
+    transform: translate3d(-1%, -1%, 0);
+  }
+
+  80% {
+    transform: translate3d(2%, 3%, 0);
+  }
+
+  100% {
+    transform: translate3d(-3%, -2%, 0);
+  }
+}
+
 .os-stage-bg-video,
 .os-stage-bg-image {
   position: fixed;
@@ -857,7 +989,7 @@ body.site-load-playing .os-ambient-backdrop {
   width: 100vw;
   height: clamp(224px, 20vw, 284px);
   min-height: clamp(224px, 20vw, 284px);
-  transform: none;
+  transform: translate3d(0, var(--site-scroll-drag-y-soft, 0px), 0);
   overflow: visible;
   pointer-events: auto;
   cursor: zoom-in;
@@ -901,6 +1033,14 @@ body.site-load-playing .os-ambient-backdrop {
 .os-shuffle-visualizer-angel-link:hover,
 .os-shuffle-visualizer-angel-link:focus-visible {
   filter: drop-shadow(0 0 26px rgba(255, 255, 255, 0.5));
+}
+
+.os-shuffle-visualizer-angel-link[data-angel-link-expanded="true"] {
+  width: min(780px, calc(100vw - 36px));
+  white-space: normal;
+  text-align: center;
+  font-size: clamp(18px, 3.1vw, 34px);
+  line-height: 1.16;
 }
 
 .os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] {
@@ -1006,6 +1146,29 @@ body[data-visualizer-focus-mode="active"] .site-audio-control {
   transition-delay: 130ms;
 }
 
+.os-shuffle-visualizer-copy {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.steam-sidebar-currently-playing-copy {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0, 0, 0);
+  will-change: opacity, transform, filter;
+  transition:
+    opacity 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.steam-sidebar-currently-playing-copy[data-shuffle-copy-state="hidden"] {
+  opacity: 0.55;
+  filter: blur(2px);
+  transform: translate3d(-12px, 0, 0);
+}
+
 .social-hub-scale-frame {
   position: relative;
   z-index: 3;
@@ -1014,7 +1177,7 @@ body[data-visualizer-focus-mode="active"] .site-audio-control {
   overflow: visible;
   opacity: 1;
   filter: blur(0);
-  transform: translate3d(0, 0, 0) scale(1);
+  transform: translate3d(0, var(--site-scroll-drag-y, 0px), 0) scale(1);
   transition:
     opacity 420ms ease,
     transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1762,10 +1925,12 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-window {
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 16px);
+  scrollbar-width: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   background: #000000;
@@ -2225,6 +2390,12 @@ body.lastfm-track-panel-open {
   line-height: 0.96;
   letter-spacing: -0.03em;
   color: var(--text-primary);
+}
+
+.lastfm-track-panel-window::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .lastfm-track-panel-title-text {
@@ -2717,6 +2888,28 @@ body.lastfm-track-panel-open {
   overscroll-behavior: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+:is(
+  .os-stage,
+  .lastfm-track-panel-window,
+  .lastfm-track-panel-history-scroll,
+  .lastfm-track-panel-history--scrollable,
+  .lastfm-track-panel-tracklist,
+  .lastfm-track-panel-related-list,
+  .lastfm-mobile-dropdown-panel,
+  .external-link-confirm-window,
+  .steam-showcase-content,
+  .lastfm-recent-list
+) {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.is-drag-scrolling {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .lastfm-track-panel-spotify-embed-host::-webkit-scrollbar {
@@ -3160,7 +3353,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-layout--focus-menu {
-  grid-template-columns: minmax(226px, 272px) minmax(0, 1fr);
+  grid-template-columns: minmax(318px, 360px) minmax(0, 1fr);
   gap: 18px;
   align-items: stretch;
 }
@@ -3184,6 +3377,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art {
   min-width: 0;
+  width: 100%;
   transform: none !important;
 }
 
@@ -3239,7 +3433,9 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-spotify-slot {
   grid-column: auto;
-  min-height: 66px;
+  width: 100%;
+  min-width: 304px;
+  min-height: 94px;
   grid-template-columns: 1fr;
   align-items: stretch;
   gap: 7px;
@@ -3252,9 +3448,17 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-spotify-embed-host {
-  min-height: 52px;
-  height: 52px;
+  min-width: 286px;
+  min-height: 80px;
+  height: 80px;
   border-radius: 8px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-spotify-embed-host > iframe,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-spotify-embed {
+  min-width: 286px;
+  height: 80px;
+  transform: none;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-title {
@@ -3587,6 +3791,56 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-tracklist {
   grid-template-columns: 1fr;
+}
+
+.lastfm-track-panel-window :is(
+  .lastfm-track-panel-stat,
+  .lastfm-track-panel-summary,
+  .lastfm-track-panel-related,
+  .lastfm-track-panel-history-item,
+  .lastfm-track-panel-related-button,
+  .lastfm-track-panel-track-item,
+  .lastfm-track-panel-cta,
+  .lastfm-track-panel-spotify-slot,
+  .lastfm-track-panel-preview
+) {
+  transition:
+    transform 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 190ms ease,
+    border-color 190ms ease,
+    box-shadow 190ms ease,
+    filter 190ms ease;
+}
+
+.lastfm-track-panel-window :is(
+  .lastfm-track-panel-stat,
+  .lastfm-track-panel-summary,
+  .lastfm-track-panel-related,
+  .lastfm-track-panel-history-item,
+  .lastfm-track-panel-related-button,
+  .lastfm-track-panel-track-item,
+  .lastfm-track-panel-cta,
+  .lastfm-track-panel-spotify-slot,
+  .lastfm-track-panel-preview
+):hover,
+.lastfm-track-panel-window :is(
+  .lastfm-track-panel-stat,
+  .lastfm-track-panel-summary,
+  .lastfm-track-panel-related,
+  .lastfm-track-panel-history-item,
+  .lastfm-track-panel-related-button,
+  .lastfm-track-panel-track-item,
+  .lastfm-track-panel-cta,
+  .lastfm-track-panel-spotify-slot,
+  .lastfm-track-panel-preview
+):focus-within {
+  transform: translateY(-4px) scale(1.018);
+  border-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    0 0 22px rgba(var(--accent-rgb), 0.12);
+  filter: brightness(1.08);
 }
 
 .lastfm-track-panel-window--mobile {
@@ -4706,6 +4960,94 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   cursor: ew-resize;
 }
 
+.steam-sidebar-currently-playing-controls {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.steam-sidebar-currently-playing-control {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.34);
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 8px 20px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.steam-sidebar-currently-playing-control--play {
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.steam-sidebar-currently-playing-control svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.steam-sidebar-currently-playing-control--play svg {
+  width: 22px;
+  height: 22px;
+}
+
+.steam-sidebar-currently-playing-control:hover,
+.steam-sidebar-currently-playing-control:focus-visible {
+  transform: translateY(-2px) scale(1.08);
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.steam-sidebar-currently-playing-control:disabled {
+  opacity: 0.36;
+  pointer-events: none;
+}
+
+.steam-sidebar-currently-playing-control-icon {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.steam-sidebar-currently-playing-control-icon--play {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.steam-sidebar-currently-playing-control-icon--pause {
+  opacity: 0;
+  transform: scale(0.84);
+}
+
+.steam-sidebar-currently-playing-panel[data-sidebar-shuffle-state="playing"] .steam-sidebar-currently-playing-control-icon--play {
+  opacity: 0;
+  transform: scale(0.84);
+}
+
+.steam-sidebar-currently-playing-panel[data-sidebar-shuffle-state="playing"] .steam-sidebar-currently-playing-control-icon--pause {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .steam-sidebar-row {
   --sidebar-row-accent-rgb: var(--accent-rgb);
   position: relative;
@@ -4721,7 +5063,10 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   min-height: 54px;
   padding: 8px 10px;
   cursor: pointer;
-  transition: background-color 180ms ease, filter 180ms ease;
+  transition:
+    background-color 180ms ease,
+    filter 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .steam-sidebar-row::before {
@@ -4782,6 +5127,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .steam-sidebar-row:focus-within::before {
   opacity: 1;
   transform: translateX(0) scaleX(1);
+}
+
+.steam-sidebar-row:hover,
+.steam-sidebar-row:focus-within {
+  transform: translateY(-3px) scale(1.025);
+  z-index: 2;
 }
 
 .steam-sidebar-row-title {
@@ -5804,7 +6155,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   left: calc(env(safe-area-inset-left, 0px) + 12px);
   top: calc(env(safe-area-inset-top, 0px) + 12px);
   z-index: 40;
-  width: 42px;
+  width: 84px;
   height: 42px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
@@ -5846,6 +6197,53 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   outline: none;
 }
 
+.site-video-toggle {
+  position: relative;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: inherit;
+  outline: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.site-video-toggle[hidden] {
+  display: none !important;
+}
+
+.site-video-toggle:hover,
+.site-video-toggle:focus-visible,
+.site-video-toggle[data-video-active="true"] {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.site-video-toggle:hover,
+.site-video-toggle:focus-visible {
+  transform: scale(1.06);
+}
+
+.site-video-toggle-icon {
+  display: grid;
+  place-items: center;
+}
+
+.site-video-toggle-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
 .mobile-speaker-toggle[hidden] {
   display: none !important;
 }
@@ -5883,7 +6281,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 @media (hover: hover) and (pointer: fine) and (min-width: 821px) {
   .site-audio-control:hover,
   .site-audio-control:focus-within {
-    width: 174px;
+    width: 216px;
     border-color: rgba(255, 255, 255, 0.13);
     background: rgba(12, 12, 16, 0.78);
     transition-delay: 0ms, 0ms, 0ms;
@@ -7660,39 +8058,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   .josie-mobile-audio-chip.is-playing .josie-mobile-audio-chip-icon,
   .josie-mobile-audio-chip[data-shuffle-mode="compact"].is-playing .josie-mobile-audio-chip-icon,
   .steam-sidebar-link--icon-only,
-  .steam-sidebar-link--icon-only::after {
+  .steam-sidebar-link--icon-only::after,
+  .shuffle-video-background::after {
     animation: none !important;
+  }
+
+  body {
+    --site-scroll-drag-y: 0px !important;
+    --site-scroll-drag-y-soft: 0px !important;
   }
 }
 
 .cinna-mobile-gif-wrap {
   display: none;
-}
-
-@media (max-width: 1120px) {
-  .social-hub-scale-frame {
-    width: min(var(--desktop-hub-design-width), calc(100% - 16px));
-    margin-top: 8px;
-    height: auto !important;
-  }
-
-  .social-hub {
-    width: 100%;
-    transform: none;
-    will-change: auto;
-  }
-
-  .social-hub-content {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .social-hub-left-rail {
-    position: static;
-  }
-
-  .social-hub-sidebar {
-    position: static;
-  }
 }
 
 @media (max-width: 820px) {
@@ -8503,6 +8881,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     --mobile-link-aura-sheen-rgb: 255, 255, 255;
   }
 
+  .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only:hover,
+  .steam-sidebar-list--mobile-icons .steam-sidebar-link--icon-only:focus-visible {
+    transform: translateY(-3px) scale(1.12);
+  }
+
   .steam-sidebar-list--mobile-icons .steam-sidebar-site-icon {
     color: rgba(248, 249, 252, 0.94);
     opacity: 1;
@@ -8623,6 +9006,34 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     font-size: 9px;
     letter-spacing: 0.08em;
     color: rgba(214, 220, 232, 0.62);
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-controls {
+    margin-top: 9px;
+    gap: 13px;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-control {
+    width: 36px;
+    height: 36px;
+    background: rgba(0, 0, 0, 0.38);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-control--play {
+    width: 56px;
+    height: 56px;
+    background: rgba(0, 0, 0, 0.54);
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-control svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-control--play svg {
+    width: 27px;
+    height: 27px;
   }
 
   .steam-sidebar-link--icon-only::before {
@@ -9277,6 +9688,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   overflow: visible;
   box-shadow: none;
   color: #bebabd;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    filter 180ms ease;
+}
+
+.discord-presence-card--foundlifeless:hover,
+.discord-presence-card--foundlifeless:focus-within {
+  transform: translateY(-4px) scale(1.025);
+  background: rgba(210, 210, 218, 0.16);
+  border-color: rgba(225, 225, 235, 0.14);
+  filter: brightness(1.06);
 }
 
 .discord-presence-body {

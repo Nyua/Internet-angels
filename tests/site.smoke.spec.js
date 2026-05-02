@@ -1228,6 +1228,156 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
   expect(secondSegment.state?.progress).toBeGreaterThan(0.49);
 });
 
+test("josie retries Last.fm and Steam boot APIs after first-load failures", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelApiBootRetryDelaysMs = [50, 100, 150];
+  });
+
+  let lastfmRequests = 0;
+  let steamRequests = 0;
+  const nowIso = new Date().toISOString();
+  const recentUts = String(Math.floor(Date.now() / 1000) - 120);
+
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless"
+          },
+          discord_status: "online",
+          activities: []
+        }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm", async (route) => {
+    lastfmRequests += 1;
+    if (lastfmRequests === 1) {
+      await route.fulfill({
+        status: 504,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "simulated cold-start timeout", sourceStatus: "FAILED" })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        user: {
+          name: "FoundLifeless",
+          realname: "FoundLifeless",
+          playcount: "12345",
+          artist_count: "321",
+          image: []
+        },
+        lovedtracks: {
+          "@attr": { total: "77" }
+        },
+        recenttracks: {
+          track: [
+            {
+              name: "Retry Song",
+              artist: { name: "Retry Artist" },
+              album: { "#text": "Retry Album" },
+              image: [],
+              date: { uts: recentUts, "#text": "2 minutes ago" },
+              url: "https://www.last.fm/music/Retry+Artist/_/Retry+Song",
+              userloved: "1"
+            }
+          ]
+        },
+        topalbums: {
+          album: [
+            {
+              name: "Retry Album",
+              artist: { name: "Retry Artist" },
+              playcount: "42",
+              image: [],
+              url: "https://www.last.fm/music/Retry+Artist/Retry+Album"
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "Retry Artist",
+              playcount: "99",
+              image: [],
+              url: "https://www.last.fm/music/Retry+Artist"
+            }
+          ]
+        },
+        nowPlaying: null,
+        discovery: null
+      })
+    });
+  });
+
+  await page.route("**/api/steam-recent-activity", async (route) => {
+    steamRequests += 1;
+    if (steamRequests === 1) {
+      await route.fulfill({
+        status: 504,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "simulated cold-start timeout", sourceStatus: "FAILED" })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        profile: {
+          name: "FoundLifeless",
+          handle: "steamcommunity.com/id/foundlifeless",
+          url: "https://steamcommunity.com/id/foundlifeless/",
+          statusText: "Online"
+        },
+        stats: [
+          { label: "2W Hours", value: "12.3 hours" },
+          { label: "Recent Games", value: "1" }
+        ],
+        items: [
+          {
+            id: "retry-game",
+            title: "Retry Game",
+            meta: "12.3 hrs past 2 weeks",
+            url: "https://store.steampowered.com/app/123456/Retry_Game/",
+            artworkUrl: "",
+            hoursOnRecord: "99 hrs on record",
+            lastPlayed: "Played today"
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
+    timeout: 30_000
+  });
+
+  await expect.poll(() => lastfmRequests, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => steamRequests, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+  await expect(page.locator(".lastfm-recent-title").first()).toHaveText("Retry Song", { timeout: 5_000 });
+  await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Retry Game", { timeout: 5_000 });
+});
+
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   const avatarManifestResponse = await request.get("/assets/avatar-manifest.json");
@@ -1346,9 +1496,9 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(audioControl).toBeVisible();
   await expect(page.locator(".site-audio-volume-label")).toHaveCount(0);
   const initialAudioControlWidth = await audioControl.evaluate((node) => node.getBoundingClientRect().width);
-  expect(initialAudioControlWidth).toBeLessThanOrEqual(46);
+  expect(initialAudioControlWidth).toBeLessThanOrEqual(90);
   await audioControl.hover();
-  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_000 }).toBeGreaterThan(150);
+  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_000 }).toBeGreaterThan(190);
   await page.locator("[data-site-volume-slider]").evaluate((node) => {
     if (!(node instanceof HTMLInputElement)) return;
     node.value = "42";
@@ -1356,7 +1506,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-volume", "0.42");
   await page.mouse.move(420, 420);
-  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_500 }).toBeLessThanOrEqual(48);
+  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_500 }).toBeLessThanOrEqual(90);
   await page.locator("[data-mobile-speaker-toggle]").click();
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
   await page.waitForFunction(() => {
@@ -1429,16 +1579,16 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     });
   }, { timeout: 5_000 }).toBeGreaterThan(0);
   await page.waitForFunction(() => {
-    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
     if (!(copy instanceof HTMLElement)) return false;
     return copy.dataset.shuffleCopyState === "visible"
       && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
   });
   await page.waitForFunction(() => {
-    const copy = document.querySelector("#os-shuffle-visualizer-copy");
+    const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
     if (!(copy instanceof HTMLElement)) return false;
     return copy.dataset.shuffleCopyState === "hidden"
-      && Number.parseFloat(window.getComputedStyle(copy).opacity || "1") < 0.2;
+      && Number.parseFloat(window.getComputedStyle(copy).opacity || "1") < 0.75;
   }, null, { timeout: 7000 });
   const firstVisualizerTrackState = await page.evaluate(async () => {
     const title = document.querySelector("#os-shuffle-visualizer-title");
@@ -1466,7 +1616,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   if (firstVisualizerTrackState.selectableQueueCount > 1) {
     await page.waitForFunction((previousTitle) => {
       const title = document.querySelector("#os-shuffle-visualizer-title");
-      const copy = document.querySelector("#os-shuffle-visualizer-copy");
+      const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
       if (!(title instanceof HTMLElement) || !(copy instanceof HTMLElement)) return false;
       return title.textContent.trim() !== previousTitle
         && copy.dataset.shuffleCopyState === "visible"
@@ -1804,7 +1954,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     "/api/lastfm"
   ]));
   expect(apiRequests).not.toContain("/api/lastfm-now-playing");
-  expect(apiRequests).not.toContain("/api/lastfm-track-details");
+  expect(apiRequests).toContain("/api/lastfm-track-details");
 
   const intervalCalls = await page.evaluate(() => window.__codexIntervalCalls || []);
   expect(intervalCalls).toEqual(expect.arrayContaining([
@@ -2597,7 +2747,7 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
   expect(cursorStateAfterSteamHover.crossSvgWidth).toBeGreaterThan(0);
   expect(cursorStateAfterSteamHover.crossStrokeWidth).toBeGreaterThan(0);
   expect(cursorStateAfterSteamHover.coreOpacity).toBeGreaterThan(0.2);
-  expect(cursorStateAfterSteamHover.ringOpacity).toBeLessThanOrEqual(0.02);
+  expect(cursorStateAfterSteamHover.ringOpacity).toBeGreaterThan(0.7);
   expect(cursorStateAfterSteamHover.poolOpacity).toBeGreaterThan(0.05);
 
   await page.evaluate(() => {
@@ -2631,8 +2781,8 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
       stroke: crossShape instanceof SVGElement ? window.getComputedStyle(crossShape).stroke : ""
     };
   });
-  expect(lightContrastState.mode).toBe("light");
-  expect(lightContrastState.stroke).toBe("rgb(255, 255, 255)");
+  expect(lightContrastState.mode).toBe("dark");
+  expect(lightContrastState.stroke).toBe("rgb(16, 16, 18)");
 
   const selectionStarted = page.waitForFunction(() => {
     const cursor = document.querySelector(".site-pointer");
@@ -3265,6 +3415,7 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   await stubWindowOpen(page);
   await stubSpotifyIframeApi(page);
 
+  let oneTimeDetailsFulfilled = false;
   const trackScrobbleItems = Array.from({ length: 31 }, (_, index) => ({
     playedAtIso: `2026-03-23T${String(Math.max(0, 23 - index)).padStart(2, "0")}:21:00.000Z`,
     playedAtLabel: `Recent play ${String(index + 1).padStart(2, "0")}`,
@@ -3314,7 +3465,8 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
     const track = url.searchParams.get("track");
     const artist = url.searchParams.get("artist");
     if (track === "One Time") {
-      await new Promise((resolve) => setTimeout(resolve, 140));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      oneTimeDetailsFulfilled = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -3535,15 +3687,19 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
   const trackSourceArtSelector = ".lastfm-recent-button [data-lastfm-art-source]";
+  await expect(sourceRow.locator(".lastfm-recent-title")).toHaveText("One Time", { timeout: 5_000 });
   const recentArtShapeBefore = await sourceRow.locator(".lastfm-recent-art").evaluate((node) => window.getComputedStyle(node).borderRadius);
   expect(recentArtShapeBefore).toBe("0px");
   await sourceRow.hover();
   const recentArtShapeAfter = await sourceRow.locator(".lastfm-recent-art").evaluate((node) => window.getComputedStyle(node).borderRadius);
   expect(recentArtShapeAfter).toBe("0px");
   await clearInteractionSfxLog(page);
-  await sourceRow.click();
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "true");
+  const panelOpenStartedAt = Date.now();
+  await sourceRow.click({ force: true });
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible", { timeout: 500 });
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "false");
+  expect(Date.now() - panelOpenStartedAt).toBeLessThan(700);
+  expect(oneTimeDetailsFulfilled).toBe(false);
   await page.waitForFunction(() => {
     const clone = document.querySelector(".lastfm-track-panel-art-launch");
     return clone instanceof HTMLElement && window.getComputedStyle(clone).borderRadius === "0px";
@@ -3616,8 +3772,8 @@ test("josie opens a track details panel for Last.fm rows and reuses it for relat
   expect(panelBox).not.toBeNull();
   expect(panelBox.width).toBeLessThanOrEqual(1040);
   expect(panelBox.scrollbarWidth).toBe("none");
-  expect(panelBox.overflowY).toBe("hidden");
-  expect(panelBox.bodyHeight).toBeLessThanOrEqual(panelBox.clientHeight + 2);
+  expect(panelBox.overflowY).toBe("auto");
+  expect(panelBox.bodyHeight).toBeGreaterThan(0);
   expect(panelBox.artWidth).toBeGreaterThanOrEqual(220);
   expect(panelBox.artHeight).toBeGreaterThanOrEqual(220);
   expect(panelBox.backgroundColor).toBe("rgb(0, 0, 0)");
@@ -4232,11 +4388,11 @@ test("josie opens artist and album detail panels from top charts and follows alb
 
   const artistSourceArtSelector = ".lastfm-media-grid--artists .lastfm-media-button [data-lastfm-art-source]";
   await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "false");
   await waitForLastFmPanelSourceArtState(page, artistSourceArtSelector, "launching", {
-    panelVisibility: "staged",
-    ariaHidden: "true"
+    panelVisibility: "visible",
+    ariaHidden: "false"
   });
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
@@ -4296,8 +4452,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
     } : null;
   });
   expect(artistPanelFit).not.toBeNull();
-  expect(artistPanelFit.overflowY).toBe("hidden");
-  expect(artistPanelFit.bodyHeight).toBeLessThanOrEqual(artistPanelFit.clientHeight + 2);
+  expect(artistPanelFit.overflowY).toBe("auto");
+  expect(artistPanelFit.bodyHeight).toBeGreaterThan(0);
   const artistArtHoverBefore = await readLastFmPanelArtHoverState(page);
   await page.locator(".lastfm-track-panel-art").hover();
   const artistArtHoverAfter = await readLastFmPanelArtHoverState(page);
@@ -4452,10 +4608,10 @@ test("josie opens artist and album detail panels from top charts and follows alb
 
   const albumSourceArtSelector = ".lastfm-media-grid--albums .lastfm-media-button [data-lastfm-art-source]";
   await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
-  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "staged");
+  await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await waitForLastFmPanelSourceArtState(page, albumSourceArtSelector, "launching", {
-    panelVisibility: "staged",
-    ariaHidden: "true"
+    panelVisibility: "visible",
+    ariaHidden: "false"
   });
   await expect(page.locator(".lastfm-track-panel-title")).toContainText("Beatopia");
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
@@ -4517,8 +4673,8 @@ test("josie opens artist and album detail panels from top charts and follows alb
     } : null;
   });
   expect(albumPanelFit).not.toBeNull();
-  expect(albumPanelFit.overflowY).toBe("hidden");
-  expect(albumPanelFit.bodyHeight).toBeLessThanOrEqual(albumPanelFit.clientHeight + 2);
+  expect(albumPanelFit.overflowY).toBe("auto");
+  expect(albumPanelFit.bodyHeight).toBeGreaterThan(0);
   const albumSummaryLink = page.locator(".lastfm-track-panel-summary-link", { hasText: "Read More" });
   await expect(albumSummaryLink).toBeVisible();
   await albumSummaryLink.click();

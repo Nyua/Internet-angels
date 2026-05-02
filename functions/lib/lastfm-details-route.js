@@ -29,6 +29,31 @@ export function buildLastFmDetailsCacheRequest(request, query, keys) {
 
 export function createLastFmDetailsRouteHandler(options) {
   const config = options && typeof options === "object" ? options : {};
+  async function fetchAndCachePayload({ apiKey, env, query, nowMs, cacheRequest }) {
+    const routeTimeoutMs = resolveTimeoutMs(env?.LASTFM_DETAILS_ROUTE_TIMEOUT_MS, config.routeTimeoutMs, {
+      min: 500,
+      max: config.routeTimeoutMs
+    });
+    const payload = await runWithTimeout(
+      (signal) => config.fetchPayload({
+        apiKey,
+        env,
+        query,
+        nowMs,
+        signal
+      }),
+      routeTimeoutMs,
+      config.timeoutError
+    );
+    await writeCachedPayload({
+      cache: caches.default,
+      request: cacheRequest,
+      payload,
+      retainTtlSec: config.retainTtlSec
+    });
+    return payload;
+  }
+
   return async function onRequest(context) {
     const { request, env } = context;
     if (request.method !== "GET") {
@@ -73,27 +98,29 @@ export function createLastFmDetailsRouteHandler(options) {
       });
     }
 
-    try {
-      const routeTimeoutMs = resolveTimeoutMs(env?.LASTFM_DETAILS_ROUTE_TIMEOUT_MS, config.routeTimeoutMs, {
-        min: 500,
-        max: config.routeTimeoutMs
-      });
-      const payload = await runWithTimeout(
-        (signal) => config.fetchPayload({
+    if (cacheState.status === "retained" && cacheState.payload) {
+      if (typeof context.waitUntil === "function") {
+        context.waitUntil(fetchAndCachePayload({
           apiKey,
           env,
           query,
           nowMs,
-          signal
-        }),
-        routeTimeoutMs,
-        config.timeoutError
-      );
-      await writeCachedPayload({
-        cache: caches.default,
-        request: cacheRequest,
-        payload,
-        retainTtlSec: config.retainTtlSec
+          cacheRequest
+        }).catch(() => {}));
+      }
+      return jsonResponse(toStalePayload(cacheState.payload, "PARTIAL"), {
+        status: 200,
+        cacheControl: browserCacheControl(5 * 60)
+      });
+    }
+
+    try {
+      const payload = await fetchAndCachePayload({
+        apiKey,
+        env,
+        query,
+        nowMs,
+        cacheRequest
       });
       return jsonResponse(payload, {
         status: 200,
