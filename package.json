@@ -10,6 +10,8 @@
     "build:e2e": "node ./scripts/build-site.js --allow-oversized-assets",
     "dev": "npm run build:e2e && wrangler pages dev dist --port 8788",
     "dev:serve": "wrangler pages dev dist --port 8788",
+    "deploy:pages": "node ./scripts/deploy-pages.js",
+    "ensure:shuffle-media-bucket": "node ./scripts/upload-shuffle-media.js --ensure-only",
     "upload:shuffle-media": "node ./scripts/upload-shuffle-media.js",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --test tests/*.test.js",
