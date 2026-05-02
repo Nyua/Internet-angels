@@ -24,23 +24,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Ensure Shuffle media R2 bucket
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run ensure:shuffle-media-bucket
-
       - name: Build site
         run: npm run build
-
-      - name: Upload Shuffle videos to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run upload:shuffle-media
 
       - name: Deploy to Cloudflare Pages (production)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy:pages
+        run: npx wrangler pages deploy dist --project-name=internet-angel --branch=main

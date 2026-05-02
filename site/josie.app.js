@@ -106,10 +106,7 @@
     return Boolean(getInternetAngelPerformanceState()?.isDegraded?.());
   }
   function isInternetAngelBackgroundThrottled() {
-    return Boolean(
-      getInternetAngelPerformanceState()?.isBackgroundThrottled?.() ||
-      document.body?.classList?.contains?.("shuffle-video-background-active")
-    );
+    return Boolean(getInternetAngelPerformanceState()?.isBackgroundThrottled?.());
   }
   function getInternetAngelReactivePulse() {
     const pulse = internetAngelReactivePulseState;

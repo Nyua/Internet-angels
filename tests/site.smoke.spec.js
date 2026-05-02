@@ -1527,25 +1527,47 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && video.preload === "auto"
       && (video.currentSrc || video.src).includes("/Shuffle/");
   });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
+      if (!(canvas instanceof HTMLCanvasElement)) return 0;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
+      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let alpha = 0;
+      for (let index = 3; index < sampleArea.length; index += 4) {
+        alpha = Math.max(alpha, sampleArea[index]);
+      }
+      return alpha;
+    });
+  }, { timeout: 5_000 }).toBeGreaterThan(0);
   const videoBackgroundState = await page.evaluate(() => {
     const layer = document.querySelector("#shuffle-video-background");
     const frame = document.querySelector(".social-hub-scale-frame");
+    const showcases = document.querySelector("#social-hub-showcases");
+    const showcase = document.querySelector("#social-hub-showcases > .steam-showcase");
     const video = document.querySelector("[data-shuffle-background-video]");
     const grain = layer instanceof HTMLElement ? window.getComputedStyle(layer, "::after") : null;
     const frameStyles = frame instanceof HTMLElement ? window.getComputedStyle(frame) : null;
+    const showcaseStyles = showcase instanceof HTMLElement ? window.getComputedStyle(showcase) : null;
+    const showcasesStyles = showcases instanceof HTMLElement ? window.getComputedStyle(showcases) : null;
     return {
       videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : "",
       videoPreload: video instanceof HTMLVideoElement ? video.preload : "",
       grainImage: grain?.backgroundImage || "",
       grainSize: grain?.backgroundSize || "",
-      frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || ""
+      frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || "",
+      showcaseBackdrop: showcaseStyles?.backdropFilter || showcaseStyles?.webkitBackdropFilter || "",
+      showcasesGap: Number.parseFloat(showcasesStyles?.gap || "0")
     };
   });
   expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
   expect(videoBackgroundState.videoPreload).toBe("auto");
   expect(videoBackgroundState.grainImage).toContain("svg");
   expect(videoBackgroundState.grainSize).not.toBe("auto");
-  expect(videoBackgroundState.frameBackdrop).toContain("blur");
+  expect(videoBackgroundState.frameBackdrop.toLowerCase()).not.toContain("blur");
+  expect(videoBackgroundState.showcaseBackdrop.toLowerCase()).toContain("blur");
+  expect(videoBackgroundState.showcasesGap).toBeGreaterThanOrEqual(20);
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");

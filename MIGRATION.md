@@ -44,7 +44,6 @@ internet-angel-site/
   scripts/
     build-site.js
     shuffle-manifest.js
-    upload-shuffle-media.js
   site/
     index.html
     next.html
@@ -64,8 +63,6 @@ internet-angel-site/
       lastfm-track-details.js
       lastfm.js
       steam-recent-activity.js
-    Shuffle/
-      [file].js
     lib/
       cache.js
       config.js
@@ -98,7 +95,7 @@ Replaced:
 
 - Firebase Hosting -> Cloudflare Pages
 - Firebase Functions -> Cloudflare Pages Functions
-- oversized Firebase/Hosting media -> R2-backed `/Shuffle/*.mp4`
+- oversized Firebase/Hosting media -> skipped from production Pages builds
 - local Firebase secret wiring -> `.dev.vars`
 - browser-side Lanyard fetch -> `GET /api/discord`
 - full Last.fm fetch -> cached `GET /api/lastfm`
@@ -110,10 +107,6 @@ Production secret:
 - `LASTFM_API_KEY`
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
-
-Production R2 binding:
-
-- `MEDIA_BUCKET` -> `internet-angel-media`
 
 Local development file:
 
@@ -132,14 +125,12 @@ LASTFM_API_KEY=replace-me
 3. Set build command to `npm run build`.
 4. Set output directory to `dist`.
 5. Add `LASTFM_API_KEY`, `SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET` in Pages Settings -> Variables and Secrets.
-6. Create the R2 bucket `internet-angel-media`.
-7. Bind that bucket to the Pages project as `MEDIA_BUCKET`.
-8. Deploy.
-9. Attach `internet-angel.net`.
-10. Set the apex domain as primary.
-11. Optionally add `www.internet-angel.net` and redirect it to the apex.
+6. Deploy.
+7. Attach `internet-angel.net`.
+8. Set the apex domain as primary.
+9. Optionally add `www.internet-angel.net` and redirect it to the apex.
 
-The GitHub Actions Cloudflare API token needs Pages deploy access plus write/edit access to Workers R2 Storage.
+The GitHub Actions Cloudflare API token needs Pages deploy access for the `internet-angel` project.
 
 ## Functionality Changes
 
@@ -147,7 +138,7 @@ The GitHub Actions Cloudflare API token needs Pages deploy access plus write/edi
 - Last.fm now-playing is bundled into `GET /api/lastfm`, which keeps the public API smaller and avoids a redundant extra request on every page load.
 - Discord presence is served through Cloudflare and no longer hits Lanyard directly from the browser.
 - Steam recent activity is locked to the configured profile and no longer accepts a query parameter.
-- Shuffle music videos keep their same-domain `/Shuffle/*.mp4` URLs but stream from R2 to avoid the Pages 25 MiB static asset limit.
+- Shuffle music videos above the Pages 25 MiB static asset limit are excluded from production output and the generated production Shuffle manifest.
 - Edge cache fallback returns stale JSON with `sourceStatus: "PARTIAL"` when upstream services fail.
 
 ## How Caching Works
