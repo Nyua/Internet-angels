@@ -16,7 +16,8 @@ const SHUFFLE_VIDEO_EXTENSIONS = new Set([
   ".mp4",
   ".webm"
 ]);
-const MAX_DEPLOY_ASSET_BYTES = 25 * 1024 * 1024;
+const MAX_SHUFFLE_MEDIA_BYTES = 100 * 1024 * 1024;
+const RAW_SOURCE_VIDEO_PATTERN = /\(\s*1080p\s*,\s*h264\s*\)/i;
 
 function safeDecodeURIComponent(value) {
   try {
@@ -69,6 +70,10 @@ function isSupportedShuffleVideoFile(fileName) {
 
 function isSupportedShuffleMediaFile(fileName) {
   return isSupportedShuffleAudioFile(fileName) || isSupportedShuffleVideoFile(fileName);
+}
+
+function isRawSourceVideoFile(fileName) {
+  return isSupportedShuffleVideoFile(fileName) && RAW_SOURCE_VIDEO_PATTERN.test(String(fileName || ""));
 }
 
 function parseShuffleDisplayCopy(fileName) {
@@ -196,7 +201,7 @@ export function buildShuffleManifest({
 }) {
   const availableFiles = fs.existsSync(shuffleDir)
     ? fs.readdirSync(shuffleDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && isSupportedShuffleMediaFile(entry.name))
+      .filter((entry) => entry.isFile() && isSupportedShuffleMediaFile(entry.name) && !isRawSourceVideoFile(entry.name))
       .map((entry) => {
         const filePath = path.join(shuffleDir, entry.name);
         return {
@@ -207,7 +212,7 @@ export function buildShuffleManifest({
           mediaType: isSupportedShuffleVideoFile(entry.name) ? "video" : "audio"
         };
       })
-      .filter((fileRecord) => fileRecord.stats.size <= MAX_DEPLOY_ASSET_BYTES)
+      .filter((fileRecord) => fileRecord.stats.size <= MAX_SHUFFLE_MEDIA_BYTES)
     : [];
   const availableFilesByPath = new Map(availableFiles.map((fileRecord) => [fileRecord.path, fileRecord]));
   const manualGroups = new Map();

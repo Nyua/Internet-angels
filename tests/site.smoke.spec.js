@@ -1515,6 +1515,38 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioHasTrack === "true"
       && button.dataset.audioPlaying === "true";
   });
+  await expect(page.locator("[data-site-video-toggle]")).toBeVisible();
+  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await page.waitForFunction(() => {
+    const layer = document.querySelector("#shuffle-video-background");
+    const video = document.querySelector("[data-shuffle-background-video]");
+    return document.body.classList.contains("shuffle-video-background-active")
+      && layer instanceof HTMLElement
+      && video instanceof HTMLVideoElement
+      && video.preload === "auto"
+      && (video.currentSrc || video.src).includes("/Shuffle/");
+  });
+  const videoBackgroundState = await page.evaluate(() => {
+    const layer = document.querySelector("#shuffle-video-background");
+    const frame = document.querySelector(".social-hub-scale-frame");
+    const video = document.querySelector("[data-shuffle-background-video]");
+    const grain = layer instanceof HTMLElement ? window.getComputedStyle(layer, "::after") : null;
+    const frameStyles = frame instanceof HTMLElement ? window.getComputedStyle(frame) : null;
+    return {
+      videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : "",
+      videoPreload: video instanceof HTMLVideoElement ? video.preload : "",
+      grainImage: grain?.backgroundImage || "",
+      grainSize: grain?.backgroundSize || "",
+      frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || ""
+    };
+  });
+  expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
+  expect(videoBackgroundState.videoPreload).toBe("auto");
+  expect(videoBackgroundState.grainImage).toContain("svg");
+  expect(videoBackgroundState.grainSize).not.toBe("auto");
+  expect(videoBackgroundState.frameBackdrop).toContain("blur");
+  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedTrack?.artist || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
@@ -1587,8 +1619,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.waitForFunction(() => {
     const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
     if (!(copy instanceof HTMLElement)) return false;
-    return copy.dataset.shuffleCopyState === "hidden"
-      && Number.parseFloat(window.getComputedStyle(copy).opacity || "1") < 0.75;
+    const styles = window.getComputedStyle(copy);
+    return copy.dataset.shuffleCopyState === "visible"
+      && Number.parseFloat(styles.opacity || "0") > 0.85
+      && ["none", "blur(0px)"].includes(styles.filter);
   }, null, { timeout: 7000 });
   const firstVisualizerTrackState = await page.evaluate(async () => {
     const title = document.querySelector("#os-shuffle-visualizer-title");
@@ -4390,7 +4424,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   await page.locator(".lastfm-media-grid--artists .lastfm-media-button").first().click();
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("aria-hidden", "false");
-  await waitForLastFmPanelSourceArtState(page, artistSourceArtSelector, "launching", {
+  await waitForLastFmPanelSourceArtState(page, artistSourceArtSelector, "hidden", {
     panelVisibility: "visible",
     ariaHidden: "false"
   });
@@ -4609,7 +4643,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   const albumSourceArtSelector = ".lastfm-media-grid--albums .lastfm-media-button [data-lastfm-art-source]";
   await page.locator(".lastfm-media-grid--albums .lastfm-media-button").first().click();
   await expect(page.locator(".lastfm-track-panel")).toHaveAttribute("data-panel-visibility", "visible");
-  await waitForLastFmPanelSourceArtState(page, albumSourceArtSelector, "launching", {
+  await waitForLastFmPanelSourceArtState(page, albumSourceArtSelector, "hidden", {
     panelVisibility: "visible",
     ariaHidden: "false"
   });

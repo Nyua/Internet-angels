@@ -14,7 +14,8 @@ const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
 const josieHtmlPath = path.join(distDir, "josie.html");
 const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
-const maxPagesAssetBytes = 25 * 1024 * 1024;
+const maxPagesAssetBytes = 100 * 1024 * 1024;
+const rawSourceVideoPattern = /\(\s*1080p\s*,\s*h264\s*\)/i;
 const excludedDeployPaths = /* @__PURE__ */ new Set([
   "Shuffle/BEGGING THE WITNESS.flac"
 ]);
@@ -91,6 +92,9 @@ function shouldExcludeDeployPath(relativePath, sourcePath) {
   const extension = path.extname(relativePath).toLowerCase();
   if (!deployVideoExtensions.has(extension)) {
     return false;
+  }
+  if (rawSourceVideoPattern.test(path.basename(relativePath))) {
+    return true;
   }
   try {
     return fs.statSync(sourcePath).size > maxPagesAssetBytes;
@@ -186,7 +190,7 @@ if (oversizedFiles.length) {
     .map((file) => `- ${file.path} (${file.size} bytes)`)
     .join("\n");
   throw new Error(
-    `Cloudflare Pages only allows static assets up to ${maxPagesAssetBytes} bytes (25 MiB).\n${details}`
+    `Static assets must stay below ${maxPagesAssetBytes} bytes (100 MiB).\n${details}`
   );
 }
 

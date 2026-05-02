@@ -1878,7 +1878,6 @@
     let initialTrackQueuePromise = null;
     let trackLoadAutoplayIntent = true;
     let brokenTrackRecoveryKey = "";
-    let visualizerCopyHideTimer = 0;
     let visualizerCopyEnterRafId = 0;
     let visualizerCopyTrackKey = "";
     let visualizerCopyState = "visible";
@@ -1947,7 +1946,6 @@
     const SHUFFLE_ACTIVE_FRAME_INTERVAL_MS = 1e3 / 30;
     const SHUFFLE_DEGRADED_FRAME_INTERVAL_MS = 1e3 / 18;
     const SHUFFLE_IDLE_FRAME_INTERVAL_MS = 1e3 / 12;
-    const SHUFFLE_COPY_HOLD_MS = 5e3;
     const SHUFFLE_MAX_VOLUME = 0.077;
     const SHUFFLE_BODY_RIBBON_CONFIG = Object.freeze({
       baseBrush: 0.8,
@@ -2096,11 +2094,14 @@
         video.setAttribute("data-shuffle-background-video", "");
         video.muted = true;
         video.playsInline = true;
-        video.preload = "metadata";
+        video.preload = "auto";
+        video.setAttribute("preload", "auto");
         layer.append(video);
       }
       video.muted = true;
       video.playsInline = true;
+      video.preload = "auto";
+      video.setAttribute("preload", "auto");
       video.loop = false;
       backgroundVideoLayer = layer;
       backgroundVideoEl = video;
@@ -3100,10 +3101,6 @@
       };
     }
     function clearVisualizerCopyTimers() {
-      if (visualizerCopyHideTimer) {
-        window.clearTimeout(visualizerCopyHideTimer);
-        visualizerCopyHideTimer = 0;
-      }
       if (visualizerCopyEnterRafId) {
         window.cancelAnimationFrame(visualizerCopyEnterRafId);
         visualizerCopyEnterRafId = 0;
@@ -3138,10 +3135,6 @@
       visualizerCopyEnterRafId = window.requestAnimationFrame(() => {
         visualizerCopyEnterRafId = 0;
         setVisualizerCopyState("visible");
-        visualizerCopyHideTimer = window.setTimeout(() => {
-          setVisualizerCopyState("hidden");
-          visualizerCopyHideTimer = 0;
-        }, SHUFFLE_COPY_HOLD_MS);
       });
     }
     function syncVisualizerCopyCycle() {
@@ -6197,10 +6190,10 @@
     const LASTFM_PANEL_SCENE_EXPLOSION_GIF_URL = "/assets/Deltarune_explosion.gif";
     const LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL = "/assets/deltarune-explosion.mp3";
     const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
-    const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 420;
-    const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 1500;
-    const LASTFM_PANEL_BUILD_STEP_MS = 74;
-    const LASTFM_PANEL_BUILD_DURATION_MS = 460;
+    const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 190;
+    const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 520;
+    const LASTFM_PANEL_BUILD_STEP_MS = 38;
+    const LASTFM_PANEL_BUILD_DURATION_MS = 260;
     const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
     const lastFmTrackPanelSceneRuntime = new WeakMap();
     let mobileLinkSelectionTimer = 0;
@@ -8116,17 +8109,41 @@
         loading: true
       });
       stageLastFmTrackPanelOverlay(panel);
+      scheduleLastFmTrackPanelFit();
+      await waitForAnimationFrames(2);
       const stagedTargetAnchor = getLastFmTrackPanelArtworkLaunchTarget("current");
       const artworkLaunchPromise = stagedTargetAnchor
         ? animateLastFmTrackPanelArtworkLaunch(sourceState, stagedTargetAnchor, { preserveAtDestination: true })
         : Promise.resolve({ held: false });
-      revealLastFmTrackPanelOverlay(panel, definition.openSoundSource, { preserveArtworkState: Boolean(stagedTargetAnchor) });
-      const initialFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
-      if (initialFocusTarget instanceof HTMLElement) {
-        initialFocusTarget.focus({ preventScroll: true });
-      }
+      let panelRevealed = false;
+      const revealPanelAfterArtwork = () => {
+        if (panelRevealed) return;
+        panelRevealed = true;
+        revealLastFmTrackPanelOverlay(panel, definition.openSoundSource, { preserveArtworkState: Boolean(stagedTargetAnchor) });
+        const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus({ preventScroll: true });
+        }
+      };
+      let loadSettled = false;
+      const loadPromise = loadLastFmPanelDetails(panelType, normalizedQuery);
+      loadPromise.then(
+        () => {
+          loadSettled = true;
+        },
+        () => {
+          loadSettled = true;
+        }
+      );
       try {
-        const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
+        await artworkLaunchPromise;
+        if (lastFmTrackPanelActiveKey !== cacheKey) {
+          return true;
+        }
+        if (!loadSettled) {
+          revealPanelAfterArtwork();
+        }
+        const loadState = await loadPromise;
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
@@ -8138,18 +8155,15 @@
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
-        await artworkLaunchPromise;
-        if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
-          return true;
-        }
         if (settledTargetAnchor) {
           await retargetLastFmTrackPanelArtworkLaunch(settledTargetAnchor, {
-            durationMs: 160
+            durationMs: 110
           });
         }
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;
         }
+        revealPanelAfterArtwork();
         await releaseLastFmTrackPanelArtworkLaunch();
         const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
         if (focusTarget instanceof HTMLElement) {
@@ -8160,12 +8174,12 @@
         if (lastFmTrackPanelActiveKey !== cacheKey) {
           return true;
         }
+        revealPanelAfterArtwork();
         renderLastFmPanelErrorIntoCurrentScene(definition, normalizedQuery);
       }
       if (lastFmTrackPanelActiveKey !== cacheKey) {
         return true;
       }
-      await artworkLaunchPromise;
       await releaseLastFmTrackPanelArtworkLaunch();
       const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
       if (focusTarget instanceof HTMLElement) {
