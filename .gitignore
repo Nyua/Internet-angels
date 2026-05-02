@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .wrangler/
+.codex-logs/
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
