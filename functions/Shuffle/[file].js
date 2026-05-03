@@ -1,4 +1,5 @@
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
+const SHUFFLE_PREFIX = "Shuffle/";
 const VIDEO_CONTENT_TYPES = new Map([
   [".m4v", "video/x-m4v"],
   [".mov", "video/quicktime"],
@@ -86,6 +87,33 @@ function notFound() {
   });
 }
 
+function getMediaKeys(fileName) {
+  return [
+    `${SHUFFLE_PREFIX}${fileName}`,
+    fileName
+  ];
+}
+
+async function headMediaObject(bucket, fileName) {
+  for (const key of getMediaKeys(fileName)) {
+    const object = await bucket.head(key);
+    if (object) {
+      return { key, object };
+    }
+  }
+  return null;
+}
+
+async function getMediaObject(bucket, fileName, options) {
+  for (const key of getMediaKeys(fileName)) {
+    const object = await bucket.get(key, options);
+    if (object) {
+      return { key, object };
+    }
+  }
+  return null;
+}
+
 export async function onRequest(context) {
   const method = String(context.request.method || "GET").toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
@@ -110,11 +138,11 @@ export async function onRequest(context) {
   const fileName = normalizeRequestedFileName(context.params?.file);
   if (!fileName) return notFound();
 
-  const key = `Shuffle/${fileName}`;
   const rangeHeader = context.request.headers.get("Range");
   if (rangeHeader) {
-    const metadata = await bucket.head(key);
-    if (!metadata) return notFound();
+    const metadataResult = await headMediaObject(bucket, fileName);
+    if (!metadataResult) return notFound();
+    const metadata = metadataResult.object;
 
     const range = parseRangeHeader(rangeHeader, metadata.size);
     if (!range) {
@@ -129,7 +157,7 @@ export async function onRequest(context) {
 
     const object = method === "HEAD"
       ? metadata
-      : await bucket.get(key, { range: { offset: range.start, length: range.length } });
+      : (await getMediaObject(bucket, fileName, { range: { offset: range.start, length: range.length } }))?.object;
     if (!object) return notFound();
 
     const headers = createMediaHeaders(object, fileName, range.length);
@@ -140,7 +168,9 @@ export async function onRequest(context) {
     });
   }
 
-  const object = method === "HEAD" ? await bucket.head(key) : await bucket.get(key);
+  const object = method === "HEAD"
+    ? (await headMediaObject(bucket, fileName))?.object
+    : (await getMediaObject(bucket, fileName))?.object;
   if (!object) return notFound();
 
   const headers = createMediaHeaders(object, fileName, object.size);

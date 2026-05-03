@@ -107,6 +107,27 @@ test("shuffle media route supports single byte ranges for video seeking", async 
   ]);
 });
 
+test("shuffle media route falls back to root-level R2 objects", async () => {
+  const bucket = new MockMediaBucket({
+    "Root Video - Artist.mp4": {
+      content: "root-video",
+      contentType: "video/mp4"
+    }
+  });
+
+  const response = await onShuffleMediaRequest(createContext({
+    file: "Root Video - Artist.mp4",
+    env: { MEDIA_BUCKET: bucket }
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "root-video");
+  assert.deepEqual(bucket.getCalls, [
+    { key: "Shuffle/Root Video - Artist.mp4", options: undefined },
+    { key: "Root Video - Artist.mp4", options: undefined }
+  ]);
+});
+
 test("shuffle media route rejects unsafe paths before reaching R2", async () => {
   const bucket = new MockMediaBucket({});
 

@@ -64,6 +64,8 @@ internet-angel-site/
       lastfm-track-details.js
       lastfm.js
       steam-recent-activity.js
+    assets/
+      shuffle-manifest.json.js
     Shuffle/
       [file].js
     lib/
@@ -147,7 +149,7 @@ The GitHub Actions Cloudflare API token needs Pages deploy access plus write/edi
 - Last.fm now-playing is bundled into `GET /api/lastfm`, which keeps the public API smaller and avoids a redundant extra request on every page load.
 - Discord presence is served through Cloudflare and no longer hits Lanyard directly from the browser.
 - Steam recent activity is locked to the configured profile and no longer accepts a query parameter.
-- Shuffle music videos keep their same-domain `/Shuffle/*.mp4` URLs but stream from R2 to avoid the Pages 25 MiB static asset limit.
+- Shuffle music videos are discovered from supported R2 video objects and keep their same-domain `/Shuffle/*.mp4` URLs while streaming from R2 to avoid the Pages 25 MiB static asset limit.
 - Edge cache fallback returns stale JSON with `sourceStatus: "PARTIAL"` when upstream services fail.
 
 ## How Caching Works

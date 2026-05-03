@@ -1558,6 +1558,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       grainSize: grain?.backgroundSize || "",
       frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || "",
       showcaseBackdrop: showcaseStyles?.backdropFilter || showcaseStyles?.webkitBackdropFilter || "",
+      showcaseRadius: showcaseStyles?.borderRadius || "",
+      showcaseClipPath: showcaseStyles?.clipPath || "",
       showcasesGap: Number.parseFloat(showcasesStyles?.gap || "0")
     };
   });
@@ -1567,6 +1569,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(videoBackgroundState.grainSize).not.toBe("auto");
   expect(videoBackgroundState.frameBackdrop.toLowerCase()).not.toContain("blur");
   expect(videoBackgroundState.showcaseBackdrop.toLowerCase()).toContain("blur");
+  expect(videoBackgroundState.showcaseRadius).toBe("2px");
+  expect(videoBackgroundState.showcaseClipPath).toContain("round 2px");
   expect(videoBackgroundState.showcasesGap).toBeGreaterThanOrEqual(20);
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
