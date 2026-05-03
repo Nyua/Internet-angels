@@ -13,5 +13,5 @@ tmp-*.cjs
 playwright-report/
 test-results/
 
-# Raw downloaded shuffle videos stay local; oversized production shuffle videos are skipped by the build.
+# Raw downloaded shuffle videos stay local; production shuffle videos are uploaded to R2.
 site/Shuffle/*(1080p, h264).mp4

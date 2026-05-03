@@ -181,11 +181,7 @@ if (fs.existsSync(appOutputPath)) {
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
-writeShuffleManifest({
-  siteDir,
-  outputPath: shuffleManifestPath,
-  maxMediaBytes: allowOversizedAssets ? undefined : maxPagesAssetBytes
-});
+writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
 rewriteHtmlAssetVersions();
 if (fs.existsSync(josieHtmlPath)) {
   fs.mkdirSync(path.dirname(josieDirectoryIndexPath), { recursive: true });
@@ -198,7 +194,7 @@ if (oversizedFiles.length && !allowOversizedAssets) {
     .map((file) => `- ${file.path} (${file.size} bytes)`)
     .join("\n");
   throw new Error(
-    `Static assets must stay below ${maxPagesAssetBytes} bytes (25 MiB). Exclude oversized Shuffle videos from the production build or run build:e2e for local-only media.\n${details}`
+    `Static assets must stay below ${maxPagesAssetBytes} bytes (25 MiB). Upload oversized Shuffle videos to R2 instead of Pages.\n${details}`
   );
 }
 

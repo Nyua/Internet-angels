@@ -197,8 +197,7 @@ function buildAutoTrackEntry(fileRecord, usedIds) {
 export function buildShuffleManifest({
   siteDir,
   shuffleDir = path.join(siteDir, "Shuffle"),
-  manifestPath = path.join(siteDir, "assets", "shuffle-manifest.json"),
-  maxMediaBytes = MAX_SHUFFLE_MEDIA_BYTES
+  manifestPath = path.join(siteDir, "assets", "shuffle-manifest.json")
 }) {
   const availableFiles = fs.existsSync(shuffleDir)
     ? fs.readdirSync(shuffleDir, { withFileTypes: true })
@@ -213,7 +212,7 @@ export function buildShuffleManifest({
           mediaType: isSupportedShuffleVideoFile(entry.name) ? "video" : "audio"
         };
       })
-      .filter((fileRecord) => fileRecord.stats.size <= maxMediaBytes)
+      .filter((fileRecord) => fileRecord.stats.size <= MAX_SHUFFLE_MEDIA_BYTES)
     : [];
   const availableFilesByPath = new Map(availableFiles.map((fileRecord) => [fileRecord.path, fileRecord]));
   const manualGroups = new Map();
@@ -277,10 +276,9 @@ export function writeShuffleManifest({
   siteDir,
   shuffleDir = path.join(siteDir, "Shuffle"),
   manifestPath = path.join(siteDir, "assets", "shuffle-manifest.json"),
-  maxMediaBytes,
   outputPath
 }) {
-  const manifest = buildShuffleManifest({ siteDir, shuffleDir, manifestPath, maxMediaBytes });
+  const manifest = buildShuffleManifest({ siteDir, shuffleDir, manifestPath });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf8");
   return manifest;

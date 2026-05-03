@@ -7,7 +7,7 @@ Static personal site for `internet-angel.net`, deployed on Cloudflare Pages with
 - Static site files in `site/`
 - Generated deploy output in `dist/`
 - Cloudflare Pages Functions in `functions/`
-- Oversized Shuffle videos are skipped from production Pages builds
+- R2 bucket-backed Shuffle videos served from `/Shuffle/*.mp4`
 - Local secrets in `.dev.vars`
 
 ## Local Setup
@@ -68,14 +68,20 @@ Production secret to add in Cloudflare Pages:
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 
+Production R2 binding:
+
+- Binding name: `MEDIA_BUCKET`
+- Bucket name: `internet-angel-media`
+
 ## API Routes
 
 - `GET /api/discord`
 - `GET /api/lastfm`
 - `GET /api/lastfm-track-details`
 - `GET /api/steam-recent-activity`
+- `GET /Shuffle/*.mp4`
 
-These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard.
+These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard. Shuffle videos keep their main-domain URLs and are streamed from R2 by the Pages Function instead of being uploaded as Pages static assets.
 
 ## Caching
 
@@ -102,10 +108,12 @@ Cloudflare dashboard path:
 5. Set the build output directory to `dist`.
 6. Set Node version to `20` in Pages build configuration if needed.
 7. Add the `LASTFM_API_KEY`, `SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET` secrets before the first production deploy.
-8. Deploy.
-9. Add `internet-angel.net` as the custom domain.
-10. Set the apex domain as primary.
-11. Optionally add `www.internet-angel.net` and redirect it to the apex.
+8. Create or let the deploy workflow create the R2 bucket named `internet-angel-media`.
+9. Bind that bucket to the Pages project as `MEDIA_BUCKET`.
+10. Deploy.
+11. Add `internet-angel.net` as the custom domain.
+12. Set the apex domain as primary.
+13. Optionally add `www.internet-angel.net` and redirect it to the apex.
 
 ## Notes
 
@@ -113,7 +121,7 @@ Cloudflare dashboard path:
 - No client bundle contains API keys.
 - Last.fm, Discord, and Steam requests are proxied through first-party endpoints and cached at the edge.
 - The site is intended for the Cloudflare Pages custom domain `internet-angel.net`.
-- Cloudflare Pages has a 25 MiB limit per static asset, so production builds exclude oversized Shuffle videos from both `dist/` and the generated Shuffle manifest.
+- Cloudflare Pages has a 25 MiB limit per static asset, so production builds exclude oversized Shuffle videos from `dist/` and the deploy workflow uploads them to R2.
 
 ## Migration Notes
 
@@ -122,7 +130,7 @@ See [MIGRATION.md](./MIGRATION.md) for:
 - the Firebase audit summary
 - the updated project structure
 - the Firebase pieces removed or replaced
-- the Cloudflare secrets required
+- the Cloudflare secrets and bindings required
 - the deploy checklist
 - functionality differences from the Firebase version
 
@@ -132,7 +140,7 @@ See [MIGRATION.md](./MIGRATION.md) for:
 - Runs unit tests on every push and pull request to `main`
 - Runs the Playwright smoke suite when a GitHub Actions secret named `LASTFM_API_KEY` is configured
 - GitHub Actions deploy workflow: `.github/workflows/deploy.yml`
-- Builds and deploys `dist/` to Cloudflare Pages production on every push to `main` (and supports manual dispatch)
+- Uploads Shuffle videos to R2 and deploys `dist/` to Cloudflare Pages production on every push to `main` (and supports manual dispatch)
 - Requires repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
-- The Cloudflare token needs Pages deploy access for the `internet-angel` project
+- The Cloudflare token needs Pages deploy access plus write/edit access to Workers R2 Storage so the workflow can create the media bucket and upload objects
 - Production updates only happen from commits that land on `main`
