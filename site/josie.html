@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#05070b" />
+    <meta name="color-scheme" content="dark" />
     <title>Josie</title>
+    <link rel="preload" href="/fonts/OMORI_GAME2.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/PixelMplus12.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/whitrabt.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="stylesheet" href="/josie.css?v=20260411-josie-138" />
     <style>
       :root {
@@ -139,6 +144,7 @@
     </style>
   </head>
   <body class="site-load-active site-load-playing" data-theme-resolved="night">
+    <a class="skip-link" href="#social-hub-root">Skip to social hub</a>
     <script>
       (() => {
         const handoffMode = new URLSearchParams(window.location.search).get("handoff") === "1";
@@ -240,7 +246,7 @@
           <a id="os-shuffle-visualizer-angel-link" class="os-shuffle-visualizer-angel-link" href="/" aria-hidden="true" data-visualizer-angel-link>Internet-Angel.net</a>
         </div>
         <div id="social-hub-scale-frame" class="social-hub-scale-frame">
-          <div id="social-hub-root" class="social-hub" aria-label="Josie social hub">
+          <div id="social-hub-root" class="social-hub" aria-label="Josie social hub" tabindex="-1">
             <div id="social-hub-content" class="social-hub-content">
               <div id="social-hub-left-rail" class="social-hub-left-rail" aria-label="Profile rail">
                 <section id="social-hub-profile" class="social-hub-profile" aria-label="Profile header"></section>

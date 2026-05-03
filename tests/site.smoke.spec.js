@@ -1063,6 +1063,17 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
 });
 
+test("josie exposes a keyboard skip link into the social hub", async ({ page }) => {
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".skip-link")).toBeFocused();
+  await expect(page.locator(".skip-link")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#social-hub-root$/);
+});
+
 test("josie keeps the fullscreen visualizer open while the angel link text expands", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
