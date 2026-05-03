@@ -1,0 +1,4 @@
+# Add or remove shuffle tracks here. Use one YouTube video per line.
+# Optional metadata format:
+# Title | Artist | https://www.youtube.com/watch?v=VIDEO_ID
+https://www.youtube.com/watch?v=r-6lO_UN3NY

@@ -13,5 +13,16 @@ tmp-*.cjs
 playwright-report/
 test-results/
 
-# Raw downloaded shuffle videos stay local; production shuffle videos are uploaded to R2.
-site/Shuffle/*(1080p, h264).mp4
+# Local downloaded shuffle media stays local; production shuffle uses YouTube links
+# from site/Shuffle/youtube-links.txt.
+site/Shuffle/*.aac
+site/Shuffle/*.flac
+site/Shuffle/*.m4a
+site/Shuffle/*.m4v
+site/Shuffle/*.mov
+site/Shuffle/*.mp3
+site/Shuffle/*.mp4
+site/Shuffle/*.ogg
+site/Shuffle/*.opus
+site/Shuffle/*.wav
+site/Shuffle/*.webm

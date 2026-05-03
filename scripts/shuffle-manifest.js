@@ -1,31 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SHUFFLE_AUDIO_EXTENSIONS = new Set([
-  ".aac",
-  ".flac",
-  ".m4a",
-  ".mp3",
-  ".ogg",
-  ".opus",
-  ".wav"
-]);
-const SHUFFLE_VIDEO_EXTENSIONS = new Set([
-  ".m4v",
-  ".mov",
-  ".mp4",
-  ".webm"
-]);
-const MAX_SHUFFLE_MEDIA_BYTES = 100 * 1024 * 1024;
-const RAW_SOURCE_VIDEO_PATTERN = /\(\s*1080p\s*,\s*h264\s*\)/i;
-
-function safeDecodeURIComponent(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return String(value || "");
-  }
-}
+const DEFAULT_TRACK_DURATION_SECONDS = 0;
+const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 
 function slugify(value) {
   return String(value || "")
@@ -36,157 +13,74 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-function createShufflePath(fileName) {
-  return `/Shuffle/${String(fileName || "").split("/").map((segment) => encodeURIComponent(segment)).join("/")}`;
-}
-
-function normalizeShufflePath(value) {
+function extractYouTubeVideoId(value) {
   const source = String(value || "").trim();
   if (!source) return "";
-  let pathname = source;
-  if (/^https?:\/\//i.test(pathname)) {
-    try {
-      pathname = new URL(pathname).pathname;
-    } catch {
-    }
-  }
-  const segments = pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => safeDecodeURIComponent(segment));
-  if (segments[0] !== "Shuffle" || segments.length < 2) {
-    return "";
-  }
-  return createShufflePath(segments.slice(1).join("/"));
-}
+  if (YOUTUBE_ID_PATTERN.test(source)) return source;
 
-function isSupportedShuffleAudioFile(fileName) {
-  return SHUFFLE_AUDIO_EXTENSIONS.has(path.extname(String(fileName || "")).toLowerCase());
-}
-
-function isSupportedShuffleVideoFile(fileName) {
-  return SHUFFLE_VIDEO_EXTENSIONS.has(path.extname(String(fileName || "")).toLowerCase());
-}
-
-function isSupportedShuffleMediaFile(fileName) {
-  return isSupportedShuffleAudioFile(fileName) || isSupportedShuffleVideoFile(fileName);
-}
-
-function isRawSourceVideoFile(fileName) {
-  return isSupportedShuffleVideoFile(fileName) && RAW_SOURCE_VIDEO_PATTERN.test(String(fileName || ""));
-}
-
-function parseShuffleDisplayCopy(fileName) {
-  const baseName = path.basename(String(fileName || ""), path.extname(String(fileName || ""))).trim();
-  if (!baseName) {
-    return {
-      title: "Untitled Track",
-      artist: "Unknown Artist"
-    };
-  }
-  const parts = baseName.split(/\s+-\s+/).map((token) => token.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const artist = parts.pop() || "Unknown Artist";
-    const title = parts.join(" - ") || baseName;
-    return { title, artist };
-  }
-  return {
-    title: baseName,
-    artist: "Unknown Artist"
-  };
-}
-
-function sortTracks(tracks) {
-  return tracks.slice().sort((left, right) => {
-    const leftAddedAt = Date.parse(String(left?.addedAt || ""));
-    const rightAddedAt = Date.parse(String(right?.addedAt || ""));
-    const safeLeftAddedAt = Number.isFinite(leftAddedAt) ? leftAddedAt : 0;
-    const safeRightAddedAt = Number.isFinite(rightAddedAt) ? rightAddedAt : 0;
-    if (safeRightAddedAt !== safeLeftAddedAt) {
-      return safeRightAddedAt - safeLeftAddedAt;
-    }
-    const leftSegmentIndex = Number.isFinite(Number(left?.segmentIndex)) ? Number(left.segmentIndex) : 0;
-    const rightSegmentIndex = Number.isFinite(Number(right?.segmentIndex)) ? Number(right.segmentIndex) : 0;
-    if (leftSegmentIndex !== rightSegmentIndex) {
-      return leftSegmentIndex - rightSegmentIndex;
-    }
-    return String(left?.title || "").localeCompare(String(right?.title || ""));
-  });
-}
-
-function readManualManifest(manifestPath) {
-  if (!fs.existsSync(manifestPath)) {
-    return [];
-  }
   try {
-    const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    return Array.isArray(parsed?.tracks) ? parsed.tracks : [];
+    const url = new URL(source);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host === "youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0] || "";
+      return YOUTUBE_ID_PATTERN.test(id) ? id : "";
+    }
+    if (host === "youtube.com" || host === "music.youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com") {
+      const watchId = url.searchParams.get("v") || "";
+      if (YOUTUBE_ID_PATTERN.test(watchId)) return watchId;
+      const segments = url.pathname.split("/").filter(Boolean);
+      const candidate = segments[0] === "embed" || segments[0] === "shorts" || segments[0] === "live"
+        ? segments[1] || ""
+        : "";
+      return YOUTUBE_ID_PATTERN.test(candidate) ? candidate : "";
+    }
   } catch {
-    return [];
   }
+
+  const looseMatch = source.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([a-zA-Z0-9_-]{11})/);
+  return looseMatch ? looseMatch[1] : "";
 }
 
-function createUniqueId(seedValue, usedIds) {
-  const baseId = slugify(seedValue) || "shuffle-track";
-  let nextId = baseId;
-  let suffix = 2;
-  while (usedIds.has(nextId)) {
-    nextId = `${baseId}-${suffix}`;
-    suffix += 1;
-  }
-  usedIds.add(nextId);
-  return nextId;
+function normalizeYouTubeUrl(value) {
+  const videoId = extractYouTubeVideoId(value);
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
 }
 
-function normalizeManualTrackEntry(entry, normalizedPath, availableFilesByPath) {
-  const availableFile = availableFilesByPath.get(normalizedPath);
-  if (!availableFile) return null;
-  const fallbackCopy = parseShuffleDisplayCopy(availableFile.fileName);
-  const id = String(entry?.id || "").trim();
-  const groupId = String(entry?.groupId || id || normalizedPath).trim();
-  const normalizedEntry = {
-    ...entry,
-    id,
-    groupId,
-    path: normalizedPath,
-    mediaType: availableFile.mediaType,
-    videoPath: String(entry?.videoPath || "").trim() || (availableFile.mediaType === "video" ? normalizedPath : ""),
-    title: String(entry?.title || "").trim() || fallbackCopy.title,
-    displayTitle: String(entry?.displayTitle || "").trim() || String(entry?.title || "").trim() || fallbackCopy.title,
-    artist: String(entry?.artist || "").trim() || fallbackCopy.artist,
-    displayArtist: String(entry?.displayArtist || "").trim() || String(entry?.artist || "").trim() || fallbackCopy.artist,
-    addedAt: String(entry?.addedAt || "").trim() || new Date(availableFile.stats.mtimeMs).toISOString(),
-    segmentIndex: Number.isFinite(Number(entry?.segmentIndex)) ? Math.max(0, Math.floor(Number(entry.segmentIndex))) : 0,
-    segmentCount: Number.isFinite(Number(entry?.segmentCount)) ? Math.max(1, Math.floor(Number(entry.segmentCount))) : 1,
-    segmentStart: Number.isFinite(Number(entry?.segmentStart)) ? Math.max(0, Number(entry.segmentStart)) : 0,
-    segmentOffset: Number.isFinite(Number(entry?.segmentOffset)) ? Math.max(0, Number(entry.segmentOffset)) : 0
-  };
-  if (normalizedEntry.nextTrackId != null && !String(normalizedEntry.nextTrackId).trim()) {
-    delete normalizedEntry.nextTrackId;
-  }
-  if (!(Number.isFinite(Number(normalizedEntry.segmentEnd)) && Number(normalizedEntry.segmentEnd) > 0)) {
-    delete normalizedEntry.segmentEnd;
-  }
-  if (!(Number.isFinite(Number(normalizedEntry.groupDuration)) && Number(normalizedEntry.groupDuration) > 0)) {
-    delete normalizedEntry.groupDuration;
-  }
-  return normalizedEntry;
-}
+function parseTrackLine(line, index) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
 
-function buildAutoTrackEntry(fileRecord, usedIds) {
-  const displayCopy = parseShuffleDisplayCopy(fileRecord.fileName);
-  const id = createUniqueId(`${displayCopy.title}-${displayCopy.artist}`, usedIds);
+  const parts = trimmed.split("|").map((part) => part.trim()).filter(Boolean);
+  const urlPartIndex = parts.findIndex((part) => extractYouTubeVideoId(part));
+  const sourceUrl = urlPartIndex >= 0 ? parts[urlPartIndex] : trimmed;
+  const videoId = extractYouTubeVideoId(sourceUrl);
+  if (!videoId) return null;
+
+  const metadataParts = urlPartIndex >= 0
+    ? parts.filter((_, partIndex) => partIndex !== urlPartIndex)
+    : [];
+  const title = metadataParts[0] || `YouTube Video ${videoId}`;
+  const artist = metadataParts[1] || "YouTube";
+  const duration = Number(metadataParts[2]);
+  const normalizedUrl = normalizeYouTubeUrl(sourceUrl);
+  const id = slugify(`youtube-${videoId}`) || `youtube-${index + 1}`;
+
   return {
     id,
     groupId: id,
-    mediaType: fileRecord.mediaType,
-    videoPath: fileRecord.mediaType === "video" ? fileRecord.path : "",
-    title: displayCopy.title,
-    displayTitle: displayCopy.title,
-    artist: displayCopy.artist,
-    displayArtist: displayCopy.artist,
-    path: fileRecord.path,
-    addedAt: new Date(fileRecord.stats.mtimeMs).toISOString(),
+    queueId: id,
+    mediaType: "youtube",
+    youtubeVideoId: videoId,
+    youtubeUrl: normalizedUrl,
+    videoPath: normalizedUrl,
+    path: normalizedUrl,
+    title,
+    displayTitle: title,
+    artist,
+    displayArtist: artist,
+    addedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    sortOrder: index,
+    duration: Number.isFinite(duration) && duration > 0 ? duration : DEFAULT_TRACK_DURATION_SECONDS,
     segmentIndex: 0,
     segmentCount: 1,
     segmentStart: 0,
@@ -196,90 +90,50 @@ function buildAutoTrackEntry(fileRecord, usedIds) {
 
 export function buildShuffleManifest({
   siteDir,
-  shuffleDir = path.join(siteDir, "Shuffle"),
-  manifestPath = path.join(siteDir, "assets", "shuffle-manifest.json")
+  linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt")
 }) {
-  const availableFiles = fs.existsSync(shuffleDir)
-    ? fs.readdirSync(shuffleDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && isSupportedShuffleMediaFile(entry.name) && !isRawSourceVideoFile(entry.name))
-      .map((entry) => {
-        const filePath = path.join(shuffleDir, entry.name);
-        return {
-          fileName: entry.name,
-          filePath,
-          path: createShufflePath(entry.name),
-          stats: fs.statSync(filePath),
-          mediaType: isSupportedShuffleVideoFile(entry.name) ? "video" : "audio"
-        };
-      })
-      .filter((fileRecord) => fileRecord.stats.size <= MAX_SHUFFLE_MEDIA_BYTES)
-    : [];
-  const availableFilesByPath = new Map(availableFiles.map((fileRecord) => [fileRecord.path, fileRecord]));
-  const manualGroups = new Map();
-  for (const entry of readManualManifest(manifestPath)) {
-    const normalizedPath = normalizeShufflePath(entry?.path);
-    if (!normalizedPath) continue;
-    const groupKey = String(entry?.groupId || entry?.id || normalizedPath).trim();
-    const group = manualGroups.get(groupKey) || [];
-    group.push({
-      entry,
-      normalizedPath
-    });
-    manualGroups.set(groupKey, group);
-  }
-
-  const keptManualTracks = [];
-  const manualPaths = new Set();
+  const source = fs.existsSync(linksPath) ? fs.readFileSync(linksPath, "utf8") : "";
+  let trackIndex = 0;
   const usedIds = new Set();
-  for (const groupEntries of manualGroups.values()) {
-    const everyTrackExists = groupEntries.every((groupEntry) => availableFilesByPath.has(groupEntry.normalizedPath));
-    if (!everyTrackExists) continue;
-    const normalizedGroupEntries = groupEntries
-      .map((groupEntry) => normalizeManualTrackEntry(groupEntry.entry, groupEntry.normalizedPath, availableFilesByPath))
-      .filter(Boolean);
-    const sortedGroupEntries = normalizedGroupEntries.slice().sort((left, right) => {
-      const leftSegmentIndex = Number.isFinite(Number(left?.segmentIndex)) ? Number(left.segmentIndex) : 0;
-      const rightSegmentIndex = Number.isFinite(Number(right?.segmentIndex)) ? Number(right.segmentIndex) : 0;
-      return leftSegmentIndex - rightSegmentIndex;
-    });
-    const validIds = new Set(sortedGroupEntries.map((entry) => String(entry?.id || "").trim()).filter(Boolean));
-    for (const entry of sortedGroupEntries) {
-      if (!entry.id) {
-        entry.id = createUniqueId(`${entry.groupId}-${entry.path}`, usedIds);
-      } else {
-        usedIds.add(entry.id);
-      }
-      if (entry.nextTrackId && !validIds.has(String(entry.nextTrackId).trim())) {
-        delete entry.nextTrackId;
-      }
-      keptManualTracks.push(entry);
-      manualPaths.add(entry.path);
-    }
-  }
-
-  const autoTracks = availableFiles
-    .filter((fileRecord) => !manualPaths.has(fileRecord.path))
-    .sort((left, right) => {
-      if (right.stats.mtimeMs !== left.stats.mtimeMs) {
-        return right.stats.mtimeMs - left.stats.mtimeMs;
-      }
-      return left.fileName.localeCompare(right.fileName);
+  const tracks = source
+    .split(/\r?\n/)
+    .map((line) => {
+      const track = parseTrackLine(line, trackIndex);
+      if (track) trackIndex += 1;
+      return track;
     })
-    .map((fileRecord) => buildAutoTrackEntry(fileRecord, usedIds));
+    .filter(Boolean)
+    .map((track) => {
+      let id = track.id;
+      let suffix = 2;
+      while (usedIds.has(id)) {
+        id = `${track.id}-${suffix}`;
+        suffix += 1;
+      }
+      usedIds.add(id);
+      return {
+        ...track,
+        id,
+        groupId: id,
+        queueId: id
+      };
+    });
 
-  return {
-    tracks: sortTracks([...keptManualTracks, ...autoTracks])
-  };
+  return { tracks };
 }
 
 export function writeShuffleManifest({
   siteDir,
-  shuffleDir = path.join(siteDir, "Shuffle"),
-  manifestPath = path.join(siteDir, "assets", "shuffle-manifest.json"),
+  linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt"),
   outputPath
 }) {
-  const manifest = buildShuffleManifest({ siteDir, shuffleDir, manifestPath });
+  const manifest = buildShuffleManifest({ siteDir, linksPath });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf8");
   return manifest;
 }
+
+export const __test = {
+  extractYouTubeVideoId,
+  parseTrackLine
+};

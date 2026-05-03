@@ -17,10 +17,14 @@ const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const allowOversizedAssets = process.argv.includes("--allow-oversized-assets");
 const rawSourceVideoPattern = /\(\s*1080p\s*,\s*h264\s*\)/i;
-const excludedDeployPaths = /* @__PURE__ */ new Set([
-  "Shuffle/BEGGING THE WITNESS.flac"
-]);
-const deployVideoExtensions = /* @__PURE__ */ new Set([
+const deployMediaExtensions = /* @__PURE__ */ new Set([
+  ".aac",
+  ".flac",
+  ".m4a",
+  ".mp3",
+  ".ogg",
+  ".opus",
+  ".wav",
   ".m4v",
   ".mov",
   ".mp4",
@@ -87,11 +91,11 @@ function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = [])
 }
 
 function shouldExcludeDeployPath(relativePath, sourcePath) {
-  if (excludedDeployPaths.has(relativePath)) {
+  const extension = path.extname(relativePath).toLowerCase();
+  if (relativePath.startsWith("Shuffle/") && deployMediaExtensions.has(extension)) {
     return true;
   }
-  const extension = path.extname(relativePath).toLowerCase();
-  if (!deployVideoExtensions.has(extension)) {
+  if (!deployMediaExtensions.has(extension)) {
     return false;
   }
   if (rawSourceVideoPattern.test(path.basename(relativePath))) {
@@ -194,7 +198,7 @@ if (oversizedFiles.length && !allowOversizedAssets) {
     .map((file) => `- ${file.path} (${file.size} bytes)`)
     .join("\n");
   throw new Error(
-    `Static assets must stay below ${maxPagesAssetBytes} bytes (25 MiB). Upload oversized Shuffle videos to R2 instead of Pages.\n${details}`
+    `Static assets must stay below ${maxPagesAssetBytes} bytes (25 MiB). Remove or external-host oversized media before deploying.\n${details}`
   );
 }
 

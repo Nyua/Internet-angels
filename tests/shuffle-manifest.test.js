@@ -4,77 +4,37 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { buildShuffleManifest } from "../scripts/shuffle-manifest.js";
+import { buildShuffleManifest, __test as shuffleManifestTest } from "../scripts/shuffle-manifest.js";
 
-test("buildShuffleManifest drops missing manual tracks and adds new files from site/Shuffle", () => {
+test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link list", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "internet-angel-shuffle-"));
   const siteDir = path.join(tempRoot, "site");
   const shuffleDir = path.join(siteDir, "Shuffle");
-  const assetsDir = path.join(siteDir, "assets");
   fs.mkdirSync(shuffleDir, { recursive: true });
-  fs.mkdirSync(assetsDir, { recursive: true });
-
-  fs.writeFileSync(path.join(shuffleDir, "Backdoor.mp3"), "");
-  fs.writeFileSync(path.join(shuffleDir, "New Song - Artist.mp3"), "");
-  fs.writeFileSync(path.join(assetsDir, "shuffle-manifest.json"), JSON.stringify({
-    tracks: [
-      {
-        id: "backdoor-manual",
-        groupId: "backdoor-manual",
-        title: "Backdoor",
-        displayTitle: "Backdoor",
-        artist: "Unknown Artist",
-        displayArtist: "Unknown Artist",
-        path: "/Shuffle/Backdoor.mp3",
-        addedAt: "2026-04-10T11:55:00.000Z",
-        segmentIndex: 0,
-        segmentCount: 1,
-        segmentStart: 0,
-        segmentOffset: 0
-      },
-      {
-        id: "missing-part-1",
-        groupId: "missing-group",
-        title: "Missing Track",
-        displayTitle: "Missing Track",
-        artist: "Missing Artist",
-        displayArtist: "Missing Artist",
-        path: "/Shuffle/Missing%20Track%20(part%201).mp3",
-        addedAt: "2026-04-09T00:00:00.000Z",
-        segmentIndex: 0,
-        segmentCount: 2,
-        segmentStart: 0,
-        segmentOffset: 0,
-        nextTrackId: "missing-part-2"
-      },
-      {
-        id: "missing-part-2",
-        groupId: "missing-group",
-        title: "Missing Track",
-        displayTitle: "Missing Track",
-        artist: "Missing Artist",
-        displayArtist: "Missing Artist",
-        path: "/Shuffle/Missing%20Track%20(part%202).mp3",
-        addedAt: "2026-04-09T00:00:00.000Z",
-        segmentIndex: 1,
-        segmentCount: 2,
-        segmentStart: 0,
-        segmentOffset: 120
-      }
-    ]
-  }, null, 2), "utf8");
+  fs.writeFileSync(path.join(shuffleDir, "youtube-links.txt"), [
+    "# title | artist | url",
+    "Cool Song | Cool Artist | https://www.youtube.com/watch?v=r-6lO_UN3NY",
+    "https://youtu.be/dQw4w9WgXcQ"
+  ].join("\n"));
 
   const manifest = buildShuffleManifest({ siteDir });
-  const manifestPaths = manifest.tracks.map((track) => track.path).sort();
-  assert.deepEqual(manifestPaths, [
-    "/Shuffle/Backdoor.mp3",
-    "/Shuffle/New%20Song%20-%20Artist.mp3"
+  assert.equal(manifest.tracks.length, 2);
+  assert.deepEqual(manifest.tracks.map((track) => track.youtubeVideoId), [
+    "r-6lO_UN3NY",
+    "dQw4w9WgXcQ"
   ]);
+  assert.equal(manifest.tracks[0].title, "Cool Song");
+  assert.equal(manifest.tracks[0].artist, "Cool Artist");
+  assert.equal(manifest.tracks[0].mediaType, "youtube");
+  assert.equal(manifest.tracks[0].path, "https://www.youtube.com/watch?v=r-6lO_UN3NY");
+  assert.equal(manifest.tracks[1].title, "YouTube Video dQw4w9WgXcQ");
+  assert.equal(manifest.tracks[1].sortOrder, 1);
+});
 
-  const backdoorTrack = manifest.tracks.find((track) => track.path === "/Shuffle/Backdoor.mp3");
-  const newTrack = manifest.tracks.find((track) => track.path === "/Shuffle/New%20Song%20-%20Artist.mp3");
-  assert.equal(backdoorTrack?.id, "backdoor-manual");
-  assert.equal(newTrack?.title, "New Song");
-  assert.equal(newTrack?.artist, "Artist");
-  assert.equal(newTrack?.segmentCount, 1);
+test("shuffle YouTube parser accepts common YouTube URL shapes", () => {
+  assert.equal(shuffleManifestTest.extractYouTubeVideoId("r-6lO_UN3NY"), "r-6lO_UN3NY");
+  assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/watch?v=r-6lO_UN3NY"), "r-6lO_UN3NY");
+  assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://youtu.be/r-6lO_UN3NY"), "r-6lO_UN3NY");
+  assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/embed/r-6lO_UN3NY"), "r-6lO_UN3NY");
+  assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/shorts/r-6lO_UN3NY"), "r-6lO_UN3NY");
 });

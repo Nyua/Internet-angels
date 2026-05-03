@@ -405,6 +405,142 @@ async function installShuffleAudioMock(page, options = {}) {
   }, options);
 }
 
+async function installYouTubePlayerMock(page) {
+  await page.addInitScript(() => {
+    const PlayerState = {
+      UNSTARTED: -1,
+      ENDED: 0,
+      PLAYING: 1,
+      PAUSED: 2,
+      BUFFERING: 3,
+      CUED: 5
+    };
+    window.__youtubePlayers = [];
+    window.YT = {
+      PlayerState,
+      Player: function Player(target, options = {}) {
+        const host = typeof target === "string" ? document.getElementById(target) : target;
+        let state = PlayerState.UNSTARTED;
+        let currentTime = 0;
+        let duration = 30;
+        let volume = 8;
+        let muted = false;
+        let videoId = String(options.videoId || "");
+        let timer = 0;
+        const listeners = options.events || {};
+        const emitState = (nextState) => {
+          state = nextState;
+          listeners.onStateChange?.({ target: player, data: state });
+        };
+        const startTimer = () => {
+          if (timer) return;
+          timer = window.setInterval(() => {
+            if (state !== PlayerState.PLAYING) return;
+            currentTime = Math.min(duration, currentTime + 0.25);
+            if (currentTime >= duration) {
+              window.clearInterval(timer);
+              timer = 0;
+              emitState(PlayerState.ENDED);
+            }
+          }, 250);
+        };
+        const stopTimer = () => {
+          if (!timer) return;
+          window.clearInterval(timer);
+          timer = 0;
+        };
+        const setVideo = (payload = {}, shouldPlay = false) => {
+          videoId = String(typeof payload === "string" ? payload : payload.videoId || "");
+          currentTime = Number(typeof payload === "object" ? payload.startSeconds : 0) || 0;
+          duration = Number(typeof payload === "object" ? payload.duration : 30) || 30;
+          if (shouldPlay) {
+            emitState(PlayerState.PLAYING);
+            startTimer();
+          } else {
+            emitState(PlayerState.CUED);
+          }
+        };
+        if (host instanceof HTMLElement) {
+          host.innerHTML = "";
+          const iframe = document.createElement("iframe");
+          iframe.title = "Mock YouTube player";
+          iframe.src = "about:blank#youtube";
+          iframe.allow = "autoplay; encrypted-media; picture-in-picture";
+          host.append(iframe);
+        }
+        const player = {
+          loadVideoById(payload) {
+            setVideo(payload, true);
+          },
+          cueVideoById(payload) {
+            setVideo(payload, false);
+          },
+          playVideo() {
+            emitState(PlayerState.PLAYING);
+            startTimer();
+          },
+          pauseVideo() {
+            stopTimer();
+            emitState(PlayerState.PAUSED);
+          },
+          stopVideo() {
+            stopTimer();
+            currentTime = 0;
+            emitState(PlayerState.UNSTARTED);
+          },
+          seekTo(value) {
+            currentTime = Math.max(0, Number(value) || 0);
+          },
+          getCurrentTime() {
+            return currentTime;
+          },
+          getDuration() {
+            return duration;
+          },
+          getPlayerState() {
+            return state;
+          },
+          getVideoData() {
+            return {
+              video_id: videoId,
+              title: videoId ? `YouTube Video ${videoId}` : "",
+              author: "YouTube"
+            };
+          },
+          setVolume(value) {
+            volume = Number(value) || 0;
+          },
+          getVolume() {
+            return volume;
+          },
+          mute() {
+            muted = true;
+          },
+          unMute() {
+            muted = false;
+          },
+          isMuted() {
+            return muted;
+          },
+          setPlaybackQuality() {},
+          setPlaybackQualityRange() {},
+          getAvailableQualityLevels() {
+            return ["highres", "hd2160", "hd1080", "large", "medium", "small"];
+          },
+          destroy() {
+            stopTimer();
+            if (host instanceof HTMLElement) host.innerHTML = "";
+          }
+        };
+        window.__youtubePlayers.push(player);
+        window.setTimeout(() => listeners.onReady?.({ target: player }), 0);
+        return player;
+      }
+    };
+    window.onYouTubeIframeAPIReady?.();
+  });
+}
+
 async function readFirstSelectableShuffleTrack(page) {
   return page.evaluate(async () => {
     try {
@@ -426,6 +562,7 @@ async function readFirstSelectableShuffleTrack(page) {
 test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
   await installShuffleAudioMock(page);
+  await installYouTubePlayerMock(page);
 });
 
 test("root loads the Wings intro page centered on black with no intro ASCII overlay", async ({ page }) => {
@@ -1561,11 +1698,17 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.waitForFunction(() => {
     const layer = document.querySelector("#shuffle-video-background");
     const video = document.querySelector("[data-shuffle-background-video]");
-    return document.body.classList.contains("shuffle-video-background-active")
-      && layer instanceof HTMLElement
-      && video instanceof HTMLVideoElement
+    const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
+    const youtubeFrame = youtubeHost?.querySelector("iframe");
+    const hasLocalVideo = video instanceof HTMLVideoElement
       && video.preload === "auto"
       && (video.currentSrc || video.src).includes("/Shuffle/");
+    const hasYouTubeFrame = layer instanceof HTMLElement
+      && layer.dataset.shuffleBackgroundKind === "youtube"
+      && youtubeFrame instanceof HTMLIFrameElement;
+    return document.body.classList.contains("shuffle-video-background-active")
+      && layer instanceof HTMLElement
+      && (hasLocalVideo || hasYouTubeFrame);
   });
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -1587,13 +1730,17 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const showcases = document.querySelector("#social-hub-showcases");
     const showcase = document.querySelector("#social-hub-showcases > .steam-showcase");
     const video = document.querySelector("[data-shuffle-background-video]");
+    const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
+    const youtubeFrame = youtubeHost?.querySelector("iframe");
     const grain = layer instanceof HTMLElement ? window.getComputedStyle(layer, "::after") : null;
     const frameStyles = frame instanceof HTMLElement ? window.getComputedStyle(frame) : null;
     const showcaseStyles = showcase instanceof HTMLElement ? window.getComputedStyle(showcase) : null;
     const showcasesStyles = showcases instanceof HTMLElement ? window.getComputedStyle(showcases) : null;
     return {
+      backgroundKind: layer instanceof HTMLElement ? layer.dataset.shuffleBackgroundKind || "" : "",
       videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : "",
       videoPreload: video instanceof HTMLVideoElement ? video.preload : "",
+      youtubeFrameSrc: youtubeFrame instanceof HTMLIFrameElement ? youtubeFrame.src : "",
       grainImage: grain?.backgroundImage || "",
       grainSize: grain?.backgroundSize || "",
       frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || "",
@@ -1603,8 +1750,12 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       showcasesGap: Number.parseFloat(showcasesStyles?.gap || "0")
     };
   });
-  expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
-  expect(videoBackgroundState.videoPreload).toBe("auto");
+  if (videoBackgroundState.backgroundKind === "youtube") {
+    expect(videoBackgroundState.youtubeFrameSrc).toContain("youtube");
+  } else {
+    expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
+    expect(videoBackgroundState.videoPreload).toBe("auto");
+  }
   expect(videoBackgroundState.grainImage).toContain("svg");
   expect(videoBackgroundState.grainSize).not.toBe("auto");
   expect(videoBackgroundState.frameBackdrop.toLowerCase()).not.toContain("blur");
