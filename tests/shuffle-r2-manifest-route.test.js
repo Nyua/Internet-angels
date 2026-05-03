@@ -52,10 +52,13 @@ test("shuffle R2 manifest route lists all supported music videos from the bucket
   const response = await onShuffleManifestRequest(createContext({ bucket }));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
+  assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "r2");
+  assert.equal(response.headers.get("X-Shuffle-Manifest-Count"), "3");
 
   const manifest = await response.json();
   assert.deepEqual(manifest.tracks.map((track) => track.path), [
     "/Shuffle/Root%20Video%20-%20Artist.webm",
+    "/Shuffle/Video%20-%20Artist.mp4?key=Nested%2FVideo%20-%20Artist.mp4",
     "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4"
   ]);
   assert.equal(manifest.tracks[0].title, "Root Video");
@@ -75,7 +78,10 @@ test("shuffle R2 manifest route falls back to the static asset when R2 has no tr
     next: () => fallbackResponse
   }));
 
-  assert.equal(response, fallbackResponse);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "static-fallback");
+  assert.equal(response.headers.get("X-Shuffle-Manifest-Fallback"), "no-supported-r2-videos");
+  assert.deepEqual(await response.json(), { tracks: [{ id: "static-track" }] });
 });
 
 test("shuffle R2 manifest builder prefers Shuffle-prefixed duplicates", () => {
@@ -87,4 +93,17 @@ test("shuffle R2 manifest builder prefers Shuffle-prefixed duplicates", () => {
   assert.equal(manifest.tracks.length, 1);
   assert.equal(manifest.tracks[0].path, "/Shuffle/Same%20Name%20-%20Artist.mp4");
   assert.equal(manifest.tracks[0].addedAt, "2026-05-03T00:00:00.000Z");
+});
+
+test("shuffle R2 manifest builder keeps nested duplicate basenames addressable", () => {
+  const manifest = shuffleManifestRouteTest.buildManifestFromObjects([
+    { key: "First/Same Name - Artist.mp4", uploaded: "2026-05-04T00:00:00.000Z" },
+    { key: "Second/Same Name - Artist.mp4", uploaded: "2026-05-03T00:00:00.000Z" }
+  ]);
+
+  assert.equal(manifest.tracks.length, 2);
+  assert.deepEqual(manifest.tracks.map((track) => track.path), [
+    "/Shuffle/Same%20Name%20-%20Artist.mp4?key=First%2FSame%20Name%20-%20Artist.mp4",
+    "/Shuffle/Same%20Name%20-%20Artist.mp4?key=Second%2FSame%20Name%20-%20Artist.mp4"
+  ]);
 });

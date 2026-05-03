@@ -40,9 +40,9 @@ function createMockObject(entry, body) {
   };
 }
 
-function createContext({ file = "Thailand - Malcolm Todd.mp4", headers = {}, env } = {}) {
+function createContext({ file = "Thailand - Malcolm Todd.mp4", headers = {}, search = "", env } = {}) {
   return {
-    request: new Request(`https://internet-angel.net/Shuffle/${encodeURIComponent(file)}`, {
+    request: new Request(`https://internet-angel.net/Shuffle/${encodeURIComponent(file)}${search}`, {
       method: "GET",
       headers
     }),
@@ -125,6 +125,27 @@ test("shuffle media route falls back to root-level R2 objects", async () => {
   assert.deepEqual(bucket.getCalls, [
     { key: "Shuffle/Root Video - Artist.mp4", options: undefined },
     { key: "Root Video - Artist.mp4", options: undefined }
+  ]);
+});
+
+test("shuffle media route streams nested R2 objects selected by the manifest key query", async () => {
+  const bucket = new MockMediaBucket({
+    "Nested/Video - Artist.mp4": {
+      content: "nested-video",
+      contentType: "video/mp4"
+    }
+  });
+
+  const response = await onShuffleMediaRequest(createContext({
+    file: "Video - Artist.mp4",
+    search: `?key=${encodeURIComponent("Nested/Video - Artist.mp4")}`,
+    env: { MEDIA_BUCKET: bucket }
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "nested-video");
+  assert.deepEqual(bucket.getCalls, [
+    { key: "Nested/Video - Artist.mp4", options: undefined }
   ]);
 });
 

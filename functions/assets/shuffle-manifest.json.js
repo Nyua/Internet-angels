@@ -39,6 +39,16 @@ function createShufflePath(fileName) {
   return `/${SHUFFLE_PREFIX}${String(fileName || "").split("/").map((segment) => encodeURIComponent(segment)).join("/")}`;
 }
 
+function createMediaPath(record) {
+  const basePath = createShufflePath(record.fileName);
+  const canonicalShuffleKey = `${SHUFFLE_PREFIX}${record.fileName}`;
+  const canonicalRootKey = record.fileName;
+  if (record.key === canonicalShuffleKey || record.key === canonicalRootKey) {
+    return basePath;
+  }
+  return `${basePath}?key=${encodeURIComponent(record.key)}`;
+}
+
 function parseDisplayCopy(fileName) {
   const baseName = String(fileName || "").replace(/\.[^/.]+$/, "").trim();
   if (!baseName) {
@@ -75,15 +85,8 @@ function getObjectFileRecord(object) {
   const key = String(object?.key || "").trim();
   if (!key || key.endsWith("/")) return null;
 
-  let fileName = "";
-  let isPreferredPrefix = false;
-  if (key.startsWith(SHUFFLE_PREFIX)) {
-    fileName = key.slice(SHUFFLE_PREFIX.length);
-    isPreferredPrefix = true;
-  } else if (!key.includes("/")) {
-    fileName = key;
-  }
-
+  const keySegments = key.split("/").filter(Boolean);
+  let fileName = keySegments[keySegments.length - 1] || "";
   fileName = safeDecodeURIComponent(fileName).trim();
   if (!fileName || fileName.includes("/") || fileName.includes("\\") || /[\x00-\x1F\x7F]/.test(fileName)) {
     return null;
@@ -95,9 +98,18 @@ function getObjectFileRecord(object) {
   return {
     key,
     fileName,
-    isPreferredPrefix,
+    isPreferredPrefix: key === `${SHUFFLE_PREFIX}${fileName}`,
+    isRootFile: key === fileName,
     uploaded: object?.uploaded || object?.uploadedAt || object?.created || ""
   };
+}
+
+function getRecordDedupeKey(record) {
+  const fileNameKey = String(record?.fileName || "").toLowerCase();
+  if (record?.isPreferredPrefix || record?.isRootFile) {
+    return `canonical:${fileNameKey}`;
+  }
+  return `key:${String(record?.key || "").toLowerCase()}`;
 }
 
 async function listR2Objects(bucket) {
@@ -117,19 +129,23 @@ async function listR2Objects(bucket) {
 }
 
 function buildManifestFromObjects(objects) {
-  const recordsByFileName = new Map();
+  const recordsByDedupeKey = new Map();
   for (const object of objects) {
     const record = getObjectFileRecord(object);
     if (!record) continue;
-    const recordKey = record.fileName.toLowerCase();
-    const existing = recordsByFileName.get(recordKey);
-    if (!existing || (!existing.isPreferredPrefix && record.isPreferredPrefix)) {
-      recordsByFileName.set(recordKey, record);
+    const recordKey = getRecordDedupeKey(record);
+    const existing = recordsByDedupeKey.get(recordKey);
+    if (
+      !existing
+      || (!existing.isPreferredPrefix && record.isPreferredPrefix)
+      || (!existing.isPreferredPrefix && !existing.isRootFile && record.isRootFile)
+    ) {
+      recordsByDedupeKey.set(recordKey, record);
     }
   }
 
   const usedIds = new Set();
-  const tracks = [...recordsByFileName.values()]
+  const tracks = [...recordsByDedupeKey.values()]
     .sort((left, right) => {
       const leftUploaded = Date.parse(String(left.uploaded || ""));
       const rightUploaded = Date.parse(String(right.uploaded || ""));
@@ -142,8 +158,8 @@ function buildManifestFromObjects(objects) {
     })
     .map((record) => {
       const displayCopy = parseDisplayCopy(record.fileName);
-      const id = createUniqueId(`${displayCopy.title}-${displayCopy.artist}`, usedIds);
-      const mediaPath = createShufflePath(record.fileName);
+      const id = createUniqueId(`${displayCopy.title}-${displayCopy.artist}-${record.key}`, usedIds);
+      const mediaPath = createMediaPath(record);
       const uploadedDate = Date.parse(String(record.uploaded || ""));
       return {
         id,
@@ -176,11 +192,31 @@ function jsonResponse(payload, init = {}) {
   });
 }
 
-async function fallbackToStaticAsset(context) {
+function addManifestHeaders(response, { source, count, reason } = {}) {
+  const headers = new Headers(response.headers);
+  if (source) headers.set("X-Shuffle-Manifest-Source", source);
+  if (Number.isFinite(count)) headers.set("X-Shuffle-Manifest-Count", String(count));
+  if (reason) headers.set("X-Shuffle-Manifest-Fallback", reason);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+async function fallbackToStaticAsset(context, reason = "unavailable") {
   if (typeof context.next === "function") {
-    return context.next();
+    const response = await context.next();
+    return addManifestHeaders(response, {
+      source: "static-fallback",
+      reason
+    });
   }
-  return jsonResponse({ tracks: [] });
+  return addManifestHeaders(jsonResponse({ tracks: [] }), {
+    source: "static-fallback",
+    count: 0,
+    reason
+  });
 }
 
 export async function onRequest(context) {
@@ -196,24 +232,30 @@ export async function onRequest(context) {
 
   const bucket = context.env?.MEDIA_BUCKET;
   if (!bucket || typeof bucket.list !== "function") {
-    return fallbackToStaticAsset(context);
+    return fallbackToStaticAsset(context, "missing-media-bucket-binding");
   }
 
   try {
     const manifest = buildManifestFromObjects(await listR2Objects(bucket));
     if (!manifest.tracks.length) {
-      return fallbackToStaticAsset(context);
+      return fallbackToStaticAsset(context, "no-supported-r2-videos");
     }
     if (method === "HEAD") {
-      const response = jsonResponse(manifest);
+      const response = addManifestHeaders(jsonResponse(manifest), {
+        source: "r2",
+        count: manifest.tracks.length
+      });
       return new Response(null, {
         status: response.status,
         headers: response.headers
       });
     }
-    return jsonResponse(manifest);
+    return addManifestHeaders(jsonResponse(manifest), {
+      source: "r2",
+      count: manifest.tracks.length
+    });
   } catch {
-    return fallbackToStaticAsset(context);
+    return fallbackToStaticAsset(context, "r2-list-failed");
   }
 }
 

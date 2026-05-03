@@ -29,6 +29,31 @@ function normalizeRequestedFileName(value) {
   return VIDEO_CONTENT_TYPES.has(getExtension(fileName)) ? fileName : "";
 }
 
+function getKeyBaseName(key) {
+  const segments = String(key || "").split("/").filter(Boolean);
+  return segments[segments.length - 1] || "";
+}
+
+function normalizeRequestedObjectKey(request, fileName) {
+  const url = new URL(request.url);
+  const objectKey = String(url.searchParams.get("key") || "").trim();
+  if (
+    !objectKey
+    || objectKey.startsWith("/")
+    || objectKey.includes("\\")
+    || objectKey.split("/").some((segment) => !segment || segment === "." || segment === "..")
+    || /[\x00-\x1F\x7F]/.test(objectKey)
+  ) {
+    return "";
+  }
+
+  const objectFileName = safeDecodeURIComponent(getKeyBaseName(objectKey)).trim();
+  if (objectFileName !== fileName || !VIDEO_CONTENT_TYPES.has(getExtension(objectFileName))) {
+    return "";
+  }
+  return objectKey;
+}
+
 function parseRangeHeader(rangeHeader, totalSize) {
   const size = Number(totalSize);
   if (!Number.isSafeInteger(size) || size < 1) return null;
@@ -87,15 +112,17 @@ function notFound() {
   });
 }
 
-function getMediaKeys(fileName) {
+function getMediaKeys(fileName, request) {
+  const requestedObjectKey = normalizeRequestedObjectKey(request, fileName);
   return [
+    requestedObjectKey,
     `${SHUFFLE_PREFIX}${fileName}`,
     fileName
-  ];
+  ].filter((key, index, keys) => key && keys.indexOf(key) === index);
 }
 
-async function headMediaObject(bucket, fileName) {
-  for (const key of getMediaKeys(fileName)) {
+async function headMediaObject(bucket, fileName, request) {
+  for (const key of getMediaKeys(fileName, request)) {
     const object = await bucket.head(key);
     if (object) {
       return { key, object };
@@ -104,8 +131,8 @@ async function headMediaObject(bucket, fileName) {
   return null;
 }
 
-async function getMediaObject(bucket, fileName, options) {
-  for (const key of getMediaKeys(fileName)) {
+async function getMediaObject(bucket, fileName, request, options) {
+  for (const key of getMediaKeys(fileName, request)) {
     const object = await bucket.get(key, options);
     if (object) {
       return { key, object };
@@ -140,7 +167,7 @@ export async function onRequest(context) {
 
   const rangeHeader = context.request.headers.get("Range");
   if (rangeHeader) {
-    const metadataResult = await headMediaObject(bucket, fileName);
+    const metadataResult = await headMediaObject(bucket, fileName, context.request);
     if (!metadataResult) return notFound();
     const metadata = metadataResult.object;
 
@@ -157,7 +184,7 @@ export async function onRequest(context) {
 
     const object = method === "HEAD"
       ? metadata
-      : (await getMediaObject(bucket, fileName, { range: { offset: range.start, length: range.length } }))?.object;
+      : (await getMediaObject(bucket, fileName, context.request, { range: { offset: range.start, length: range.length } }))?.object;
     if (!object) return notFound();
 
     const headers = createMediaHeaders(object, fileName, range.length);
@@ -169,8 +196,8 @@ export async function onRequest(context) {
   }
 
   const object = method === "HEAD"
-    ? (await headMediaObject(bucket, fileName))?.object
-    : (await getMediaObject(bucket, fileName))?.object;
+    ? (await headMediaObject(bucket, fileName, context.request))?.object
+    : (await getMediaObject(bucket, fileName, context.request))?.object;
   if (!object) return notFound();
 
   const headers = createMediaHeaders(object, fileName, object.size);

@@ -82,7 +82,7 @@ Production R2 binding:
 - `GET /assets/shuffle-manifest.json`
 - `GET /Shuffle/*.mp4`
 
-These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard. The Shuffle manifest is generated from supported music-video objects in R2, then the same-domain `/Shuffle/*.mp4` route streams those objects from R2 instead of uploading oversized media as Pages static assets.
+These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes and never directly to Last.fm or Lanyard. The Shuffle manifest is generated from supported music-video objects anywhere in the bound R2 bucket, then the same-domain `/Shuffle/*.mp4` route streams those objects from R2 instead of uploading oversized media as Pages static assets.
 
 ## Caching
 
@@ -122,7 +122,7 @@ Cloudflare dashboard path:
 - No client bundle contains API keys.
 - Last.fm, Discord, and Steam requests are proxied through first-party endpoints and cached at the edge.
 - The site is intended for the Cloudflare Pages custom domain `internet-angel.net`.
-- Cloudflare Pages has a 25 MiB limit per static asset, so production builds exclude oversized Shuffle videos from `dist/`; the live Shuffle manifest is generated from R2 objects under `Shuffle/` or root-level supported video files.
+- Cloudflare Pages has a 25 MiB limit per static asset, so production builds exclude oversized Shuffle videos from `dist/`; the live Shuffle manifest is generated from supported R2 video objects under `Shuffle/`, at the bucket root, or inside nested folders.
 
 ## Migration Notes
 
