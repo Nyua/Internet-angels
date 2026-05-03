@@ -112,6 +112,17 @@ function getRecordDedupeKey(record) {
   return `key:${String(record?.key || "").toLowerCase()}`;
 }
 
+function summarizeR2Objects(objects, manifest) {
+  const objectKeys = Array.isArray(objects)
+    ? objects.map((object) => String(object?.key || "").trim()).filter(Boolean)
+    : [];
+  return {
+    objectCount: objectKeys.length,
+    supportedCount: Array.isArray(manifest?.tracks) ? manifest.tracks.length : 0,
+    sampleKeys: objectKeys.slice(0, 6)
+  };
+}
+
 async function listR2Objects(bucket) {
   const objects = [];
   let cursor = undefined;
@@ -192,11 +203,18 @@ function jsonResponse(payload, init = {}) {
   });
 }
 
-function addManifestHeaders(response, { source, count, reason } = {}) {
+function addManifestHeaders(response, { source, count, reason, r2Summary } = {}) {
   const headers = new Headers(response.headers);
   if (source) headers.set("X-Shuffle-Manifest-Source", source);
   if (Number.isFinite(count)) headers.set("X-Shuffle-Manifest-Count", String(count));
   if (reason) headers.set("X-Shuffle-Manifest-Fallback", reason);
+  if (r2Summary) {
+    headers.set("X-Shuffle-R2-Object-Count", String(r2Summary.objectCount || 0));
+    headers.set("X-Shuffle-R2-Supported-Count", String(r2Summary.supportedCount || 0));
+    if (Array.isArray(r2Summary.sampleKeys) && r2Summary.sampleKeys.length) {
+      headers.set("X-Shuffle-R2-Sample-Keys", r2Summary.sampleKeys.join(" | ").slice(0, 480));
+    }
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -204,18 +222,20 @@ function addManifestHeaders(response, { source, count, reason } = {}) {
   });
 }
 
-async function fallbackToStaticAsset(context, reason = "unavailable") {
+async function fallbackToStaticAsset(context, reason = "unavailable", r2Summary = null) {
   if (typeof context.next === "function") {
     const response = await context.next();
     return addManifestHeaders(response, {
       source: "static-fallback",
-      reason
+      reason,
+      r2Summary
     });
   }
   return addManifestHeaders(jsonResponse({ tracks: [] }), {
     source: "static-fallback",
     count: 0,
-    reason
+    reason,
+    r2Summary
   });
 }
 
@@ -236,14 +256,17 @@ export async function onRequest(context) {
   }
 
   try {
-    const manifest = buildManifestFromObjects(await listR2Objects(bucket));
+    const objects = await listR2Objects(bucket);
+    const manifest = buildManifestFromObjects(objects);
+    const r2Summary = summarizeR2Objects(objects, manifest);
     if (!manifest.tracks.length) {
-      return fallbackToStaticAsset(context, "no-supported-r2-videos");
+      return fallbackToStaticAsset(context, "no-supported-r2-videos", r2Summary);
     }
     if (method === "HEAD") {
       const response = addManifestHeaders(jsonResponse(manifest), {
         source: "r2",
-        count: manifest.tracks.length
+        count: manifest.tracks.length,
+        r2Summary
       });
       return new Response(null, {
         status: response.status,
@@ -252,7 +275,8 @@ export async function onRequest(context) {
     }
     return addManifestHeaders(jsonResponse(manifest), {
       source: "r2",
-      count: manifest.tracks.length
+      count: manifest.tracks.length,
+      r2Summary
     });
   } catch {
     return fallbackToStaticAsset(context, "r2-list-failed");

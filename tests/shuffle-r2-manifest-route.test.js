@@ -54,6 +54,8 @@ test("shuffle R2 manifest route lists all supported music videos from the bucket
   assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "r2");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Count"), "3");
+  assert.equal(response.headers.get("X-Shuffle-R2-Object-Count"), "6");
+  assert.equal(response.headers.get("X-Shuffle-R2-Supported-Count"), "3");
 
   const manifest = await response.json();
   assert.deepEqual(manifest.tracks.map((track) => track.path), [
@@ -81,6 +83,8 @@ test("shuffle R2 manifest route falls back to the static asset when R2 has no tr
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "static-fallback");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Fallback"), "no-supported-r2-videos");
+  assert.equal(response.headers.get("X-Shuffle-R2-Object-Count"), "0");
+  assert.equal(response.headers.get("X-Shuffle-R2-Supported-Count"), "0");
   assert.deepEqual(await response.json(), { tracks: [{ id: "static-track" }] });
 });
 
