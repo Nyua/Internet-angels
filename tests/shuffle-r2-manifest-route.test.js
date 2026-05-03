@@ -53,14 +53,15 @@ test("shuffle R2 manifest route lists all supported music videos from the bucket
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "r2");
-  assert.equal(response.headers.get("X-Shuffle-Manifest-Count"), "3");
+  assert.equal(response.headers.get("X-Shuffle-Manifest-Count"), "4");
   assert.equal(response.headers.get("X-Shuffle-R2-Object-Count"), "6");
-  assert.equal(response.headers.get("X-Shuffle-R2-Supported-Count"), "3");
+  assert.equal(response.headers.get("X-Shuffle-R2-Supported-Count"), "4");
 
   const manifest = await response.json();
   assert.deepEqual(manifest.tracks.map((track) => track.path), [
     "/Shuffle/Root%20Video%20-%20Artist.webm",
     "/Shuffle/Video%20-%20Artist.mp4?key=Nested%2FVideo%20-%20Artist.mp4",
+    "/Shuffle/Raw%20Clip%20(1080p%2C%20h264).mp4",
     "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4"
   ]);
   assert.equal(manifest.tracks[0].title, "Root Video");

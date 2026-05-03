@@ -6,7 +6,6 @@ const VIDEO_EXTENSIONS = new Set([
   ".mp4",
   ".webm"
 ]);
-const RAW_SOURCE_VIDEO_PATTERN = /\(\s*1080p\s*,\s*h264\s*\)/i;
 const R2_LIST_LIMIT = 1000;
 
 function safeDecodeURIComponent(value) {
@@ -32,7 +31,7 @@ function getExtension(value) {
 }
 
 function isSupportedVideoFile(fileName) {
-  return VIDEO_EXTENSIONS.has(getExtension(fileName)) && !RAW_SOURCE_VIDEO_PATTERN.test(String(fileName || ""));
+  return VIDEO_EXTENSIONS.has(getExtension(fileName));
 }
 
 function createShufflePath(fileName) {
