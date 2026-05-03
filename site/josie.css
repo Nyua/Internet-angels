@@ -6353,9 +6353,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border: 0;
   border-radius: 999px;
   padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   background: transparent;
   color: inherit;
   outline: none;
@@ -6382,14 +6381,38 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .site-video-toggle-icon {
+  grid-area: 1 / 1;
   display: grid;
   place-items: center;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .site-video-toggle-icon svg {
   width: 20px;
   height: 20px;
   display: block;
+}
+
+.site-video-toggle-icon--video {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.site-video-toggle-icon--stars {
+  opacity: 0;
+  transform: scale(0.72) rotate(-18deg);
+}
+
+.site-video-toggle[data-video-active="true"] .site-video-toggle-icon--video {
+  opacity: 0;
+  transform: scale(0.72) rotate(18deg);
+}
+
+.site-video-toggle[data-video-active="true"] .site-video-toggle-icon--stars {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
 }
 
 .mobile-speaker-toggle[hidden] {
@@ -9832,7 +9855,21 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
     border-radius: 2px !important;
     border-color: rgba(235, 246, 255, 0.16);
-    background: linear-gradient(155deg, rgba(5, 7, 13, 0.3), rgba(14, 20, 32, 0.18)) !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(5, 7, 13, 0) 0%,
+        rgba(5, 7, 13, 0) calc(100% - 82px),
+        rgba(5, 7, 13, 0.13) calc(100% - 40px),
+        rgba(5, 7, 13, 0) 100%
+      ),
+      linear-gradient(
+        155deg,
+        rgba(5, 7, 13, 0.3) 0%,
+        rgba(14, 20, 32, 0.18) calc(100% - 74px),
+        rgba(14, 20, 32, 0.08) calc(100% - 30px),
+        rgba(14, 20, 32, 0) 100%
+      ) !important;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18) !important;
     backdrop-filter: blur(18px) saturate(128%) brightness(1.02) !important;
     -webkit-backdrop-filter: blur(18px) saturate(128%) brightness(1.02) !important;

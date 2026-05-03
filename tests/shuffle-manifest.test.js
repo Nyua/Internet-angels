@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { buildShuffleManifest, __test as shuffleManifestTest } from "../scripts/shuffle-manifest.js";
 
-test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link list", () => {
+test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link list", async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "internet-angel-shuffle-"));
   const siteDir = path.join(tempRoot, "site");
   const shuffleDir = path.join(siteDir, "Shuffle");
@@ -17,7 +17,18 @@ test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link
     "https://youtu.be/dQw4w9WgXcQ"
   ].join("\n"));
 
-  const manifest = buildShuffleManifest({ siteDir });
+  const manifest = await buildShuffleManifest({
+    siteDir,
+    metadataLookup: async (url) => {
+      if (url.includes("dQw4w9WgXcQ")) {
+        return {
+          title: "Never Gonna Give You Up",
+          artist: "Rick Astley"
+        };
+      }
+      return null;
+    }
+  });
   assert.equal(manifest.tracks.length, 2);
   assert.deepEqual(manifest.tracks.map((track) => track.youtubeVideoId), [
     "r-6lO_UN3NY",
@@ -27,8 +38,30 @@ test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link
   assert.equal(manifest.tracks[0].artist, "Cool Artist");
   assert.equal(manifest.tracks[0].mediaType, "youtube");
   assert.equal(manifest.tracks[0].path, "https://www.youtube.com/watch?v=r-6lO_UN3NY");
-  assert.equal(manifest.tracks[1].title, "YouTube Video dQw4w9WgXcQ");
+  assert.equal(manifest.tracks[1].title, "Never Gonna Give You Up");
+  assert.equal(manifest.tracks[1].artist, "Rick Astley");
   assert.equal(manifest.tracks[1].sortOrder, 1);
+});
+
+test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => {
+  const explicitTrack = shuffleManifestTest.parseTrackLine(
+    "Cool Song | https://www.youtube.com/watch?v=r-6lO_UN3NY",
+    0
+  );
+  const enrichedExplicit = shuffleManifestTest.applyYouTubeMetadata(explicitTrack, {
+    title: "OEmbed Title",
+    artist: "WispVEVO"
+  });
+  assert.equal(enrichedExplicit.title, "Cool Song");
+  assert.equal(enrichedExplicit.artist, "WispVEVO");
+
+  const fallbackTrack = shuffleManifestTest.parseTrackLine("https://youtu.be/dQw4w9WgXcQ", 1);
+  const enrichedFallback = shuffleManifestTest.applyYouTubeMetadata(fallbackTrack, {
+    title: "Never Gonna Give You Up",
+    artist: "Rick Astley"
+  });
+  assert.equal(enrichedFallback.title, "Never Gonna Give You Up");
+  assert.equal(enrichedFallback.artist, "Rick Astley");
 });
 
 test("shuffle YouTube parser accepts common YouTube URL shapes", () => {

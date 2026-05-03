@@ -185,7 +185,7 @@ if (fs.existsSync(appOutputPath)) {
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
-writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
+await writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
 rewriteHtmlAssetVersions();
 if (fs.existsSync(josieHtmlPath)) {
   fs.mkdirSync(path.dirname(josieDirectoryIndexPath), { recursive: true });

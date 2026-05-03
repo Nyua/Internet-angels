@@ -1944,7 +1944,7 @@
     let performanceDegraded = isDesktopPerformanceDegraded();
     let pendingSegmentSeekTime = null;
     let segmentAdvanceCooldownUntilMs = 0;
-    let backgroundVideoEnabled = false;
+    let backgroundVideoEnabled = true;
     let backgroundVideoLayer = null;
     let backgroundVideoEl = null;
     let backgroundVideoTrackKey = "";
@@ -2367,7 +2367,7 @@
           currentTrack.title = title;
           currentTrack.displayTitle = title;
         }
-        if (author && (!currentTrack.artist || currentTrack.artist === "YouTube")) {
+        if (author && (!currentTrack.artist || currentTrack.artist === "YouTube" || currentTrack.artist === "Youtube")) {
           currentTrack.artist = author;
           currentTrack.displayArtist = author;
         }
@@ -3478,6 +3478,7 @@
         Math.max(duration, 0)
       ) : rawCurrentTime;
       const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
+      const videoAvailable = Boolean(isYouTubeTrack(currentTrack) || resolveTrackVideoPath(currentTrack));
       return {
         muted: Boolean(audioEl.muted),
         volumeRatio: SHUFFLE_MAX_VOLUME > 0 ? clamp2(audioEl.volume / SHUFFLE_MAX_VOLUME, 0, 1) : 0,
@@ -3485,8 +3486,8 @@
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack),
         copyState: visualizerCopyState,
-        videoMode: backgroundVideoEnabled,
-        videoAvailable: Boolean(isYouTubeTrack(currentTrack) || resolveTrackVideoPath(currentTrack)),
+        videoMode: Boolean(backgroundVideoEnabled && videoAvailable),
+        videoAvailable,
         title: displayCopy.title,
         artist: displayCopy.artist,
         currentTime,
@@ -7320,7 +7321,7 @@
       mobileSpeakerButton.setAttribute("aria-label", label);
       mobileSpeakerButton.setAttribute("title", label);
       if (siteVideoButton instanceof HTMLButtonElement) {
-        const videoLabel = state.videoMode ? "Use animated background" : "Use music video background";
+        const videoLabel = state.videoMode ? "Use starry background" : "Use music video background";
         siteVideoButton.dataset.videoActive = String(state.videoMode);
         siteVideoButton.dataset.videoAvailable = String(state.videoAvailable);
         siteVideoButton.disabled = !state.hasTrack && state.blocked;
@@ -8589,9 +8590,7 @@
         if (lastFmTrackPanelActiveKey !== cacheKey) {
           return true;
         }
-        if (!loadSettled) {
-          revealPanelAfterArtwork();
-        }
+        revealPanelAfterArtwork();
         const loadState = await loadPromise;
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
           return true;

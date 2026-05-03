@@ -198,10 +198,16 @@
         aria-label="Use music video background"
         title="Use music video background"
       >
-        <span class="site-video-toggle-icon" aria-hidden="true">
+        <span class="site-video-toggle-icon site-video-toggle-icon--video" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false">
             <rect x="3.75" y="6.4" width="16.5" height="11.2" rx="2.35" fill="none" stroke="currentColor" stroke-width="1.65"/>
             <path d="m10.3 9.35 4.8 2.65-4.8 2.65Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="site-video-toggle-icon site-video-toggle-icon--stars" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 2.95 13.7 8l5.08-1.63-2.42 4.76 4.63 2.64-5.25 1.07.7 5.29L12 17.24l-4.44 2.89.7-5.29-5.25-1.07 4.63-2.64-2.42-4.76L10.3 8 12 2.95Z" fill="currentColor"/>
+            <path d="M4.25 3.3v3.2m-1.6-1.6h3.2M20.1 4.75v2.7m-1.35-1.35h2.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/>
           </svg>
         </span>
       </button>
@@ -333,9 +339,10 @@
     </script>
     <script>
       (() => {
-        const breakpointPx = 1120;
         const referenceWidthPx = 2560;
+        const designWidthPx = 1300;
         const minScale = 0.58;
+        const frameHorizontalGutterPx = 28;
         const compactMobileBreakpointPx = 820;
         function isCompactMobileViewport() {
           const viewportWidth = window.innerWidth || Number.POSITIVE_INFINITY;
@@ -364,12 +371,10 @@
           root.style.removeProperty("transform-origin");
           root.style.removeProperty("margin");
           frame.style.removeProperty("height");
-          if (window.innerWidth <= breakpointPx) {
-            root.style.removeProperty("zoom");
-            root.style.removeProperty("will-change");
-            return;
-          }
-          const scale = Math.max(minScale, Math.min(1, window.innerWidth / referenceWidthPx));
+          const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || designWidthPx);
+          const widthScale = viewportWidth / referenceWidthPx;
+          const fitWidthScale = (viewportWidth - frameHorizontalGutterPx) / designWidthPx;
+          const scale = Math.max(minScale, Math.min(1, widthScale, fitWidthScale));
           root.style.zoom = scale.toFixed(4);
           root.style.willChange = scale === 1 ? "auto" : "zoom";
         }

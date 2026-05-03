@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const DEFAULT_TRACK_DURATION_SECONDS = 0;
+const YOUTUBE_DEFAULT_ARTIST = "Youtube";
 const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+const YOUTUBE_METADATA_TIMEOUT_MS = 3_500;
 
 function slugify(value) {
   return String(value || "")
@@ -46,6 +48,67 @@ function normalizeYouTubeUrl(value) {
   return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
 }
 
+function cleanMetadataValue(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isFallbackYouTubeTitle(track) {
+  const title = cleanMetadataValue(track?.title);
+  const videoId = cleanMetadataValue(track?.youtubeVideoId);
+  return Boolean(videoId && (!title || title === `YouTube Video ${videoId}`));
+}
+
+function isFallbackYouTubeArtist(track) {
+  const artist = cleanMetadataValue(track?.artist).toLowerCase();
+  return !artist || artist === "youtube" || artist === "youtube video";
+}
+
+export async function fetchYouTubeOEmbedMetadata(videoUrl, options = {}) {
+  const normalizedUrl = normalizeYouTubeUrl(videoUrl);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (!normalizedUrl || typeof fetchImpl !== "function") {
+    return null;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(options.timeoutMs) || YOUTUBE_METADATA_TIMEOUT_MS));
+  try {
+    const endpoint = new URL("https://www.youtube.com/oembed");
+    endpoint.searchParams.set("url", normalizedUrl);
+    endpoint.searchParams.set("format", "json");
+    const response = await fetchImpl(endpoint, {
+      signal: controller.signal,
+      headers: {
+        accept: "application/json"
+      }
+    });
+    if (!response?.ok) return null;
+    const data = await response.json();
+    return {
+      title: cleanMetadataValue(data?.title),
+      artist: cleanMetadataValue(data?.author_name)
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function applyYouTubeMetadata(track, metadata) {
+  if (!track || typeof track !== "object") return track;
+  const title = cleanMetadataValue(metadata?.title);
+  const artist = cleanMetadataValue(metadata?.artist);
+  const nextTitle = title && isFallbackYouTubeTitle(track) ? title : track.title;
+  const nextArtist = artist && isFallbackYouTubeArtist(track) ? artist : track.artist;
+  return {
+    ...track,
+    title: nextTitle,
+    displayTitle: title && isFallbackYouTubeTitle(track) ? title : track.displayTitle,
+    artist: nextArtist,
+    displayArtist: artist && isFallbackYouTubeArtist(track) ? artist : track.displayArtist
+  };
+}
+
 function parseTrackLine(line, index) {
   const trimmed = String(line || "").trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
@@ -60,7 +123,7 @@ function parseTrackLine(line, index) {
     ? parts.filter((_, partIndex) => partIndex !== urlPartIndex)
     : [];
   const title = metadataParts[0] || `YouTube Video ${videoId}`;
-  const artist = metadataParts[1] || "YouTube";
+  const artist = metadataParts[1] || YOUTUBE_DEFAULT_ARTIST;
   const duration = Number(metadataParts[2]);
   const normalizedUrl = normalizeYouTubeUrl(sourceUrl);
   const id = slugify(`youtube-${videoId}`) || `youtube-${index + 1}`;
@@ -88,9 +151,10 @@ function parseTrackLine(line, index) {
   };
 }
 
-export function buildShuffleManifest({
+export async function buildShuffleManifest({
   siteDir,
-  linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt")
+  linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt"),
+  metadataLookup = fetchYouTubeOEmbedMetadata
 }) {
   const source = fs.existsSync(linksPath) ? fs.readFileSync(linksPath, "utf8") : "";
   let trackIndex = 0;
@@ -119,15 +183,22 @@ export function buildShuffleManifest({
       };
     });
 
-  return { tracks };
+  const enrichedTracks = await Promise.all(tracks.map(async (track) => {
+    if (typeof metadataLookup !== "function") return track;
+    const metadata = await metadataLookup(track.youtubeUrl, track);
+    return applyYouTubeMetadata(track, metadata);
+  }));
+
+  return { tracks: enrichedTracks };
 }
 
-export function writeShuffleManifest({
+export async function writeShuffleManifest({
   siteDir,
   linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt"),
-  outputPath
+  outputPath,
+  metadataLookup = fetchYouTubeOEmbedMetadata
 }) {
-  const manifest = buildShuffleManifest({ siteDir, linksPath });
+  const manifest = await buildShuffleManifest({ siteDir, linksPath, metadataLookup });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf8");
   return manifest;
@@ -135,5 +206,7 @@ export function writeShuffleManifest({
 
 export const __test = {
   extractYouTubeVideoId,
+  fetchYouTubeOEmbedMetadata,
+  applyYouTubeMetadata,
   parseTrackLine
 };

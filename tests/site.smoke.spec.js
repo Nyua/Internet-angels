@@ -1694,7 +1694,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioPlaying === "true";
   });
   await expect(page.locator("[data-site-video-toggle]")).toBeVisible();
-  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true", { timeout: 10_000 });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use starry background");
   await page.waitForFunction(() => {
     const layer = document.querySelector("#shuffle-video-background");
     const video = document.querySelector("[data-shuffle-background-video]");
@@ -1765,6 +1766,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(videoBackgroundState.showcasesGap).toBeGreaterThanOrEqual(20);
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use music video background");
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");
   await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedTrack?.artist || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
