@@ -3689,7 +3689,8 @@
     async function ensureManifest() {
       if (manifestPromise) return manifestPromise;
       manifestPromise = (async () => {
-        const response = await fetch(SHUFFLE_MANIFEST_URL, { cache: "default" });
+        const manifestUrl = `${SHUFFLE_MANIFEST_URL}?shuffle=${Date.now()}`;
+        const response = await fetch(manifestUrl, { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`Manifest fetch failed (${response.status})`);
         }

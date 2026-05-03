@@ -52,6 +52,7 @@ test("shuffle R2 manifest route lists all supported music videos from the bucket
   const response = await onShuffleManifestRequest(createContext({ bucket }));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
+  assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "r2");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Count"), "4");
   assert.equal(response.headers.get("X-Shuffle-R2-Object-Count"), "6");
@@ -82,6 +83,7 @@ test("shuffle R2 manifest route falls back to the static asset when R2 has no tr
   }));
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Source"), "static-fallback");
   assert.equal(response.headers.get("X-Shuffle-Manifest-Fallback"), "no-supported-r2-videos");
   assert.equal(response.headers.get("X-Shuffle-R2-Object-Count"), "0");

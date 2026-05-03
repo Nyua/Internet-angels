@@ -1,4 +1,4 @@
-const CACHE_CONTROL = "public, max-age=120, stale-while-revalidate=600";
+const CACHE_CONTROL = "no-store, max-age=0";
 const SHUFFLE_PREFIX = "Shuffle/";
 const VIDEO_EXTENSIONS = new Set([
   ".m4v",
@@ -204,6 +204,7 @@ function jsonResponse(payload, init = {}) {
 
 function addManifestHeaders(response, { source, count, reason, r2Summary } = {}) {
   const headers = new Headers(response.headers);
+  headers.set("Cache-Control", CACHE_CONTROL);
   if (source) headers.set("X-Shuffle-Manifest-Source", source);
   if (Number.isFinite(count)) headers.set("X-Shuffle-Manifest-Count", String(count));
   if (reason) headers.set("X-Shuffle-Manifest-Fallback", reason);
