@@ -3761,12 +3761,16 @@
       if (!visualizerFocusLinkClickListener) {
         visualizerFocusLinkClickListener = (event) => {
           const target = event?.target instanceof Element ? event.target.closest("[data-visualizer-angel-link]") : null;
-          if (!(target instanceof HTMLElement)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          target.textContent = "A place where I spend my time making random stuff waiting for my partner to wake up :3";
-          target.setAttribute("data-angel-link-expanded", "true");
-          if (visualizerFocusMode) {
+          if (target instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+            target.textContent = "A place where I spend my time making random stuff waiting for my partner to wake up :3";
+            target.setAttribute("data-angel-link-expanded", "true");
+            return;
+          }
+          const expandedLink = document.querySelector("[data-visualizer-angel-link][data-angel-link-expanded='true']");
+          if (visualizerFocusMode && expandedLink instanceof HTMLElement) {
             setVisualizerFocusMode(false);
           }
         };

@@ -1063,6 +1063,35 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
 });
 
+test("josie keeps the fullscreen visualizer open while the angel link text expands", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const surface = document.getElementById("os-shuffle-visualizer-surface");
+    surface?.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true
+    }));
+  });
+  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "active");
+  await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveText("Internet-Angel.net");
+
+  await page.locator("#os-shuffle-visualizer-angel-link").click();
+  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "active");
+  await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveText("A place where I spend my time making random stuff waiting for my partner to wake up :3");
+  await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveAttribute("data-angel-link-expanded", "true");
+
+  await page.mouse.click(24, 24);
+  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "idle");
+});
+
 test("josie skips a missing shuffle file and falls through to another available song", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await installShuffleAudioMock(page, {
