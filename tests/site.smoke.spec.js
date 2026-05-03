@@ -1108,7 +1108,7 @@ test("josie skips a missing shuffle file and falls through to another available 
   await installShuffleAudioMock(page, {
     missingPathTokens: ["missing-track.mp3"]
   });
-  await page.route("**/assets/shuffle-manifest.json", async (route) => {
+  await page.route(/\/assets\/shuffle-manifest\.json(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1189,7 +1189,7 @@ test("josie shifts the visualizer into panel mode while a Last.fm details card i
 test("josie hands segmented shuffle tracks across the midpoint without resetting visible playback", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await installShuffleAudioMock(page);
-  await page.route("**/assets/shuffle-manifest.json", async (route) => {
+  await page.route(/\/assets\/shuffle-manifest\.json(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1806,6 +1806,41 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(heroDecorationOverflow.extendsPastWrapTop).toBe(true);
   expect(heroDecorationOverflow.extendsPastWrapLeft).toBe(true);
   expect(heroDecorationOverflow.extendsPastWrapRight).toBe(true);
+  const heroDecorationLayering = await page.evaluate(() => {
+    const leftRail = document.querySelector("#social-hub-left-rail");
+    const profile = document.querySelector("#social-hub-profile");
+    const showcases = document.querySelector("#social-hub-showcases");
+    const wrap = document.querySelector("#social-hub-profile .steam-hero-avatar-wrap");
+    const avatar = document.querySelector("#social-hub-profile .steam-hero-avatar");
+    const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
+    if (
+      !(leftRail instanceof HTMLElement)
+      || !(profile instanceof HTMLElement)
+      || !(showcases instanceof HTMLElement)
+      || !(wrap instanceof HTMLElement)
+      || !(avatar instanceof HTMLElement)
+      || !(decoration instanceof HTMLElement)
+    ) {
+      return null;
+    }
+    const zIndexNumber = (element) => {
+      const value = Number.parseInt(window.getComputedStyle(element).zIndex, 10);
+      return Number.isFinite(value) ? value : 0;
+    };
+    return {
+      leftRailZ: zIndexNumber(leftRail),
+      profileZ: zIndexNumber(profile),
+      showcasesZ: zIndexNumber(showcases),
+      wrapZ: zIndexNumber(wrap),
+      avatarZ: zIndexNumber(avatar),
+      decorationZ: zIndexNumber(decoration)
+    };
+  });
+  expect(heroDecorationLayering).not.toBeNull();
+  expect(heroDecorationLayering.leftRailZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
+  expect(heroDecorationLayering.profileZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
+  expect(heroDecorationLayering.wrapZ).toBeGreaterThan(heroDecorationLayering.avatarZ);
+  expect(heroDecorationLayering.decorationZ).toBeGreaterThan(heroDecorationLayering.wrapZ);
   const profileDecorationScrollGuard = await page.evaluate(async () => {
     const stage = document.querySelector("#os-stage");
     const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
@@ -1924,6 +1959,23 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
   const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
   expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
+  const imageLoadingHints = await page.evaluate(() => {
+    const attr = (selector, name) => document.querySelector(selector)?.getAttribute(name) || "";
+    return {
+      heroAvatarLoading: attr(".steam-hero-avatar", "loading"),
+      heroAvatarPriority: attr(".steam-hero-avatar", "fetchpriority"),
+      recentLoadings: Array.from(document.querySelectorAll("img.lastfm-recent-image")).map((node) => node.getAttribute("loading") || ""),
+      mediaLoadings: Array.from(document.querySelectorAll("img.lastfm-media-image")).map((node) => node.getAttribute("loading") || "")
+    };
+  });
+  expect(imageLoadingHints.heroAvatarLoading).toBe("eager");
+  expect(imageLoadingHints.heroAvatarPriority).toBe("high");
+  expect(imageLoadingHints.recentLoadings[0]).toBe("eager");
+  if (imageLoadingHints.recentLoadings.length > 3) {
+    expect(imageLoadingHints.recentLoadings.slice(3).every((loading) => loading === "lazy")).toBe(true);
+  }
+  expect(imageLoadingHints.mediaLoadings.length).toBeGreaterThan(0);
+  expect(imageLoadingHints.mediaLoadings.every((loading) => loading === "lazy")).toBe(true);
   const smallCopyStyles = await page.locator(".steam-sidebar-row-title").first().evaluate((node) => {
     const styles = window.getComputedStyle(node);
     return {
@@ -1933,6 +1985,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(smallCopyStyles.color).toBe("rgb(240, 144, 194)");
   const firstProfileLinkWeight = await page.locator(".steam-sidebar-link").first().evaluate((node) => window.getComputedStyle(node).fontWeight);
   expect(Number.parseInt(firstProfileLinkWeight, 10)).toBeGreaterThanOrEqual(700);
+  const firstProfileLinkHitTarget = await page.locator(".steam-sidebar-link").first().evaluate((node) => {
+    const link = node instanceof HTMLElement ? node : null;
+    const shell = link?.closest(".steam-sidebar-link-shell");
+    return {
+      linkPointerEvents: link ? window.getComputedStyle(link).pointerEvents : "",
+      shellPointerEvents: shell instanceof HTMLElement ? window.getComputedStyle(shell).pointerEvents : "",
+      linkTouchAction: link ? window.getComputedStyle(link).touchAction : ""
+    };
+  });
+  expect(firstProfileLinkHitTarget.linkPointerEvents).toBe("auto");
+  expect(firstProfileLinkHitTarget.shellPointerEvents).toBe("none");
+  expect(firstProfileLinkHitTarget.linkTouchAction).toBe("manipulation");
   const lastFmVisualStyles = await page.evaluate(() => {
     const recentTitle = document.querySelector(".lastfm-recent-title");
     const artistTitle = document.querySelector(".lastfm-media-grid--artists .lastfm-media-title");

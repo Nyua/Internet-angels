@@ -4410,8 +4410,8 @@
     const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
     const avatarMarkup = compact ? "" : `
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
-          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
-          ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" decoding="async" aria-hidden="true" />` : ""}
+          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
+          ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="async" aria-hidden="true" />` : ""}
         </div>
     `;
     return `
@@ -4485,6 +4485,7 @@
     const monthlyTopRank = Number.parseInt(String(row.monthlyTopRank ?? "").trim(), 10);
     const itemUrl = sanitizeUrl(row.url);
     const imageUrl = sanitizeUrl(row.imageUrl);
+    const imageLoading = firstNonEmpty(options?.imageLoading, isNowPlaying ? "eager" : "lazy");
     const buttonAttrs = [
       itemUrl ? `data-item-url="${escapeHtml(itemUrl)}"` : "",
       `data-lastfm-track-title="${escapeHtml(row.title || "")}"`,
@@ -4501,7 +4502,7 @@
         <li class="${itemClass}">
             <button class="social-item-button lastfm-recent-button" type="button" ${buttonAttrs}>
               <span class="lastfm-recent-art" data-lastfm-art-source>
-                ${imageUrl ? `<img class="lastfm-recent-image" src="${escapeHtml(imageUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-recent-note" aria-hidden="true">\u266A</span>'}
+                ${imageUrl ? `<img class="lastfm-recent-image" src="${escapeHtml(imageUrl)}" alt="" loading="${escapeHtml(imageLoading)}" decoding="async" />` : '<span class="lastfm-recent-note" aria-hidden="true">\u266A</span>'}
               </span>
               <span class="lastfm-recent-title">${escapeHtml(row.title || "Unknown track")}</span>
               <span class="lastfm-recent-meta">${escapeHtml(row.subtitle || row.meta || "Unknown artist")}</span>
@@ -4552,10 +4553,10 @@
     let listMarkup = "";
     if (nowPlaying) {
       listMarkup += renderLastFmRecentTrackRow(nowPlaying, { isNowPlaying: true });
-      listMarkup += visibleEntries.map((item) => renderLastFmRecentTrackRow(item)).join("");
+      listMarkup += visibleEntries.map((item, index) => renderLastFmRecentTrackRow(item, { imageLoading: index < 2 ? "eager" : "lazy" })).join("");
     } else {
-      visibleEntries.forEach((item) => {
-        listMarkup += renderLastFmRecentTrackRow(item);
+      visibleEntries.forEach((item, index) => {
+        listMarkup += renderLastFmRecentTrackRow(item, { imageLoading: index < 3 ? "eager" : "lazy" });
       });
     }
     return `
@@ -4626,7 +4627,7 @@
           <li class="lastfm-media-item">
             <button class="social-item-button lastfm-media-button" type="button"${buttonAttrs ? ` ${buttonAttrs}` : ""}>
               <span class="lastfm-media-image-wrap" data-lastfm-art-source>
-                ${imageUrl ? `<img class="lastfm-media-image" src="${escapeHtml(imageUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-media-image lastfm-media-image--fallback">No Art</span>'}
+                ${imageUrl ? `<img class="lastfm-media-image" src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" />` : '<span class="lastfm-media-image lastfm-media-image--fallback">No Art</span>'}
                 <span class="lastfm-media-count">${escapeHtml(item.countLabel || "--")}</span>
               </span>
               <span class="lastfm-media-copy">

@@ -4457,9 +4457,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   position: relative;
   isolation: isolate;
   overflow: visible;
+  z-index: 20;
 }
 
 .steam-hero-avatar {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
@@ -4504,7 +4507,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   transform: translate(-50%, calc(-50% + var(--steam-avatar-decoration-scroll-y)));
   object-fit: contain;
   pointer-events: none;
-  z-index: 3;
+  z-index: 120;
   filter: drop-shadow(0 10px 18px var(--surface-shadow));
   transition: transform 220ms cubic-bezier(0.2, 0.85, 0.18, 1);
 }
@@ -4516,8 +4519,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   overflow: visible !important;
 }
 
+#social-hub-profile {
+  position: relative;
+  z-index: 40;
+}
+
 #social-hub-profile .steam-hero-avatar-wrap--decorated {
-  z-index: 4;
+  z-index: 80;
 }
 
 #social-hub-profile .steam-hero-avatar-decoration {
@@ -4760,6 +4768,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .social-hub-left-rail {
   position: sticky;
   top: 12px;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -4772,10 +4781,28 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .social-hub-showcases {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+
+@supports (content-visibility: auto) {
+  .social-hub-showcases > .steam-showcase {
+    content-visibility: auto;
+    contain-intrinsic-size: 420px;
+  }
+
+  .social-hub-showcases > .steam-showcase:first-child {
+    contain-intrinsic-size: 220px;
+  }
+
+  .social-hub-showcases .lastfm-section {
+    content-visibility: auto;
+    contain-intrinsic-size: 260px;
+  }
 }
 
 @media (min-width: 821px) {
@@ -5251,6 +5278,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   border-bottom: 0;
   font-size: 14px;
   font-weight: 700;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .steam-sidebar-link--copy {
@@ -5276,6 +5305,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   gap: 12px;
   flex: 0 1 auto;
+  pointer-events: none;
 }
 
 .steam-sidebar-link-shell-main {
@@ -5301,6 +5331,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   font: inherit;
   text-align: left;
   cursor: none;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .steam-sidebar-link-shell--copy::-moz-focus-inner {
@@ -5315,6 +5347,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 
 .steam-sidebar-link-shell--copy .steam-sidebar-link {
   min-width: 0;
+  pointer-events: none;
 }
 
 .steam-sidebar-copy-inline {
@@ -6970,11 +7003,18 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   flex-direction: column;
   gap: 4px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(82, 139, 183, 0.2);
-  transition: filter 120ms ease;
+  transform: translate3d(0, 0, 0);
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 140ms ease,
+    border-color 140ms ease;
 }
 
-.social-item-button:hover {
-  filter: brightness(1.06);
+.social-item-button:hover,
+.social-item-button:focus-visible {
+  border-color: color-mix(in srgb, var(--showcase-accent) 72%, rgba(255, 255, 255, 0.54) 28%);
+  filter: brightness(1.11) saturate(1.06);
+  transform: translate3d(0, -1px, 0) scale(1.006);
 }
 
 .social-item-title {
@@ -8140,6 +8180,16 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   outline-offset: 2px;
 }
 
+.social-open-original,
+.social-item-button,
+.steam-activity-row-button,
+.lastfm-mobile-dropdown-summary,
+.steam-sidebar-currently-playing-control,
+.mobile-speaker-toggle,
+.site-video-toggle {
+  touch-action: manipulation;
+}
+
 @media (prefers-reduced-motion: reduce) {
 
   .steam-link-status-dot--online::before,
@@ -8157,6 +8207,15 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   body {
     --site-scroll-drag-y: 0px !important;
     --site-scroll-drag-y-soft: 0px !important;
+  }
+
+  .social-item-button {
+    transition: none !important;
+  }
+
+  .social-item-button:hover,
+  .social-item-button:focus-visible {
+    transform: none !important;
   }
 }
 
