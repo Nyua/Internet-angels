@@ -1956,6 +1956,12 @@
     let youtubePlayerReady = false;
     let youtubePlayerState = -1;
     let youtubeProgressTimer = 0;
+    let youtubeInlineActivationUnlocked = false;
+    const youtubeExternalFallbackVideoIds = /* @__PURE__ */ new Set();
+    const YOUTUBE_INLINE_ACTIVATION_MESSAGE_TYPE = "josie-youtube-inline-activation";
+    const YOUTUBE_INLINE_ACTIVATION_STORAGE_KEY = "internetAngelYoutubeInlineActivationAt";
+    const YOUTUBE_INLINE_ACTIVATION_FRESH_MS = 2 * 60 * 1e3;
+    const YOUTUBE_EXTERNAL_FALLBACK_ERROR_CODES = /* @__PURE__ */ new Set([5, 101, 150, 153]);
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const queuedSegmentAudioEl = new Audio();
@@ -2067,6 +2073,84 @@
     }
     function isYouTubeTrack(track) {
       return Boolean(track && (String(track.mediaType || "").toLowerCase() === "youtube" || getTrackYouTubeVideoId(track)));
+    }
+    function getTrackYouTubeWatchUrl(track) {
+      const videoId = getTrackYouTubeVideoId(track);
+      return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
+    }
+    function getTrackYouTubePosterUrl(track) {
+      const videoId = getTrackYouTubeVideoId(track);
+      return videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
+    }
+    function isIOSMobileHardware() {
+      if (typeof navigator === "undefined") return false;
+      const ua = String(navigator.userAgent || "");
+      const platform = String(navigator.platform || "");
+      return /iP(?:hone|ad|od)/i.test(ua)
+        || (platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1);
+    }
+    function readYouTubeInlineActivationAt() {
+      let newestAt = 0;
+      const collect = (value) => {
+        const numericValue = Number(value);
+        if (Number.isFinite(numericValue) && numericValue > newestAt) {
+          newestAt = numericValue;
+        }
+      };
+      collect(window.__internetAngelYouTubeInlineActivationAt);
+      try {
+        collect(window.sessionStorage?.getItem(YOUTUBE_INLINE_ACTIVATION_STORAGE_KEY));
+      } catch {
+      }
+      try {
+        if (window.parent && window.parent !== window) {
+          collect(window.parent.__internetAngelYouTubeInlineActivationAt);
+        }
+      } catch {
+      }
+      return newestAt;
+    }
+    function hasRecentYouTubeInlineActivationGesture() {
+      const activatedAt = readYouTubeInlineActivationAt();
+      return activatedAt > 0 && Date.now() - activatedAt <= YOUTUBE_INLINE_ACTIVATION_FRESH_MS;
+    }
+    function markYouTubeInlineActivationUnlocked(activatedAt = Date.now()) {
+      youtubeInlineActivationUnlocked = true;
+      const safeActivatedAt = Number.isFinite(Number(activatedAt)) ? Number(activatedAt) : Date.now();
+      window.__internetAngelYouTubeInlineActivationAt = safeActivatedAt;
+      try {
+        window.sessionStorage?.setItem(YOUTUBE_INLINE_ACTIVATION_STORAGE_KEY, String(safeActivatedAt));
+      } catch {
+      }
+      return true;
+    }
+    function hasYouTubeInlineActivationUnlocked() {
+      if (!youtubeInlineActivationUnlocked && hasRecentYouTubeInlineActivationGesture()) {
+        markYouTubeInlineActivationUnlocked(readYouTubeInlineActivationAt());
+      }
+      return youtubeInlineActivationUnlocked;
+    }
+    function shouldUseExternalYouTubePlayback(track = currentTrack) {
+      const videoId = getTrackYouTubeVideoId(track);
+      if (!videoId) return false;
+      return youtubeExternalFallbackVideoIds.has(videoId);
+    }
+    function isMobileYouTubeInlineActivationRequired(track = currentTrack) {
+      const videoId = getTrackYouTubeVideoId(track);
+      if (!videoId || shouldUseExternalYouTubePlayback(track)) return false;
+      return Boolean(isIOSMobileHardware() && hasCompactMobileInput() && !hasYouTubeInlineActivationUnlocked());
+    }
+    function shouldUseYouTubePosterLayer(track = currentTrack) {
+      return Boolean(shouldUseExternalYouTubePlayback(track) || isMobileYouTubeInlineActivationRequired(track));
+    }
+    function markYouTubeExternalFallback(track, reason = "") {
+      const videoId = getTrackYouTubeVideoId(track);
+      if (!videoId) return false;
+      youtubeExternalFallbackVideoIds.add(videoId);
+      if (backgroundVideoLayer instanceof HTMLElement) {
+        backgroundVideoLayer.dataset.youtubeFallbackReason = String(reason || "external");
+      }
+      return true;
     }
     function resolveTrackVideoPath(track) {
       if (isYouTubeTrack(track)) return String(track?.youtubeUrl || track?.path || "").trim();
@@ -2204,6 +2288,34 @@
       youtubePlayerTarget = target;
       return target;
     }
+    function ensureYouTubePosterLayer(track) {
+      let layer = document.querySelector("#shuffle-video-background");
+      if (!(layer instanceof HTMLElement)) {
+        layer = document.createElement("div");
+        layer.id = "shuffle-video-background";
+        layer.className = "shuffle-video-background";
+        layer.setAttribute("aria-hidden", "true");
+        const host = osStage instanceof HTMLElement ? osStage : document.body;
+        host?.prepend?.(layer);
+      }
+      layer.hidden = false;
+      layer.dataset.shuffleBackgroundKind = "youtube-poster";
+      let host = layer.querySelector("[data-shuffle-youtube-poster]");
+      if (!(host instanceof HTMLElement)) {
+        layer.innerHTML = "";
+        host = document.createElement("div");
+        host.className = "shuffle-youtube-player-frame shuffle-youtube-player-frame--poster";
+        host.setAttribute("data-shuffle-youtube-poster", "");
+        layer.append(host);
+      }
+      const posterUrl = getTrackYouTubePosterUrl(track);
+      host.style.backgroundImage = posterUrl ? `url("${posterUrl.replace(/"/g, "%22")}")` : "";
+      backgroundVideoLayer = layer;
+      backgroundVideoEl = null;
+      youtubePlayerHost = null;
+      youtubePlayerTarget = null;
+      return host;
+    }
     function startYouTubeProgressTimer() {
       if (youtubeProgressTimer) return;
       youtubeProgressTimer = window.setInterval(() => {
@@ -2306,9 +2418,16 @@
                 requestMaxYouTubeQuality();
                 syncUi();
               },
-              onError() {
+              onError(event) {
                 stopYouTubeProgressTimer();
                 youtubePlayerState = getYouTubeStateConstant("UNSTARTED", -1);
+                const errorCode = Number(event?.data);
+                if (YOUTUBE_EXTERNAL_FALLBACK_ERROR_CODES.has(errorCode) && markYouTubeExternalFallback(currentTrack, `youtube-${errorCode}`)) {
+                  loadState = "ready";
+                  syncBackgroundVideoPlayback({ force: true });
+                  syncUi();
+                  return;
+                }
                 if (waveformTracks.length <= 1) {
                   loadState = "blocked";
                   syncUi();
@@ -2390,6 +2509,22 @@
       barPeakValues = new Float32Array(0);
       syncBackgroundVideoPlayback({ force: true });
       syncUi();
+      if (shouldUseExternalYouTubePlayback(currentTrack)) {
+        stopYouTubePlayback();
+        loadState = "ready";
+        syncBackgroundVideoPlayback({ force: true });
+        syncUi();
+        return true;
+      }
+      if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+        stopYouTubePlayback();
+        loadState = "ready";
+        void ensureYouTubeIframeApi().catch(() => {
+        });
+        syncBackgroundVideoPlayback({ force: true });
+        syncUi();
+        return true;
+      }
       try {
         const player = await ensureYouTubePlayer(getTrackYouTubeVideoId(currentTrack));
         if (disposed || currentTrack !== track) return false;
@@ -2479,6 +2614,16 @@
     function syncBackgroundVideoPlayback(options = {}) {
       const force = Boolean(options?.force);
       if (isYouTubeTrack(currentTrack)) {
+        if (shouldUseYouTubePosterLayer(currentTrack)) {
+          ensureYouTubePosterLayer(currentTrack);
+          setBackgroundVideoActive(Boolean(backgroundVideoEnabled));
+          backgroundVideoTrackKey = `${getTrackMediaKey(currentTrack)}|youtube-poster`;
+          if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+            void ensureYouTubeIframeApi().catch(() => {
+            });
+          }
+          return;
+        }
         ensureYouTubePlayerLayer();
         setBackgroundVideoActive(Boolean(backgroundVideoEnabled));
         backgroundVideoTrackKey = `${getTrackMediaKey(currentTrack)}|youtube`;
@@ -3479,15 +3624,20 @@
       ) : rawCurrentTime;
       const progress = duration > 0 ? clamp2(currentTime / duration, 0, 1) : 0;
       const videoAvailable = Boolean(isYouTubeTrack(currentTrack) || resolveTrackVideoPath(currentTrack));
+      const externalPlaybackOnly = Boolean(shouldUseExternalYouTubePlayback(currentTrack));
+      const inlineActivationRequired = Boolean(isMobileYouTubeInlineActivationRequired(currentTrack));
       return {
         muted: Boolean(audioEl.muted),
         volumeRatio: SHUFFLE_MAX_VOLUME > 0 ? clamp2(audioEl.volume / SHUFFLE_MAX_VOLUME, 0, 1) : 0,
-        playing: Boolean(currentTrack) && !isActiveMediaPaused(),
+        playing: Boolean(currentTrack) && !externalPlaybackOnly && !inlineActivationRequired && !isActiveMediaPaused(),
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack),
         copyState: visualizerCopyState,
         videoMode: Boolean(backgroundVideoEnabled && videoAvailable),
         videoAvailable,
+        externalPlaybackOnly,
+        externalPlaybackUrl: externalPlaybackOnly ? getTrackYouTubeWatchUrl(currentTrack) : "",
+        inlineActivationRequired,
         title: displayCopy.title,
         artist: displayCopy.artist,
         currentTime,
@@ -4060,6 +4210,18 @@
       await waitForSiteLoadCompletion();
       if (disposed) return;
       if (isYouTubeTrack(currentTrack)) {
+        if (shouldUseExternalYouTubePlayback(currentTrack)) {
+          loadState = currentTrack ? "ready" : loadState;
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return;
+        }
+        if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+          loadState = currentTrack ? "ready" : loadState;
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return;
+        }
         try {
           const player = await ensureYouTubePlayer(getTrackYouTubeVideoId(currentTrack));
           syncYouTubeVolume();
@@ -4083,6 +4245,39 @@
         loadState = "blocked";
       }
       syncUi();
+    }
+    async function activateYouTubeInlinePlayback(activatedAt = Date.now()) {
+      if (disposed) return false;
+      markYouTubeInlineActivationUnlocked(activatedAt);
+      await ensureManifest();
+      if (disposed) return false;
+      if (!currentTrack) {
+        await chooseNextTrack({ autoplay: true, excludeCurrent: false });
+        return isPlaying();
+      }
+      if (!isYouTubeTrack(currentTrack)) {
+        await ensureStarted();
+        return isPlaying();
+      }
+      if (shouldUseExternalYouTubePlayback(currentTrack)) {
+        syncBackgroundVideoPlayback({ force: true });
+        syncUi();
+        return false;
+      }
+      const restartTime = Math.max(getTrackSegmentStart(currentTrack), getActiveMediaCurrentTime() || 0);
+      await loadYouTubeTrack(currentTrack, {
+        autoplay: true,
+        seekTime: restartTime
+      });
+      return isPlaying();
+    }
+    function onYouTubeInlineActivationMessage(event) {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data && typeof event.data === "object" ? event.data : null;
+      if (message?.type !== YOUTUBE_INLINE_ACTIVATION_MESSAGE_TYPE) return;
+      const activatedAt = Number(message.activatedAt || message.at || Date.now());
+      markYouTubeInlineActivationUnlocked(Number.isFinite(activatedAt) ? activatedAt : Date.now());
+      void activateYouTubeInlinePlayback(activatedAt);
     }
     async function chooseAndLoadTrack(track, options = {}) {
       if (!track) return false;
@@ -4173,6 +4368,11 @@
               event.stopPropagation();
               setVisualizerFocusMode(true);
             }
+            return;
+          }
+          if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+            event.preventDefault();
+            await activateYouTubeInlinePlayback();
             return;
           }
           if (!compactPlayerMode) {
@@ -4332,6 +4532,18 @@
         return;
       }
       if (isActiveMediaPaused() || loadState === "blocked") {
+        if (shouldUseExternalYouTubePlayback(currentTrack)) {
+          loadState = "ready";
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return;
+        }
+        if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+          loadState = "ready";
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return;
+        }
         await attemptPlay();
         return;
       }
@@ -4340,6 +4552,18 @@
     async function togglePlayback() {
       if (disposed) return false;
       if (!currentTrack || isActiveMediaPaused() || loadState === "blocked") {
+        if (shouldUseExternalYouTubePlayback(currentTrack)) {
+          loadState = "ready";
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return false;
+        }
+        if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+          loadState = "ready";
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return false;
+        }
         await ensureStarted();
         return isPlaying();
       }
@@ -4407,6 +4631,7 @@
         window.cancelAnimationFrame(rafId);
         rafId = 0;
       }
+      window.removeEventListener("message", onYouTubeInlineActivationMessage);
       window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
       if (previewCtx && previewCtx.state !== "closed") {
         void previewCtx.close().catch(() => {
@@ -4493,6 +4718,7 @@
       pendingSegmentSeekTime = null;
       void recoverFromBrokenTrack(currentTrack, { autoplay: trackLoadAutoplayIntent });
     });
+    window.addEventListener("message", onYouTubeInlineActivationMessage);
     window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
     syncVisualizerPerformanceMode();
     rafId = window.requestAnimationFrame(renderLoop);
@@ -4543,6 +4769,7 @@
       } : null,
       isPlaying,
       ensureStarted,
+      activateYouTubeInlinePlayback,
       togglePlayback,
       skipForward,
       skipBackward,
@@ -5214,6 +5441,7 @@
     const canSeek = Number(state?.duration) > 0;
     const canControl = Boolean(state?.hasTrack);
     const copyState = String(state?.copyState || "visible");
+    const playButtonLabel = state?.externalPlaybackOnly ? "Open track on YouTube" : state?.inlineActivationRequired ? "Tap meow to start video" : playbackState === "playing" ? "Pause" : "Play";
     return `
       <section class="steam-sidebar-currently-playing-panel${compact ? " steam-sidebar-currently-playing-panel--minimal" : " steam-sidebar-currently-playing-panel--desktop"}${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-mode="${escapeHtml(panelMode)}" data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-shuffle-copy-state="${escapeHtml(copyState)}" data-sidebar-shuffle-reveal="${escapeHtml(revealState)}"${compact ? ` data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}"` : ""} aria-hidden="${compact ? "false" : revealState === "visible" ? "false" : "true"}">
         ${compact ? '<p class="steam-sidebar-currently-playing-label">Currently playing</p>' : ""}
@@ -5236,7 +5464,7 @@
               <path d="M8 6.4v11.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2.4"></path>
             </svg>
           </button>
-          <button class="steam-sidebar-currently-playing-control steam-sidebar-currently-playing-control--play" type="button" data-sidebar-shuffle-play-toggle aria-label="${playbackState === "playing" ? "Pause" : "Play"}"${canControl ? "" : " disabled"}>
+          <button class="steam-sidebar-currently-playing-control steam-sidebar-currently-playing-control--play" type="button" data-sidebar-shuffle-play-toggle aria-label="${escapeHtml(playButtonLabel)}"${canControl ? "" : " disabled"}>
             <span class="steam-sidebar-currently-playing-control-icon steam-sidebar-currently-playing-control-icon--play" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M8.25 5.8 18.5 12 8.25 18.2Z" fill="currentColor"></path>
@@ -6640,7 +6868,7 @@
     const LASTFM_PANEL_SCENE_EXPLOSION_GIF_URL = "/assets/Deltarune_explosion.gif";
     const LASTFM_PANEL_SCENE_EXPLOSION_SOUND_URL = "/assets/deltarune-explosion.mp3";
     const LASTFM_PANEL_AFTER_RENDER_TIMEOUT_MS = 1800;
-    const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 190;
+    const LASTFM_PANEL_ARTWORK_LAUNCH_MS = 120;
     const LASTFM_PANEL_ARTWORK_SOURCE_RETIRE_MS = 520;
     const LASTFM_PANEL_BUILD_STEP_MS = 38;
     const LASTFM_PANEL_BUILD_DURATION_MS = 260;
@@ -7268,6 +7496,20 @@
         launchExternal(safeUrl, "_self");
       }, launchDelayMs);
     }
+    function launchCurrentShuffleExternalPlayback(trigger = null) {
+      const state = shufflePlayerController?.getState?.();
+      const safeUrl = sanitizeUrl(state?.externalPlaybackUrl);
+      if (!state?.externalPlaybackOnly || !safeUrl) return false;
+      if (isCompactMobileLayout()) {
+        launchMobileExternalWithSelection(safeUrl, {
+          trigger: trigger instanceof HTMLElement ? trigger : null,
+          target: "_blank"
+        });
+      } else {
+        launchExternal(safeUrl, "_blank");
+      }
+      return true;
+    }
     function ensureMobileAudioDock() {
       if (mobileAudioDock instanceof HTMLElement) return mobileAudioDock;
       const dock = document.createElement("div");
@@ -7305,12 +7547,16 @@
       mobileSpeakerButton.setAttribute("aria-hidden", enabled ? "false" : "true");
       if (!enabled) return;
       const state = shufflePlayerController.getState();
+      const externalPlaybackOnly = Boolean(state.externalPlaybackOnly && state.externalPlaybackUrl);
+      const inlineActivationRequired = Boolean(state.inlineActivationRequired);
       const idleState = !state.hasTrack || state.blocked || !state.playing;
-      const label = idleState ? "Enable audio" : state.muted ? "Unmute audio" : "Mute audio";
+      const label = externalPlaybackOnly ? "Open track on YouTube" : inlineActivationRequired ? "Tap meow to start video" : idleState ? "Enable audio" : state.muted ? "Unmute audio" : "Mute audio";
       mobileSpeakerButton.dataset.audioMuted = String(state.muted);
       mobileSpeakerButton.dataset.audioPlaying = String(state.playing);
       mobileSpeakerButton.dataset.audioBlocked = String(state.blocked);
       mobileSpeakerButton.dataset.audioHasTrack = String(state.hasTrack);
+      mobileSpeakerButton.dataset.audioExternal = String(externalPlaybackOnly);
+      mobileSpeakerButton.dataset.audioInlineActivation = String(inlineActivationRequired);
       mobileSpeakerButton.dataset.audioVolume = String(clamp2(Number(state.volumeRatio) || 0, 0, 1).toFixed(2));
       if (audioControlShell instanceof HTMLElement) {
         audioControlShell.dataset.audioMuted = String(state.muted);
@@ -7512,6 +7758,12 @@
           event.preventDefault();
           primeInteractionSfx("shufflePlaybackToggle");
           playInteractionSfx("toggle_soft", "shufflePlaybackToggle");
+          if (launchCurrentShuffleExternalPlayback(event.currentTarget)) return;
+          const state = shufflePlayerController.getState();
+          if (state.inlineActivationRequired) {
+            void shufflePlayerController.activateYouTubeInlinePlayback?.();
+            return;
+          }
           void shufflePlayerController.togglePlayback?.();
         };
         playToggleButton.addEventListener("click", onClick);
@@ -7571,7 +7823,7 @@
       const playToggleButton = sidebarElements?.playToggleButton;
       if (playToggleButton instanceof HTMLButtonElement) {
         playToggleButton.disabled = !safeState?.hasTrack;
-        playToggleButton.setAttribute("aria-label", playbackState === "playing" ? "Pause" : "Play");
+        playToggleButton.setAttribute("aria-label", safeState?.externalPlaybackOnly ? "Open track on YouTube" : safeState?.inlineActivationRequired ? "Tap meow to start video" : playbackState === "playing" ? "Pause" : "Play");
       }
       const skipBackButton = sidebarElements?.skipBackButton;
       if (skipBackButton instanceof HTMLButtonElement) {
@@ -7597,6 +7849,14 @@
       primeInteractionSfx("mobileSpeakerToggle");
       playInteractionSfx("toggle_soft", "mobileSpeakerToggle");
       const state = shufflePlayerController.getState();
+      if (state.externalPlaybackOnly && launchCurrentShuffleExternalPlayback(event.currentTarget)) {
+        return;
+      }
+      if (state.inlineActivationRequired) {
+        shufflePlayerController.setMuted(false);
+        await shufflePlayerController.activateYouTubeInlinePlayback?.();
+        return;
+      }
       if (!state.hasTrack || state.blocked || !state.playing) {
         shufflePlayerController.setMuted(false);
         await shufflePlayerController.ensureStarted();

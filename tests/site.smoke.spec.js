@@ -620,6 +620,15 @@ test("root still plays the intro movie even when the old repeat-visit flag exist
     paused: node.paused,
     muted: node.muted
   }))).toEqual({ paused: false, muted: false });
+  const youtubeActivationState = await page.evaluate(() => ({
+    storedAt: Number(window.sessionStorage.getItem("internetAngelYoutubeInlineActivationAt") || 0),
+    globalAt: Number(window.__internetAngelYouTubeInlineActivationAt || 0),
+    iframeAllow: document.querySelector("#handoffFrame")?.getAttribute("allow") || ""
+  }));
+  expect(youtubeActivationState.storedAt).toBeGreaterThan(0);
+  expect(youtubeActivationState.globalAt).toBe(youtubeActivationState.storedAt);
+  expect(youtubeActivationState.iframeAllow).toContain("autoplay");
+  expect(youtubeActivationState.iframeAllow).toContain("encrypted-media");
   await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
   await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "playing_intro");
   const repeatVisitSfxLog = await readInteractionSfxLog(page);
@@ -3589,6 +3598,95 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     "/api/discord"
   ]));
   expect(apiRequests).not.toContain("/api/lastfm");
+});
+
+test("josie starts iOS YouTube playback from an explicit tap instead of opening YouTube", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      get() {
+        return "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1";
+      }
+    });
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      get() {
+        return "iPhone";
+      }
+    });
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      get() {
+        return 5;
+      }
+    });
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      const media = String(query || "");
+      if (media === "(pointer: coarse)" || media === "(hover: none)") {
+        return {
+          matches: true,
+          media,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {
+            return false;
+          }
+        };
+      }
+      return originalMatchMedia(query);
+    };
+    const launchLog = [];
+    window.__codexExternalLaunchLog = launchLog;
+    window.open = (url = "", target = "", features = "") => {
+      const popup = {
+        closed: false,
+        opener: null,
+        lastUrl: String(url || ""),
+        close() {
+          this.closed = true;
+        },
+        location: {
+          replace(nextUrl) {
+            popup.lastUrl = String(nextUrl || "");
+            launchLog.push({ type: "replace", url: popup.lastUrl, target: String(target || ""), timestamp: performance.now() });
+          }
+        }
+      };
+      launchLog.push({
+        type: "open",
+        url: String(url || ""),
+        target: String(target || ""),
+        features: String(features || ""),
+        timestamp: performance.now()
+      });
+      return popup;
+    };
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
+    timeout: 30_000
+  });
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-external", "false", { timeout: 10_000 });
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "true");
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("title", "Tap meow to start video");
+  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube-poster");
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(1);
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
+
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false");
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-playing", "true");
+  const externalLaunches = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
+  expect(externalLaunches.some((entry) => /youtube\.com\/watch\?v=/.test(entry.url || ""))).toBe(false);
 });
 
 test("josie shows loved, monthly rank, and discovery context for Last.fm tracks", async ({ page }) => {

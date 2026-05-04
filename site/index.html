@@ -239,7 +239,7 @@
       class="handoff-frame"
       title="Josie"
       loading="eager"
-      allow="autoplay"
+      allow="autoplay; encrypted-media; picture-in-picture"
       referrerpolicy="same-origin"
     ></iframe>
   </div>
@@ -268,6 +268,8 @@
       const introVideoPath = "Timelapse/Wings.mp4";
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
+      const youtubeInlineActivationMessageType = "josie-youtube-inline-activation";
+      const youtubeInlineActivationStorageKey = "internetAngelYoutubeInlineActivationAt";
       const introVideo = document.getElementById("introVideo");
       const introOverlay = document.getElementById("introOverlay");
       const introStartWrap = document.getElementById("introStartWrap");
@@ -290,6 +292,7 @@
       let repeatVisitHandoffTimer = 0;
       let handoffReadyFallbackTimer = 0;
       let introEndHandoffTimer = 0;
+      let youtubeInlineActivationAt = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
       let titleTypewriterToken = 0;
@@ -460,6 +463,28 @@
         handoffFrame.src = resolveJosieHandoffUrl().toString();
         interactionSfx?.setTrustedProxyWindow?.(handoffFrame.contentWindow);
         armHandoffReadyFallbackTimer();
+      }
+
+      function postYouTubeInlineActivationToFrame() {
+        if (!(handoffFrame instanceof HTMLIFrameElement) || !youtubeInlineActivationAt) return;
+        try {
+          handoffFrame.contentWindow?.postMessage({
+            type: youtubeInlineActivationMessageType,
+            activatedAt: youtubeInlineActivationAt,
+            source: "intro-start-button"
+          }, window.location.origin);
+        } catch {
+        }
+      }
+
+      function rememberYouTubeInlineActivationGesture() {
+        youtubeInlineActivationAt = Date.now();
+        window.__internetAngelYouTubeInlineActivationAt = youtubeInlineActivationAt;
+        try {
+          window.sessionStorage?.setItem(youtubeInlineActivationStorageKey, String(youtubeInlineActivationAt));
+        } catch {
+        }
+        postYouTubeInlineActivationToFrame();
       }
 
       function isTransitionWindowOpen() {
@@ -642,6 +667,7 @@
         if (messageType !== introReadyMessageType) return;
         iframeReady = true;
         clearHandoffReadyFallbackTimer();
+        postYouTubeInlineActivationToFrame();
         if (!handoffVisible && (introStarted || repeatVisitClickArmed)) {
           if (shouldExpediteHandoff()) {
             beginRepeatVisitHandoff();
@@ -695,6 +721,7 @@
       });
 
       introStartButton?.addEventListener("click", () => {
+        rememberYouTubeInlineActivationGesture();
         void interactionSfx?.initFromGesture?.("introStartButton");
         void tryPlayIntro();
       });

@@ -973,6 +973,22 @@ body.site-load-playing .os-ambient-backdrop {
   background: #000;
 }
 
+.shuffle-youtube-player-frame--poster {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.shuffle-youtube-player-frame--poster::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.48) 74%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.34));
+  pointer-events: none;
+}
+
 .shuffle-youtube-player-target,
 .shuffle-youtube-player-frame iframe {
   position: absolute;
