@@ -250,7 +250,7 @@
       id="introStartButton"
       class="intro-start-button"
       type="button"
-      aria-label="Start intro audio. This user is a cat; therefore meow."
+      aria-label="Enter site. This user is a cat; therefore meow."
     >
       <span class="intro-start-card-message">This user is a cat; therefore meow.</span>
     </button>
@@ -266,6 +266,7 @@
       const defaultHandoffReadyTimeoutMs = 12_000;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Wings.mp4";
+      const bloomToDeathVideoEnabled = false;
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
       const youtubeInlineActivationMessageType = "josie-youtube-inline-activation";
@@ -455,14 +456,22 @@
         startDocumentTitleTypewriter("Josie");
       }
 
-      function preloadJosieFrame() {
+      function preloadJosieFrame(options = {}) {
         if (!(handoffFrame instanceof HTMLIFrameElement)) return;
-        if (iframePreloading) return;
+        const armFallback = options?.armFallback !== false;
+        if (iframePreloading) {
+          if (armFallback) {
+            armHandoffReadyFallbackTimer();
+          }
+          return;
+        }
         iframePreloading = true;
         setState("preloading_josie");
         handoffFrame.src = resolveJosieHandoffUrl().toString();
         interactionSfx?.setTrustedProxyWindow?.(handoffFrame.contentWindow);
-        armHandoffReadyFallbackTimer();
+        if (armFallback) {
+          armHandoffReadyFallbackTimer();
+        }
       }
 
       function postYouTubeInlineActivationToFrame() {
@@ -613,6 +622,7 @@
         preloadJosieFrame();
         introStarted = true;
         if (skipMovieMode) {
+          stopIntroPlayback();
           repeatVisitClickArmed = true;
           beginRepeatVisitHandoff();
           return true;
@@ -651,13 +661,16 @@
       startDocumentTitleTypewriter("BloomToDeath");
       setState("idle");
       repeatVisitMode = false;
-      skipMovieMode = false;
+      skipMovieMode = !bloomToDeathVideoEnabled || shouldSkipIntro();
       document.body.dataset.bloomToDeathRepeatVisit = "false";
-      document.body.dataset.bloomToDeathSkipMovie = "false";
+      document.body.dataset.bloomToDeathSkipMovie = String(skipMovieMode);
+      document.body.dataset.bloomToDeathVideoEnabled = String(bloomToDeathVideoEnabled);
       if (skipMovieMode) {
+        introVideo.removeAttribute("src");
         introVideo.classList.add("is-hidden");
         introVideo.setAttribute("aria-hidden", "true");
-        preloadJosieFrame();
+        introVideo.load?.();
+        preloadJosieFrame({ armFallback: false });
       }
 
       window.addEventListener("message", (event) => {

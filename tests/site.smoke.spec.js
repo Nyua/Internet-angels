@@ -565,61 +565,59 @@ test.beforeEach(async ({ page }) => {
   await installYouTubePlayerMock(page);
 });
 
-test("root loads the Wings intro page centered on black with no intro ASCII overlay", async ({ page }) => {
+test("root keeps the meow gate and preloads Josie with BloomToDeath video disabled", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
-  await expect(page.locator("#introVideo")).toHaveCount(1);
   await expect(page.locator("#introStartButton")).toBeVisible();
-  await expect(page.locator("#handoffFrame")).toHaveCount(1);
+  await expect(page.locator("#introStartButton")).toHaveAttribute("aria-label", /Enter site.*therefore meow/);
+  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
   await expect(page.locator("#asciiCanvas")).toHaveCount(0);
-  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
-  const introState = await page.locator("#introVideo").evaluate((node) => ({
-    src: node.currentSrc || node.src,
-    muted: node.muted,
-    hasControls: node.controls,
-    paused: node.paused,
-    rect: node.getBoundingClientRect().toJSON(),
-    viewportWidth: window.innerWidth,
-    viewportHeight: window.innerHeight,
-    bodyBackground: window.getComputedStyle(document.body).backgroundColor
-  }));
-  expect(introState.src).toMatch(/Wings\.mp4/);
-  expect(introState.muted).toBe(false);
-  expect(introState.hasControls).toBe(false);
+
+  const introState = await page.evaluate(() => {
+    const video = document.querySelector("#introVideo");
+    return {
+      skipMovie: document.body?.dataset?.bloomToDeathSkipMovie || "",
+      videoEnabled: document.body?.dataset?.bloomToDeathVideoEnabled || "",
+      state: document.body?.dataset?.bloomToDeathState || "",
+      videoHidden: video instanceof HTMLVideoElement ? video.classList.contains("is-hidden") : false,
+      ariaHidden: video instanceof HTMLVideoElement ? video.getAttribute("aria-hidden") : "",
+      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null,
+      currentSrc: video instanceof HTMLVideoElement ? video.currentSrc : "",
+      paused: video instanceof HTMLVideoElement ? video.paused : false,
+      hasControls: video instanceof HTMLVideoElement ? video.controls : true,
+      bodyBackground: window.getComputedStyle(document.body).backgroundColor
+    };
+  });
+  expect(introState.skipMovie).toBe("true");
+  expect(introState.videoEnabled).toBe("false");
+  expect(introState.state).toBe("preloading_josie");
+  expect(introState.videoHidden).toBe(true);
+  expect(introState.ariaHidden).toBe("true");
+  expect(introState.videoSrcAttr).toBeNull();
+  expect(introState.currentSrc).toBe("");
   expect(introState.paused).toBe(true);
+  expect(introState.hasControls).toBe(false);
   expect(introState.bodyBackground).toBe("rgb(0, 0, 0)");
-  expect(Math.abs(introState.rect.left - (introState.viewportWidth - introState.rect.width) / 2)).toBeLessThan(2);
-  expect(Math.abs(introState.rect.top - (introState.viewportHeight - introState.rect.height) / 2)).toBeLessThan(2);
 });
 
-test("root still plays the intro movie even when the old repeat-visit flag exists", async ({ page }) => {
+test("root meow click records YouTube activation without playing BloomToDeath", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     window.localStorage.setItem(storageKey, "1");
   }, "internetAngelBloomToDeathIntroSeen");
   await page.goto("/");
-  await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introStartButton")).toBeVisible();
-  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
-  const repeatVisitState = await page.evaluate(() => {
-    const video = document.querySelector("#introVideo");
-    return {
-      repeatVisit: document.body?.dataset?.bloomToDeathRepeatVisit || "",
-      state: document.body?.dataset?.bloomToDeathState || "",
-      videoHidden: video instanceof HTMLVideoElement ? video.classList.contains("is-hidden") : false,
-      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
-    };
-  });
-  expect(repeatVisitState.repeatVisit).toBe("false");
-  expect(repeatVisitState.state).toBe("idle");
-  expect(repeatVisitState.videoHidden).toBe(false);
-  expect(repeatVisitState.videoSrcAttr).toBe("Timelapse/Wings.mp4");
+  await expect(page.locator("#introVideo")).toHaveClass(/is-hidden/);
 
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
+  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /handoff_pending|handoff_visible|handoff_complete/);
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    currentSrc: node.currentSrc || "",
     paused: node.paused,
     muted: node.muted
-  }))).toEqual({ paused: false, muted: false });
+  }))).toEqual({ currentSrc: "", paused: true, muted: true });
+
   const youtubeActivationState = await page.evaluate(() => ({
     storedAt: Number(window.sessionStorage.getItem("internetAngelYoutubeInlineActivationAt") || 0),
     globalAt: Number(window.__internetAngelYouTubeInlineActivationAt || 0),
@@ -629,158 +627,60 @@ test("root still plays the intro movie even when the old repeat-visit flag exist
   expect(youtubeActivationState.globalAt).toBe(youtubeActivationState.storedAt);
   expect(youtubeActivationState.iframeAllow).toContain("autoplay");
   expect(youtubeActivationState.iframeAllow).toContain("encrypted-media");
-  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "playing_intro");
+  await expect(page.locator("body")).not.toHaveAttribute("data-bloom-to-death-state", "playing_intro");
   const repeatVisitSfxLog = await readInteractionSfxLog(page);
   expect(repeatVisitSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
-test("root starts the Josie handoff about two seconds before the intro video ends", async ({ page }) => {
+test("root completes the disabled-video Josie handoff after the meow click", async ({ page }) => {
   await page.goto("/");
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
-    paused: node.paused,
-    muted: node.muted
-  }))).toEqual({ paused: false, muted: false });
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /preloading_josie|playing_intro|handoff_pending/);
-  await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
 
   const handoffFrame = page.frameLocator("#handoffFrame");
   await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
-
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
-  await page.locator("#introVideo").evaluate((node) => {
-    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 2.2);
-    Object.defineProperty(node, "currentTime", {
-      configurable: true,
-      get() {
-        return targetTime;
-      },
-      set() {
-      }
-    });
-    Object.defineProperty(node, "ended", {
-      configurable: true,
-      get() {
-        return false;
-      }
-    });
-    node.dispatchEvent(new Event("seeking"));
-    node.dispatchEvent(new Event("seeked"));
-    node.dispatchEvent(new Event("timeupdate"));
-  });
-  await page.waitForFunction(() => {
-    const video = document.querySelector("#introVideo");
-    return video instanceof HTMLVideoElement
-      && Number.isFinite(video.duration)
-      && video.duration > 0
-      && video.currentTime >= Math.max(0, video.duration - 2.25);
-  });
-  await expect(page.locator("body")).not.toHaveAttribute("data-bloom-to-death-state", "handoff_visible");
-  await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = Math.max(0, node.duration - 1.8);
-    node.dispatchEvent(new Event("seeking"));
-    node.dispatchEvent(new Event("seeked"));
-    node.dispatchEvent(new Event("timeupdate"));
-  });
-  const duringHandoffHandle = await page.waitForFunction(() => {
-    const video = document.querySelector("#introVideo");
-    const frameWrap = document.querySelector("#handoffFrameWrap");
-    if (
-      !(video instanceof HTMLVideoElement)
-      || !(frameWrap instanceof HTMLElement)
-      || document.body?.dataset?.bloomToDeathState !== "handoff_visible"
-      || !document.body.classList.contains("is-handoff-visible")
-    ) {
-      return null;
-    }
-    return {
-      href: window.location.href,
-      title: document.title,
-      state: document.body?.dataset?.bloomToDeathState || "",
-      hiddenClass: video.classList.contains("is-hidden"),
-      pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
-    };
-  }, null, { timeout: 25_000, polling: 50 });
-  const duringHandoff = await duringHandoffHandle.jsonValue();
-  expect(duringHandoff).not.toBeNull();
-  expect(duringHandoff.href).toMatch(/\/josie$/);
-  expect(duringHandoff.title).toMatch(/^\|?$|^J|^Jo|^Jos|^Josi|^Josie$/);
-  expect(duringHandoff.state).toBe("handoff_visible");
-  expect(duringHandoff.hiddenClass).toBe(false);
-  expect(duringHandoff.pointerEvents).toBe("none");
-  const bloomToDeathSfxLog = await readInteractionSfxLog(page);
-  expect(bloomToDeathSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
-
-  await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = node.duration;
-    node.dispatchEvent(new Event("seeking"));
-    node.dispatchEvent(new Event("seeked"));
-    node.dispatchEvent(new Event("timeupdate"));
-    node.dispatchEvent(new Event("ended"));
-  });
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete", { timeout: 30_000 });
   await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
   await expect(page).toHaveTitle("Josie");
+  await expect(page).toHaveURL(/\/josie$/);
+
   const completedHandoff = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
     const frameWrap = document.querySelector("#handoffFrameWrap");
     if (!(video instanceof HTMLVideoElement) || !(frameWrap instanceof HTMLElement)) return null;
     return {
       hiddenClass: video.classList.contains("is-hidden"),
+      currentSrc: video.currentSrc || "",
+      paused: video.paused,
       pointerEvents: window.getComputedStyle(frameWrap).pointerEvents
     };
   });
-  expect(completedHandoff).not.toBeNull();
-  expect(completedHandoff.hiddenClass).toBe(true);
-  expect(completedHandoff.pointerEvents).toBe("auto");
+  expect(completedHandoff).toMatchObject({
+    hiddenClass: true,
+    currentSrc: "",
+    paused: true,
+    pointerEvents: "auto"
+  });
 
   await handoffFrame.locator("[data-mobile-speaker-toggle]").click();
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top" });
 });
 
-test("root skips the BloomToDeath video when the user clicks during playback", async ({ page }) => {
+test("root full-screen meow gate activates from the intro surface", async ({ page }) => {
   await page.goto("/");
-  await page.locator("#introStartButton").click();
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await page.locator("#introStartButton").click({ position: { x: 24, y: 24 } });
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /handoff_pending|handoff_visible|handoff_complete/);
+  const activationState = await page.evaluate(() => Number(window.sessionStorage.getItem("internetAngelYoutubeInlineActivationAt") || 0));
+  expect(activationState).toBeGreaterThan(0);
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    currentSrc: node.currentSrc || "",
     paused: node.paused,
     muted: node.muted
-  }))).toEqual({ paused: false, muted: false });
-
-  const handoffFrame = page.frameLocator("#handoffFrame");
-  await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /playing_intro|handoff_pending/);
-
-  await page.locator("#introVideo").click({ position: { x: 24, y: 24 } });
-
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
-    paused: node.paused,
-    muted: node.muted
-  }))).toEqual({ paused: true, muted: true });
-  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete");
-  await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
-  await expect(page).toHaveTitle("Josie");
+  }))).toEqual({ currentSrc: "", paused: true, muted: true });
 });
 
-test("root falls back to a hard josie navigation if the handoff iframe never becomes ready", async ({ page }) => {
-  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
-    await route.abort();
-  });
-
-  await page.goto("/");
-  await page.locator("#introStartButton").click();
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
-  await page.locator("#introVideo").evaluate((node) => {
-    node.currentTime = Math.max(0, node.duration - 0.2);
-    node.dispatchEvent(new Event("ended"));
-  });
-  await expect(page).toHaveURL(/\/josie$/);
-  await expect(page).toHaveTitle(/Josie/);
-  await expect(page.locator("#introVideo")).toHaveCount(0);
-});
-
-test("root hard-fallbacks to josie when handoff readiness stalls past the boot timeout", async ({ page }) => {
+test("root falls back to a hard josie navigation after meow if the handoff iframe never becomes ready", async ({ page }) => {
   await page.addInitScript(() => {
     window.__internetAngelBootTimeoutMs = 250;
   });
@@ -789,9 +689,27 @@ test("root hard-fallbacks to josie when handoff readiness stalls past the boot t
   });
 
   await page.goto("/");
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
   await page.locator("#introStartButton").click();
   await expect(page).toHaveURL(/\/josie$/, { timeout: 5_000 });
   await expect(page).toHaveTitle(/Josie/);
+  await expect(page.locator("#introVideo")).toHaveCount(0);
+});
+
+test("root does not hard-fallback before the meow gate is clicked", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelBootTimeoutMs = 250;
+  });
+  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "preloading_josie");
 });
 
 test("josie clears the site-load curtain when bootstrap stalls", async ({ page }) => {
@@ -819,98 +737,60 @@ test("josie clears the site-load curtain when bootstrap stalls", async ({ page }
   expect(["error", "timeout"]).toContain(stalledState.siteLoadFallback);
 });
 
-test("mobile root plays Wings centered in the viewport instead of skipping the intro", async ({ page }) => {
+test("mobile root keeps the meow gate while BloomToDeath video is disabled", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/");
   await expect(page).toHaveTitle(/BloomToDeath/);
   await expect(page.locator("#introStartButton")).toBeVisible();
-  await expect(page.locator("#introVideo")).toHaveClass(/is-ready/, { timeout: 15_000 });
+  await expect(page.locator("#introVideo")).toHaveClass(/is-hidden/);
   const mobileState = await page.evaluate(() => {
     const video = document.querySelector("#introVideo");
     return {
       skipMovie: document.body?.dataset?.bloomToDeathSkipMovie || "",
+      videoEnabled: document.body?.dataset?.bloomToDeathVideoEnabled || "",
       repeatVisit: document.body?.dataset?.bloomToDeathRepeatVisit || "",
       state: document.body?.dataset?.bloomToDeathState || "",
       videoHidden: video instanceof HTMLVideoElement ? video.classList.contains("is-hidden") : false,
-      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null
+      videoSrcAttr: video instanceof HTMLVideoElement ? video.getAttribute("src") : null,
+      bodyBackground: window.getComputedStyle(document.body).backgroundColor,
+      objectFit: video instanceof HTMLVideoElement ? window.getComputedStyle(video).objectFit : ""
     };
   });
-  expect(mobileState.skipMovie).toBe("false");
+  expect(mobileState.skipMovie).toBe("true");
+  expect(mobileState.videoEnabled).toBe("false");
   expect(mobileState.repeatVisit).toBe("false");
-  expect(mobileState.state).toBe("idle");
-  expect(mobileState.videoHidden).toBe(false);
-  expect(mobileState.videoSrcAttr).toBe("Timelapse/Wings.mp4");
+  expect(mobileState.state).toBe("preloading_josie");
+  expect(mobileState.videoHidden).toBe(true);
+  expect(mobileState.videoSrcAttr).toBeNull();
+  expect(mobileState.bodyBackground).toBe("rgb(0, 0, 0)");
+  expect(mobileState.objectFit).toBe("contain");
 
   await clearInteractionSfxLog(page);
   await page.locator("#introStartButton").click();
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /handoff_pending|handoff_visible|handoff_complete/);
   await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
+    currentSrc: node.currentSrc || "",
     paused: node.paused,
     muted: node.muted
-  }))).toEqual({ paused: false, muted: false });
-  const mobileLayout = await page.locator("#introVideo").evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    return {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      bodyBackground: window.getComputedStyle(document.body).backgroundColor,
-      objectFit: window.getComputedStyle(node).objectFit
-    };
-  });
-  expect(mobileLayout.bodyBackground).toBe("rgb(0, 0, 0)");
-  expect(mobileLayout.objectFit).toBe("contain");
-  expect(mobileLayout.width).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
-  expect(mobileLayout.height).toBeLessThanOrEqual(mobileLayout.viewportHeight + 1);
-  expect(Math.abs(mobileLayout.left - (mobileLayout.viewportWidth - mobileLayout.width) / 2)).toBeLessThan(2);
-  expect(Math.abs(mobileLayout.top - (mobileLayout.viewportHeight - mobileLayout.height) / 2)).toBeLessThan(2);
+  }))).toEqual({ currentSrc: "", paused: true, muted: true });
   const mobileIntroSfxLog = await readInteractionSfxLog(page);
   expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
 
-test("desktop BloomToDeath ignores the deprecated degraded performance override", async ({ page }) => {
+test("desktop BloomToDeath-disabled handoff ignores the deprecated degraded performance override", async ({ page }) => {
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/");
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator("#asciiCanvas")).toHaveCount(0);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-video-enabled", "false");
+  await expect(page.locator("#introVideo")).toHaveClass(/is-hidden/);
 
   await page.locator("#introStartButton").click();
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => Number.isFinite(node.duration) && node.duration > 0)).toBe(true);
-  await expect.poll(async () => page.locator("#introVideo").evaluate((node) => ({
-    paused: node.paused,
-    muted: node.muted
-  }))).toEqual({ paused: false, muted: false });
   const degradedHandoffFrame = page.frameLocator("#handoffFrame");
   await degradedHandoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
-  const degradedHandoffState = await page.locator("#introVideo").evaluate((node) => {
-    const targetTime = Math.max(0, (Number.isFinite(node.duration) ? node.duration : 18) - 1.8);
-    Object.defineProperty(node, "currentTime", {
-      configurable: true,
-      get() {
-        return targetTime;
-      },
-      set() {
-      }
-    });
-    Object.defineProperty(node, "ended", {
-      configurable: true,
-      get() {
-        return false;
-      }
-    });
-    node.dispatchEvent(new Event("seeking"));
-    node.dispatchEvent(new Event("seeked"));
-    node.dispatchEvent(new Event("timeupdate"));
-    return {
-      state: document.body?.dataset?.bloomToDeathState || "",
-      handoffVisible: document.body.classList.contains("is-handoff-visible")
-    };
-  });
-  expect(degradedHandoffState.state).toBe("handoff_visible");
-  expect(degradedHandoffState.handoffVisible).toBe(true);
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", "handoff_complete", { timeout: 30_000 });
+  await expect(page.locator("body")).toHaveClass(/is-handoff-complete/);
   const degradedIntroSfxLog = await readInteractionSfxLog(page);
   expect(degradedIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
