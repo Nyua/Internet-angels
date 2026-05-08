@@ -1794,6 +1794,7 @@
       mediaType,
       youtubeVideoId,
       youtubeUrl: String(source.youtubeUrl || (youtubeVideoId ? `https://www.youtube.com/watch?v=${youtubeVideoId}` : "")).trim(),
+      youtubeChannelUrl: sanitizeUrl(source.youtubeChannelUrl || source.channelUrl || source.artistUrl || ""),
       videoPath: videoPath || (mediaType === "video" ? path : ""),
       addedAt: Number.isFinite(addedAt) ? addedAt : 0,
       groupId,
@@ -2078,6 +2079,9 @@
       const videoId = getTrackYouTubeVideoId(track);
       return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
     }
+    function getTrackYouTubeChannelUrl(track) {
+      return sanitizeUrl(track?.youtubeChannelUrl || track?.channelUrl || track?.artistUrl || "");
+    }
     function getTrackYouTubePosterUrl(track) {
       const videoId = getTrackYouTubeVideoId(track);
       return videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
@@ -2131,14 +2135,10 @@
       return youtubeInlineActivationUnlocked;
     }
     function shouldUseExternalYouTubePlayback(track = currentTrack) {
-      const videoId = getTrackYouTubeVideoId(track);
-      if (!videoId) return false;
-      return youtubeExternalFallbackVideoIds.has(videoId);
+      return false;
     }
     function isMobileYouTubeInlineActivationRequired(track = currentTrack) {
-      const videoId = getTrackYouTubeVideoId(track);
-      if (!videoId || shouldUseExternalYouTubePlayback(track)) return false;
-      return Boolean(isIOSMobileHardware() && hasCompactMobileInput() && !hasYouTubeInlineActivationUnlocked());
+      return false;
     }
     function shouldUseYouTubePosterLayer(track = currentTrack) {
       return Boolean(shouldUseExternalYouTubePlayback(track) || isMobileYouTubeInlineActivationRequired(track));
@@ -2146,11 +2146,10 @@
     function markYouTubeExternalFallback(track, reason = "") {
       const videoId = getTrackYouTubeVideoId(track);
       if (!videoId) return false;
-      youtubeExternalFallbackVideoIds.add(videoId);
       if (backgroundVideoLayer instanceof HTMLElement) {
-        backgroundVideoLayer.dataset.youtubeFallbackReason = String(reason || "external");
+        delete backgroundVideoLayer.dataset.youtubeFallbackReason;
       }
-      return true;
+      return false;
     }
     function resolveTrackVideoPath(track) {
       if (isYouTubeTrack(track)) return String(track?.youtubeUrl || track?.path || "").trim();
@@ -3479,43 +3478,33 @@
       return visualizerLayerHost;
     }
     function syncVisualizerFocusMode() {
-      if (visualizerFocusMode && (compactPlayerMode || isCompactMobileLayout())) {
+      if (visualizerFocusMode) {
         visualizerFocusMode = false;
         invalidateWaveLayout();
       }
-      const mode = visualizerFocusMode ? "active" : "idle";
+      const mode = "idle";
       const layerHost = resolveVisualizerFocusLayer();
       document.body?.setAttribute("data-visualizer-focus-mode", mode);
       if (layerHost instanceof HTMLElement) {
         layerHost.setAttribute("data-visualizer-focus-mode", mode);
-        const angelLink = layerHost.querySelector("[data-visualizer-angel-link]");
-        if (angelLink instanceof HTMLElement) {
-          angelLink.setAttribute("aria-hidden", visualizerFocusMode ? "false" : "true");
-        }
       }
       if (playerRoot instanceof HTMLElement) {
         playerRoot.setAttribute("data-visualizer-focus-mode", mode);
       }
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-visualizer-focus-mode", mode);
-        waveSurface.setAttribute("aria-label", visualizerFocusMode ? "Exit fullscreen visualizer" : "Audio visualizer");
+        waveSurface.setAttribute("aria-label", "Audio visualizer");
       }
     }
     function setVisualizerFocusMode(active) {
-      const nextActive = Boolean(active) && !compactPlayerMode && !isCompactMobileLayout();
-      if (visualizerFocusMode === nextActive) {
-        syncVisualizerFocusMode();
-        return;
-      }
-      visualizerFocusMode = nextActive;
-      invalidateWaveLayout();
+      visualizerFocusMode = false;
       syncVisualizerFocusMode();
       if (playbackUnlocked && !compactPlayerMode) {
         ensureWaveCanvasSize();
       }
     }
     function toggleVisualizerFocusMode() {
-      setVisualizerFocusMode(!visualizerFocusMode);
+      setVisualizerFocusMode(false);
     }
     function resolveShuffleTheme(track) {
       const themeKey = firstNonEmpty(
@@ -3640,6 +3629,8 @@
         inlineActivationRequired,
         title: displayCopy.title,
         artist: displayCopy.artist,
+        titleUrl: currentTrack ? getTrackYouTubeWatchUrl(currentTrack) || resolveTrackUrl(currentTrack) : "",
+        artistUrl: currentTrack ? getTrackYouTubeChannelUrl(currentTrack) : "",
         currentTime,
         duration,
         progress,
@@ -3658,6 +3649,20 @@
     function applyVisualizerCopyState() {
       if (!(copyRootEl instanceof HTMLElement)) return;
       copyRootEl.setAttribute("data-shuffle-copy-state", visualizerCopyState);
+    }
+    function syncShuffleCopyLink(element, url, label) {
+      if (!(element instanceof HTMLAnchorElement)) return;
+      const safeUrl = sanitizeUrl(url);
+      if (!safeUrl) {
+        element.removeAttribute("href");
+        element.removeAttribute("target");
+        element.removeAttribute("rel");
+        return;
+      }
+      element.href = safeUrl;
+      element.target = "_blank";
+      element.rel = "noopener noreferrer";
+      element.setAttribute("aria-label", label || "Open current track link");
     }
     function setVisualizerCopyState(nextState) {
       const resolvedState = nextState === "hidden" ? "hidden" : "visible";
@@ -3885,11 +3890,13 @@
         if (!previousState || previousState.title !== state.title) {
           titleEl.textContent = state.title;
         }
+        syncShuffleCopyLink(titleEl, state.titleUrl, `Open ${state.title} on YouTube`);
       }
       if (artistEl instanceof HTMLElement) {
         if (!previousState || previousState.artist !== state.artist) {
           artistEl.textContent = state.artist;
         }
+        syncShuffleCopyLink(artistEl, state.artistUrl, `Open ${state.artist} on YouTube`);
       }
       syncVisualizerCopyCycle();
       applyShuffleTheme(currentTrack);
@@ -4363,10 +4370,9 @@
           if (!currentTrack) {
             await ensureManifest();
             await queueInitialTrackPlayback();
-            if (currentTrack && !compactPlayerMode) {
+            if (currentTrack && (loadState === "blocked" || isActiveMediaPaused())) {
               event.preventDefault();
-              event.stopPropagation();
-              setVisualizerFocusMode(true);
+              await attemptPlay();
             }
             return;
           }
@@ -4375,46 +4381,11 @@
             await activateYouTubeInlinePlayback();
             return;
           }
-          if (!compactPlayerMode) {
-            event.preventDefault();
-            event.stopPropagation();
-            const wasFocused = visualizerFocusMode;
-            toggleVisualizerFocusMode();
-            if (!wasFocused && (loadState === "blocked" || isActiveMediaPaused())) {
-              await attemptPlay();
-            }
-            return;
-          }
           if (loadState === "blocked" || isActiveMediaPaused()) {
+            event.preventDefault();
             await attemptPlay();
           }
         });
-      }
-      if (!visualizerFocusKeydownListener) {
-        visualizerFocusKeydownListener = (event) => {
-          if (!(event instanceof KeyboardEvent) || event.key !== "Escape" || !visualizerFocusMode) return;
-          event.preventDefault();
-          setVisualizerFocusMode(false);
-        };
-        window.addEventListener("keydown", visualizerFocusKeydownListener, true);
-      }
-      if (!visualizerFocusLinkClickListener) {
-        visualizerFocusLinkClickListener = (event) => {
-          const target = event?.target instanceof Element ? event.target.closest("[data-visualizer-angel-link]") : null;
-          if (target instanceof HTMLElement) {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation?.();
-            target.textContent = "A place where I spend my time making random stuff waiting for my partner to wake up :3";
-            target.setAttribute("data-angel-link-expanded", "true");
-            return;
-          }
-          const expandedLink = document.querySelector("[data-visualizer-angel-link][data-angel-link-expanded='true']");
-          if (visualizerFocusMode && expandedLink instanceof HTMLElement) {
-            setVisualizerFocusMode(false);
-          }
-        };
-        window.addEventListener("click", visualizerFocusLinkClickListener, true);
       }
       if ("ResizeObserver" in window && playerRoot) {
         resizeObserver = new ResizeObserver(() => {
@@ -4765,7 +4736,8 @@
         mediaType: currentTrack.mediaType,
         videoPath: currentTrack.videoPath,
         youtubeVideoId: currentTrack.youtubeVideoId,
-        youtubeUrl: currentTrack.youtubeUrl
+        youtubeUrl: currentTrack.youtubeUrl,
+        youtubeChannelUrl: currentTrack.youtubeChannelUrl
       } : null,
       isPlaying,
       ensureStarted,
@@ -5093,9 +5065,9 @@
       <div class="steam-hero-content${compact ? " steam-hero-content--compact-mobile" : ""}">
         ${avatarMarkup}
         <div class="steam-hero-copy${compact ? " steam-hero-copy--compact-mobile" : ""}">
+          ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
           ${heroNameMarkup}
           ${heroOrnamentMarkup}
-          ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
         </div>
       </div>
     </section>
@@ -5401,6 +5373,15 @@
     </article>
   `;
   }
+  function renderShuffleCopyLink(className, dataAttribute, text, href, options = {}) {
+    const safeClassName = firstNonEmpty(className, "");
+    const safeText = firstNonEmpty(text, "");
+    const safeHref = sanitizeUrl(href);
+    const extraAttributes = firstNonEmpty(options.extraAttributes, "");
+    const commonAttributes = `${safeClassName ? ` class="${escapeHtml(safeClassName)}"` : ""} ${dataAttribute}${extraAttributes ? ` ${extraAttributes}` : ""}`.trim();
+    const linkAttributes = safeHref ? ` href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer"` : "";
+    return `<a ${commonAttributes}${linkAttributes} data-shuffle-link>${escapeHtml(safeText)}</a>`;
+  }
   function renderShufflePlayerMarkup(options = {}) {
     const playerClassName = firstNonEmpty(options.playerClassName, "josie-audio-player");
     const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
@@ -5409,8 +5390,8 @@
         <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="${escapeHtml(SHUFFLE_VISUAL_STYLE)}" data-shuffle-ascii-overlay="glyph" aria-label="Audio visualizer">
           <div class="josie-audio-player-overlay">
           <div class="josie-audio-player-copy" data-shuffle-copy data-shuffle-copy-state="visible">
-            <p class="josie-audio-player-title" data-shuffle-title>Loading Shuffle...</p>
-            <p class="josie-audio-player-artist" data-shuffle-artist>Unknown Artist</p>
+            ${renderShuffleCopyLink("josie-audio-player-title", "data-shuffle-title", "Loading Shuffle...", "")}
+            ${renderShuffleCopyLink("josie-audio-player-artist", "data-shuffle-artist", "Unknown Artist", "")}
           </div>
         </div>
       </div>
@@ -5442,12 +5423,14 @@
     const canControl = Boolean(state?.hasTrack);
     const copyState = String(state?.copyState || "visible");
     const playButtonLabel = state?.externalPlaybackOnly ? "Open track on YouTube" : state?.inlineActivationRequired ? "Tap meow to start video" : playbackState === "playing" ? "Pause" : "Play";
+    const titleUrl = sanitizeUrl(state?.titleUrl);
+    const artistUrl = sanitizeUrl(state?.artistUrl);
     return `
       <section class="steam-sidebar-currently-playing-panel${compact ? " steam-sidebar-currently-playing-panel--minimal" : " steam-sidebar-currently-playing-panel--desktop"}${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-mode="${escapeHtml(panelMode)}" data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-shuffle-copy-state="${escapeHtml(copyState)}" data-sidebar-shuffle-reveal="${escapeHtml(revealState)}"${compact ? ` data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}"` : ""} aria-hidden="${compact ? "false" : revealState === "visible" ? "false" : "true"}">
         ${compact ? '<p class="steam-sidebar-currently-playing-label">Currently playing</p>' : ""}
         <div class="steam-sidebar-currently-playing-copy" data-shuffle-copy-state="${escapeHtml(copyState)}">
-          <p class="steam-sidebar-currently-playing-title" data-sidebar-shuffle-title>${escapeHtml(title)}</p>
-          <p class="steam-sidebar-currently-playing-artist" data-sidebar-shuffle-artist>${escapeHtml(artist)}</p>
+          ${renderShuffleCopyLink("steam-sidebar-currently-playing-title", "data-sidebar-shuffle-title", title, titleUrl)}
+          ${renderShuffleCopyLink("steam-sidebar-currently-playing-artist", "data-sidebar-shuffle-artist", artist, artistUrl)}
         </div>
         <div class="steam-sidebar-currently-playing-progress-track${canSeek ? " steam-sidebar-currently-playing-progress-track--scrubbable" : ""}" data-sidebar-shuffle-progress-track${canSeek ? ` role="slider" tabindex="0" aria-label="Seek current track" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}" aria-valuetext="${escapeHtml(`${currentTimeLabel} of ${durationLabel}`)}"` : ""}>
           <span class="steam-sidebar-currently-playing-progress-fill" data-sidebar-shuffle-progress-fill style="transform: scaleX(${progress.toFixed(4)})"></span>
@@ -5763,7 +5746,6 @@
     const track = detail?.track || {};
     const spotify = detail?.spotify || {};
     const scrobbles = detail?.scrobbles || {};
-    const artistTopTracks = detail?.artistTopTracks || {};
     const compactMobile = isCompactMobileLayout();
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
@@ -5774,13 +5756,6 @@
       && (scrobbles.firstRecorded.playedAtLabel || scrobbles.firstRecorded.playedAtIso)
       ? scrobbles.firstRecorded
       : null;
-    const relatedItems = Array.isArray(artistTopTracks.items)
-      ? [...artistTopTracks.items].sort((left, right) => {
-        const userPlayDelta = Number(right?.userPlaycount || 0) - Number(left?.userPlaycount || 0);
-        if (userPlayDelta !== 0) return userPlayDelta;
-        return String(left?.title || "").localeCompare(String(right?.title || ""));
-      }).slice(0, 6)
-      : [];
     const genreMetaMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
       <span class="lastfm-track-panel-meta-genres" aria-label="Track genres">
         ${track.topTags.map((tag) => `<span class="lastfm-track-panel-meta-genre">${escapeHtml(tag.name)}</span>`).join("")}
@@ -5792,8 +5767,7 @@
         <span class="lastfm-track-panel-loved-title-label">Loved</span>
       </span>
     ` : "";
-    const previewMarkup = compactMobile ? renderLastFmTrackPanelPreviewPlayer(track, spotify) : "";
-    const spotifySlotMarkup = previewMarkup ? "" : renderLastFmTrackPanelSpotifySlot(spotify, {
+    const spotifySlotMarkup = renderLastFmTrackPanelSpotifySlot(spotify, {
       mobile: compactMobile,
       unavailableMeta: "Spotify player unavailable for this track."
     });
@@ -5856,38 +5830,7 @@
           <span class="lastfm-track-panel-stat-value">${escapeHtml(scrobbleTotalLabel)}</span>
         </div>
         ${historyMarkup}
-      </section>
-    `;
-    const relatedMarkup = `
-      <section class="lastfm-track-panel-related">
-        <div class="lastfm-track-panel-section-head">
-          <h4 class="lastfm-track-panel-section-title">From ${escapeHtml(firstNonEmpty(artistTopTracks.artist, track.artist, "this artist"))}</h4>
-        </div>
-        ${relatedItems.length ? `
-          <ul class="lastfm-track-panel-related-list">
-            ${relatedItems.map((entry) => `
-              <li class="lastfm-track-panel-related-item">
-                <button
-                  class="lastfm-track-panel-related-button"
-                  type="button"
-                  data-lastfm-track-title="${escapeHtml(entry.title)}"
-                  data-lastfm-track-artist="${escapeHtml(firstNonEmpty(artistTopTracks.artist, track.artist))}"
-                  ${entry.lastfmUrl ? `data-item-url="${escapeHtml(entry.lastfmUrl)}"` : ""}
-                >
-                  <span class="lastfm-track-panel-related-copy">
-                    <span class="lastfm-track-panel-related-title">${escapeHtml(entry.title)}</span>
-                    <span class="lastfm-track-panel-related-meta">
-                      ${escapeHtml(formatCountNumber(entry.userPlaycount, "0"))} scrobbles
-                    </span>
-                  </span>
-                  <span class="lastfm-track-panel-related-status">
-                    ${entry.userLoved ? '<span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>' : ""}
-                  </span>
-                </button>
-              </li>
-            `).join("")}
-          </ul>
-        ` : `<p class="lastfm-track-panel-empty">No artist top tracks available right now.</p>`}
+        ${spotifySlotMarkup ? `<div class="lastfm-track-panel-focus-media">${spotifySlotMarkup}</div>` : ""}
       </section>
     `;
     return renderLastFmPanelViewModel({
@@ -5910,9 +5853,8 @@
         ${genreMetaMarkup ? `<span class="lastfm-track-panel-meta-separator">&bull;</span>${genreMetaMarkup}` : ""}
       `,
       primaryMarkup: artMarkup,
-      mediaControlMarkup: previewMarkup || spotifySlotMarkup,
       focusMarkup,
-      stackMarkup: `${summaryMarkup}${relatedMarkup}`
+      stackMarkup: `${summaryMarkup}`
     });
   }
   function renderLastFmDetailTagMarkup(tags, label = "Detail tags") {
@@ -6337,9 +6279,9 @@
           ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">&#9733;</span>'}
         </div>
       `,
-      mediaControlMarkup: artistActionMarkup,
       focusMarkup,
       tagsMarkup,
+      actionsMarkup: artistActionMarkup,
       stackMarkup: `${summaryMarkup}${albumCatalogMarkup}`
     });
   }
@@ -6458,6 +6400,7 @@
           <span class="lastfm-track-panel-stat-label">Album scrobbles</span>
           <span class="lastfm-track-panel-stat-value">${escapeHtml(albumUserScrobbleLabel)}</span>
         </div>
+        ${spotifySlotMarkup ? `<div class="lastfm-track-panel-focus-media">${spotifySlotMarkup}</div>` : ""}
       </section>
     `;
     return renderLastFmPanelViewModel({
@@ -6474,7 +6417,6 @@
         ${album.runtimeLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(album.runtimeLabel)}</span>` : ""}
       `,
       primaryMarkup: artMarkup,
-      mediaControlMarkup: spotifySlotMarkup,
       focusMarkup,
       tagsMarkup,
       stackMarkup: `${summaryMarkup}${trackListMarkup}`
@@ -7195,10 +7137,12 @@
     function getDesktopUnfoldTargets() {
       if (!(root2 instanceof HTMLElement)) return [];
       const selectors = [
-        "#social-hub-profile .steam-hero-shell",
+        "#social-hub-profile .steam-hero-avatar-wrap",
+        "#social-hub-profile .steam-hero-copy",
         "#social-hub-profile-tagline .discord-presence-reveal",
-        "#social-hub-sidebar .steam-sidebar-panel",
-        "#social-hub-showcases .steam-showcase"
+        "#social-hub-sidebar .steam-sidebar-row",
+        "#social-hub-sidebar .steam-sidebar-currently-playing-panel",
+        "#social-hub-showcases > .steam-showcase"
       ];
       const targets = [];
       selectors.forEach((selector) => {
@@ -7213,19 +7157,7 @@
     function applyDesktopUnfoldOrdering(compactMobile = isCompactMobileLayout()) {
       clearDesktopUnfoldOrdering();
       if (compactMobile) return;
-      const targets = getDesktopUnfoldTargets().sort((left, right) => {
-        const leftRect = left.getBoundingClientRect();
-        const rightRect = right.getBoundingClientRect();
-        const topDelta = leftRect.top - rightRect.top;
-        if (Math.abs(topDelta) > 6) {
-          return topDelta;
-        }
-        const leftDelta = leftRect.left - rightRect.left;
-        if (Math.abs(leftDelta) > 6) {
-          return leftDelta;
-        }
-        return 0;
-      });
+      const targets = getDesktopUnfoldTargets();
       targets.forEach((target, index) => {
         target.dataset.desktopUnfold = "true";
         target.style.setProperty("--desktop-unfold-order", String(index));
@@ -7836,10 +7768,34 @@
       const titleEl = sidebarElements?.titleEl;
       if (titleEl instanceof HTMLElement) {
         titleEl.textContent = title;
+        if (titleEl instanceof HTMLAnchorElement) {
+          const titleUrl = sanitizeUrl(safeState?.titleUrl);
+          if (titleUrl) {
+            titleEl.href = titleUrl;
+            titleEl.target = "_blank";
+            titleEl.rel = "noopener noreferrer";
+          } else {
+            titleEl.removeAttribute("href");
+            titleEl.removeAttribute("target");
+            titleEl.removeAttribute("rel");
+          }
+        }
       }
       const artistEl = sidebarElements?.artistEl;
       if (artistEl instanceof HTMLElement) {
         artistEl.textContent = artist;
+        if (artistEl instanceof HTMLAnchorElement) {
+          const artistUrl = sanitizeUrl(safeState?.artistUrl);
+          if (artistUrl) {
+            artistEl.href = artistUrl;
+            artistEl.target = "_blank";
+            artistEl.rel = "noopener noreferrer";
+          } else {
+            artistEl.removeAttribute("href");
+            artistEl.removeAttribute("target");
+            artistEl.removeAttribute("rel");
+          }
+        }
       }
       applySidebarCurrentlyPlayingProgress(sidebarElements, progress, currentTimeLabel, durationLabel, canSeek);
     }
@@ -9106,7 +9062,7 @@
           src="${escapeHtml(safeEmbedUrl)}"
           title="Spotify preview for ${escapeHtml(trackTitle || "track")}"
           loading="lazy"
-          allow="autoplay; clipboard-write; fullscreen; picture-in-picture"
+          allow="autoplay; clipboard-write; picture-in-picture"
           scrolling="no"
         ></iframe>
       `;
@@ -10558,6 +10514,10 @@
       if (copyHandleButton instanceof HTMLElement) {
         event.preventDefault();
         void handleProfileHandleCopy(copyHandleButton);
+        return;
+      }
+      const shuffleLink = target.closest("[data-shuffle-link]");
+      if (shuffleLink instanceof HTMLAnchorElement && sanitizeUrl(shuffleLink.href)) {
         return;
       }
       const anchor = target.closest("a[href]");

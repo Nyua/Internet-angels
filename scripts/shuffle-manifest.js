@@ -85,7 +85,8 @@ export async function fetchYouTubeOEmbedMetadata(videoUrl, options = {}) {
     const data = await response.json();
     return {
       title: cleanMetadataValue(data?.title),
-      artist: cleanMetadataValue(data?.author_name)
+      artist: cleanMetadataValue(data?.author_name),
+      channelUrl: cleanMetadataValue(data?.author_url)
     };
   } catch {
     return null;
@@ -98,6 +99,7 @@ function applyYouTubeMetadata(track, metadata) {
   if (!track || typeof track !== "object") return track;
   const title = cleanMetadataValue(metadata?.title);
   const artist = cleanMetadataValue(metadata?.artist);
+  const channelUrl = cleanMetadataValue(metadata?.channelUrl);
   const nextTitle = title && isFallbackYouTubeTitle(track) ? title : track.title;
   const nextArtist = artist && isFallbackYouTubeArtist(track) ? artist : track.artist;
   return {
@@ -105,7 +107,8 @@ function applyYouTubeMetadata(track, metadata) {
     title: nextTitle,
     displayTitle: title && isFallbackYouTubeTitle(track) ? title : track.displayTitle,
     artist: nextArtist,
-    displayArtist: artist && isFallbackYouTubeArtist(track) ? artist : track.displayArtist
+    displayArtist: artist && isFallbackYouTubeArtist(track) ? artist : track.displayArtist,
+    youtubeChannelUrl: channelUrl || track.youtubeChannelUrl || ""
   };
 }
 
@@ -135,6 +138,7 @@ function parseTrackLine(line, index) {
     mediaType: "youtube",
     youtubeVideoId: videoId,
     youtubeUrl: normalizedUrl,
+    youtubeChannelUrl: "",
     videoPath: normalizedUrl,
     path: normalizedUrl,
     title,

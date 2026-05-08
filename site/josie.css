@@ -1090,7 +1090,6 @@ body.shuffle-video-background-active #os-ambient-overlay {
 }
 
 .os-shuffle-visualizer-layer {
-  --visualizer-focus-height: clamp(280px, 42vh, 520px);
   position: fixed;
   inset: 0;
   z-index: 2;
@@ -1120,101 +1119,14 @@ body.shuffle-video-background-active #os-ambient-overlay {
   width: 100vw;
   height: clamp(224px, 20vw, 284px);
   min-height: clamp(224px, 20vw, 284px);
-  transform: translate3d(0, var(--site-scroll-drag-y-soft, 0px), 0);
+  transform: translate3d(0, 0, 0);
   overflow: visible;
   pointer-events: auto;
-  cursor: zoom-in;
+  cursor: default;
   isolation: isolate;
   transition:
-    top 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    bottom 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    min-height 620ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 620ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.os-shuffle-visualizer-angel-link {
-  position: absolute;
-  left: 50%;
-  top: calc(50% + (var(--visualizer-focus-height) / 2) + 3em);
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transform: translate3d(-50%, 18px, 0);
-  opacity: 0;
-  pointer-events: none;
-  color: #ffffff;
-  font-family: var(--hub-font);
-  font-size: clamp(30px, 4vw, 56px);
-  line-height: 1;
-  letter-spacing: 0.02em;
-  text-decoration: none;
-  text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.92),
-    0 0 26px rgba(var(--accent-rgb), 0.58);
-  filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.28));
-  transition:
-    opacity 420ms ease,
-    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 420ms ease;
-}
-
-.os-shuffle-visualizer-angel-link:hover,
-.os-shuffle-visualizer-angel-link:focus-visible {
-  filter: drop-shadow(0 0 26px rgba(255, 255, 255, 0.5));
-}
-
-.os-shuffle-visualizer-angel-link[data-angel-link-expanded="true"] {
-  width: min(780px, calc(100vw - 36px));
-  white-space: normal;
-  text-align: center;
-  font-size: clamp(18px, 3.1vw, 34px);
-  line-height: 1.16;
-}
-
-.os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] {
-  z-index: 60;
-  pointer-events: auto;
-  transition-delay: 0ms;
-}
-
-.os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-surface {
-  top: 50%;
-  bottom: auto;
-  height: var(--visualizer-focus-height);
-  min-height: var(--visualizer-focus-height);
-  transform: translate3d(0, -50%, 0);
-  cursor: zoom-out;
-  filter:
-    drop-shadow(0 0 26px rgba(255, 255, 255, 0.12))
-    drop-shadow(0 0 62px rgba(var(--accent-rgb), 0.18));
-}
-
-.os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-copy {
-  opacity: 0;
-  transform: translate3d(-20px, -12px, 0);
-  filter: blur(8px);
-  pointer-events: none;
-}
-
-.os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-angel-link {
-  opacity: 1;
-  transform: translate3d(-50%, 0, 0);
-  pointer-events: auto;
-}
-
-body[data-visualizer-focus-mode="active"] {
-  overflow: hidden;
-}
-
-body[data-visualizer-focus-mode="active"] .social-hub-scale-frame,
-body[data-visualizer-focus-mode="active"] .site-audio-control {
-  opacity: 0;
-  transform: translate3d(0, 18px, 0) scale(0.96);
-  filter: blur(10px);
-  pointer-events: none;
 }
 
 .os-shuffle-visualizer-copy {
@@ -5463,6 +5375,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
+  margin-left: 2px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -6267,13 +6180,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   body[data-performance-tier="degraded"] .lastfm-track-panel[data-panel-visibility="visible"] .lastfm-track-panel-backdrop {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-  }
-
-  body[data-performance-tier="degraded"] .os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-surface,
-  body[data-performance-tier="degraded"] .os-shuffle-visualizer-layer[data-visualizer-focus-mode="active"] .os-shuffle-visualizer-copy,
-  body[data-performance-tier="degraded"][data-visualizer-focus-mode="active"] .social-hub-scale-frame,
-  body[data-performance-tier="degraded"][data-visualizer-focus-mode="active"] .site-audio-control {
-    filter: none !important;
   }
 
   body[data-performance-tier="degraded"] :is(
@@ -7439,7 +7345,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 }
 
 .lastfm-section + .lastfm-section {
-  border-top: 2px solid rgba(255, 255, 255, 0.18);
+  border-top: 2.25px solid rgba(255, 255, 255, 0.18);
   padding-top: 12px;
 }
 
@@ -7702,12 +7608,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   gap: 0;
   max-height: none;
   overflow: visible;
-  border-top: 2px solid rgba(255, 255, 255, 0.18);
+  border-top: 2.25px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-item {
   margin: 0;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 2.25px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-recent-button {
@@ -8007,7 +7913,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 .lastfm-recent-discovery {
   margin: 0;
   padding: 7px 1rem 9px calc(1rem + 32px + 0.9rem);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 2.25px solid rgba(255, 255, 255, 0.18);
   display: grid;
   gap: 6px;
   background: transparent;
@@ -8105,7 +8011,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 2.25px solid rgba(255, 255, 255, 0.18);
 }
 
 .lastfm-media-image {
@@ -9939,6 +9845,12 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     filter 180ms ease;
 }
 
+@media (min-width: 821px) and (max-width: 1330px) {
+  .discord-presence-card--foundlifeless {
+    border-width: 2.4px;
+  }
+}
+
 .discord-presence-card--foundlifeless:hover,
 .discord-presence-card--foundlifeless:focus-within {
   transform: translateY(-4px) scale(1.025);
@@ -10262,4 +10174,303 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   overflow: visible !important;
+}
+
+.site-video-toggle-icon img {
+  width: 20px;
+  height: 20px;
+  display: block;
+  object-fit: contain;
+}
+
+.site-audio-volume {
+  width: 96px;
+  flex-basis: 96px;
+  padding: 0 8px 0 0;
+}
+
+.site-audio-volume-slider {
+  width: 82px;
+  min-width: 82px;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 821px) {
+  .site-audio-control:hover,
+  .site-audio-control:focus-within {
+    width: 196px;
+  }
+}
+
+#social-hub-profile .steam-hero-avatar-decoration {
+  clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%, 0 50%, 50% 50%);
+}
+
+.josie-audio-player-title,
+.josie-audio-player-artist,
+.steam-sidebar-currently-playing-title,
+.steam-sidebar-currently-playing-artist {
+  display: block;
+  text-decoration: none;
+}
+
+a.josie-audio-player-title[href],
+a.josie-audio-player-artist[href],
+a.steam-sidebar-currently-playing-title[href],
+a.steam-sidebar-currently-playing-artist[href] {
+  cursor: pointer;
+}
+
+a.josie-audio-player-title[href]:hover,
+a.josie-audio-player-title[href]:focus-visible,
+a.josie-audio-player-artist[href]:hover,
+a.josie-audio-player-artist[href]:focus-visible,
+a.steam-sidebar-currently-playing-title[href]:hover,
+a.steam-sidebar-currently-playing-title[href]:focus-visible,
+a.steam-sidebar-currently-playing-artist[href]:hover,
+a.steam-sidebar-currently-playing-artist[href]:focus-visible {
+  color: var(--small-copy-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.os-shuffle-visualizer-surface {
+  cursor: default;
+}
+
+@media (min-width: 821px) {
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-avatar-wrap[data-desktop-unfold] {
+    animation-name: socialHubDesktopUnfoldHero;
+  }
+
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-profile .steam-hero-copy[data-desktop-unfold],
+  #social-hub-root[data-social-hub-ready="true"] #social-hub-sidebar :is(.steam-sidebar-row, .steam-sidebar-currently-playing-panel)[data-desktop-unfold] {
+    animation-name: socialHubDesktopUnfoldSidebar;
+    clip-path: none !important;
+    will-change: opacity, transform, filter;
+  }
+}
+
+.social-hub-showcases > .steam-showcase {
+  border: 2px solid rgba(190, 190, 190, 0.06);
+  background: rgba(190, 190, 190, 0.10) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(14px) saturate(126%) brightness(1.02) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(126%) brightness(1.02) !important;
+}
+
+body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
+  border-color: rgba(190, 190, 190, 0.06) !important;
+  background: rgba(190, 190, 190, 0.10) !important;
+  box-shadow: none !important;
+  clip-path: inset(0 round 2px) !important;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu {
+  width: min(calc(100vw - 54px), 1068px);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 68% 0%, rgba(255, 170, 214, 0.09), transparent 33%),
+    linear-gradient(180deg, rgba(24, 20, 27, 0.9), rgba(0, 0, 0, 0.96) 58%),
+    #000;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] {
+  width: min(calc(100vw - 72px), 980px);
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] {
+  width: min(calc(100vw - 72px), 992px);
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] {
+  width: min(calc(100vw - 72px), 980px);
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-body {
+  gap: 8px;
+  padding: 12px 16px 16px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-layout--focus-menu {
+  align-items: start;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-layout--focus-menu {
+  grid-template-columns: minmax(360px, 452px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-layout--focus-menu,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-layout--focus-menu {
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-art {
+  aspect-ratio: 1 / 1;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-title {
+  margin-top: 4px;
+  font-size: clamp(54px, 5.4vw, 76px);
+  line-height: 0.96;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-title {
+  font-size: clamp(60px, 5.8vw, 84px);
+}
+
+.lastfm-track-panel-focus {
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
+    rgba(0, 0, 0, 0.58);
+}
+
+.lastfm-track-panel-focus--track {
+  grid-template-columns: minmax(150px, 0.34fr) minmax(0, 1fr);
+}
+
+.lastfm-track-panel-focus--artist,
+.lastfm-track-panel-focus--album {
+  grid-template-columns: 1fr;
+}
+
+.lastfm-track-panel-focus-media {
+  grid-column: 1 / -1;
+  width: min(360px, 100%);
+  justify-self: center;
+}
+
+.lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot {
+  min-width: 0;
+  min-height: 88px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot-head {
+  display: none;
+}
+
+.lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed-host,
+.lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed-host > iframe,
+.lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed {
+  min-width: 0;
+  width: 100%;
+  height: 80px;
+  transform: none;
+  border-radius: 8px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-summary,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-related,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-history--album {
+  background: rgba(0, 0, 0, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-list--album-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-stack,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-stack {
+  grid-template-columns: 1fr;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-stack--split {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 820px) {
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
+    width: min(100%, calc(100vw - 20px));
+    border-radius: 16px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-layout--focus-menu,
+  .lastfm-track-panel-focus--track {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 821px) {
+  .social-hub-content {
+    grid-template-columns: 350px minmax(0, 1fr);
+    gap: 26px;
+  }
+
+  .steam-hero-shell {
+    padding: 10px 20px 0;
+  }
+
+  .steam-hero-copy {
+    gap: 2px;
+  }
+
+  .steam-hero-description {
+    margin: 0;
+    font-size: clamp(23px, 1.9vw, 30px);
+    line-height: 1.12;
+  }
+
+  .steam-hero-name {
+    margin-top: -34px;
+    margin-bottom: -24px;
+  }
+
+  .steam-hero-ornament {
+    margin-top: -12px;
+    margin-bottom: -4px;
+  }
+}
+
+#social-hub-profile .steam-hero-avatar-decoration {
+  clip-path: none;
+}
+
+body:not(.shuffle-video-background-active) .social-hub-showcases > .steam-showcase {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  clip-path: none !important;
+}
+
+body:not(.shuffle-video-background-active) .social-hub-showcases > .steam-showcase:is(:first-child, .steam-showcase--steam-activity, .steam-showcase--lastfm-minimal) {
+  border-radius: 0 !important;
+}
+
+body:not(.shuffle-video-background-active) .social-hub-showcases .steam-activity-row-button,
+body:not(.shuffle-video-background-active) .social-hub-showcases .lastfm-recent-button {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase-title {
+  color: #f4edf5;
+}
+
+.site-video-toggle-icon--stars img {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.45));
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus-media {
+  justify-self: start;
+  width: min(350px, calc(100% - 16px));
+  margin-left: 8px;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot.is-disabled {
+  background: #005f8f;
+}
+
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus-media {
+  justify-self: center;
 }

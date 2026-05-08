@@ -23,7 +23,8 @@ test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link
       if (url.includes("dQw4w9WgXcQ")) {
         return {
           title: "Never Gonna Give You Up",
-          artist: "Rick Astley"
+          artist: "Rick Astley",
+          channelUrl: "https://www.youtube.com/@RickAstley"
         };
       }
       return null;
@@ -40,6 +41,7 @@ test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link
   assert.equal(manifest.tracks[0].path, "https://www.youtube.com/watch?v=r-6lO_UN3NY");
   assert.equal(manifest.tracks[1].title, "Never Gonna Give You Up");
   assert.equal(manifest.tracks[1].artist, "Rick Astley");
+  assert.equal(manifest.tracks[1].youtubeChannelUrl, "https://www.youtube.com/@RickAstley");
   assert.equal(manifest.tracks[1].sortOrder, 1);
 });
 
@@ -50,10 +52,12 @@ test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => 
   );
   const enrichedExplicit = shuffleManifestTest.applyYouTubeMetadata(explicitTrack, {
     title: "OEmbed Title",
-    artist: "WispVEVO"
+    artist: "WispVEVO",
+    channelUrl: "https://www.youtube.com/@WispVEVO"
   });
   assert.equal(enrichedExplicit.title, "Cool Song");
   assert.equal(enrichedExplicit.artist, "WispVEVO");
+  assert.equal(enrichedExplicit.youtubeChannelUrl, "https://www.youtube.com/@WispVEVO");
 
   const fallbackTrack = shuffleManifestTest.parseTrackLine("https://youtu.be/dQw4w9WgXcQ", 1);
   const enrichedFallback = shuffleManifestTest.applyYouTubeMetadata(fallbackTrack, {
