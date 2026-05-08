@@ -3541,6 +3541,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-stat--scrobble-focus {
+  flex-direction: column-reverse;
   min-height: 142px;
   padding: 14px;
   align-items: center;
@@ -10473,4 +10474,378 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus-media {
   justify-self: center;
+}
+
+@media (min-width: 821px) {
+  .lastfm-track-panel:has(.lastfm-track-panel-window--focus-menu[data-panel-type="track"]) {
+    place-items: start center;
+    padding: 46px 8px 8px;
+  }
+
+  .lastfm-track-panel:has(.lastfm-track-panel-window--focus-menu[data-panel-type="artist"]) {
+    place-items: start center;
+    padding: 35px 8px 8px;
+  }
+
+  .lastfm-track-panel:has(.lastfm-track-panel-window--focus-menu[data-panel-type="album"]) {
+    place-items: start center;
+    padding: 7px 8px 8px;
+  }
+
+  .lastfm-track-panel-shell {
+    width: min(980px, calc(100vw - 32px));
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
+    width: min(980px, calc(100vw - 32px));
+    border-color: rgba(255, 255, 255, 0.09);
+    background:
+      radial-gradient(circle at 73% 3%, rgba(255, 213, 236, 0.08), transparent 30%),
+      linear-gradient(180deg, rgba(22, 18, 24, 0.92), rgba(0, 0, 0, 0.97) 55%),
+      #000;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] {
+    left: -15px;
+    min-height: 572px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] {
+    left: -29px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] {
+    left: 4px;
+    min-height: min(1249px, calc(100vh - 31px));
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-body {
+    padding: 12px 16px 16px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-body {
+    gap: 10px;
+    padding: 13px 14px 14px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-body {
+    gap: 4px;
+    padding: 12px 16px 16px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-body {
+    gap: 8px;
+    padding: 13px 14px 18px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-layout--focus-menu {
+    grid-template-columns: 452px minmax(0, 1fr);
+    gap: 12px;
+    min-height: 452px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-layout--focus-menu {
+    grid-template-columns: 341px minmax(0, 1fr);
+    gap: 16px;
+    min-height: 341px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-layout--focus-menu {
+    grid-template-columns: 360px minmax(0, 1fr);
+    gap: 18px;
+    min-height: 360px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-primary {
+    padding-left: 0 !important;
+    align-items: stretch !important;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-art {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    justify-self: stretch;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-art {
+    width: 452px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-art {
+    width: 341px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-art {
+    width: 360px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-secondary {
+    min-height: 0;
+    padding-top: 18px;
+    gap: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-secondary {
+    padding-top: 17px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-secondary {
+    padding-top: 30px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-secondary {
+    padding-top: 26px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-header {
+    display: grid;
+    gap: 4px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-title {
+    margin: 0;
+    display: block;
+    letter-spacing: 0;
+    line-height: 0.94;
+    color: #d8dce8;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-title {
+    font-size: clamp(54px, 5.15vw, 60px);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-title {
+    font-size: clamp(64px, 6.25vw, 72px);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-title {
+    font-size: clamp(52px, 5.2vw, 60px);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-meta {
+    margin: 0;
+    gap: 6px;
+    font-size: 16px;
+    line-height: 1.2;
+    color: #d8dce8;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-header {
+    gap: 12px;
+  }
+
+  .lastfm-track-panel-meta-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .lastfm-track-panel-meta-tag {
+    min-height: 18px;
+    padding: 2px 7px;
+    border: 1px solid rgba(240, 144, 194, 0.42);
+    background: rgba(240, 144, 194, 0.08);
+    color: #e3b2cb;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-focus {
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+      rgba(0, 0, 0, 0.62);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-focus {
+    min-height: 164px;
+    padding: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-stat--scrobble-focus {
+    min-height: 142px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus {
+    position: relative;
+    min-height: 244px;
+    padding: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-stat--scrobble-focus {
+    min-height: 224px;
+    padding-bottom: 106px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus {
+    position: relative;
+    grid-template-columns: 160px minmax(0, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
+    min-height: 350px;
+    padding: 8px;
+    column-gap: 10px;
+    row-gap: 6px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-stat--scrobble-focus {
+    min-height: 234px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-history {
+    min-height: 234px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-history-scroll {
+    max-height: 176px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value {
+    font-size: clamp(74px, 7vw, 98px);
+    color: #dce0ec;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-label {
+    color: #de91bd;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-secondary-support {
+    justify-items: center;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-actions {
+    width: min(337px, 72%);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-cta {
+    width: 100%;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus-media {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    width: 356px;
+    max-width: calc(100% - 58px);
+    margin: 0;
+    transform: translateX(-50%);
+    z-index: 2;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus-media {
+    position: absolute;
+    left: 8px;
+    bottom: 0;
+    width: 350px;
+    max-width: calc(100% - 16px);
+    margin: 0;
+    z-index: 2;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot {
+    min-height: 90px;
+    padding: 4px;
+    border-radius: 2px;
+    background: #000;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot {
+    min-height: 96px;
+    padding: 7px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot.is-disabled {
+    background: #005f8f;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed-host,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed-host > iframe,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-focus-media .lastfm-track-panel-spotify-embed {
+    min-width: 0;
+    height: 80px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-summary,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-related,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-history--album {
+    border-radius: 7px;
+    border-color: rgba(255, 255, 255, 0.04);
+    background: rgba(0, 0, 0, 0.82);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-summary {
+    min-height: 80px;
+    padding: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-summary {
+    min-height: 94px;
+    padding: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-summary {
+    min-height: 106px;
+    padding: 10px 32px 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-summary-text {
+    font-size: 11px;
+    line-height: 1.18;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related--albums {
+    min-height: 270px;
+    padding: 10px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-list--album-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-button--album-card {
+    min-height: 76px;
+    grid-template-columns: 58px minmax(0, 1fr);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-history--album {
+    min-height: 624px;
+    padding: 12px 24px 24px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-section-head {
+    min-height: 28px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-tracklist-head,
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-track-item {
+    grid-template-columns: 34px minmax(0, 1fr) minmax(96px, auto) 58px 24px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-track-item {
+    min-height: 44px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-track-title-button {
+    font-size: 12px;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-close {
+    top: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
+    border: 2px solid rgba(101, 228, 241, 0.86);
+    background: rgba(37, 45, 52, 0.72);
+    box-shadow:
+      inset 0 0 0 2px rgba(0, 0, 0, 0.42),
+      0 0 12px rgba(101, 228, 241, 0.2);
+  }
 }

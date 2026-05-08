@@ -5756,11 +5756,6 @@
       && (scrobbles.firstRecorded.playedAtLabel || scrobbles.firstRecorded.playedAtIso)
       ? scrobbles.firstRecorded
       : null;
-    const genreMetaMarkup = Array.isArray(track.topTags) && track.topTags.length ? `
-      <span class="lastfm-track-panel-meta-genres" aria-label="Track genres">
-        ${track.topTags.map((tag) => `<span class="lastfm-track-panel-meta-genre">${escapeHtml(tag.name)}</span>`).join("")}
-      </span>
-    ` : "";
     const lovedTitleMarkup = track.userLoved ? `
       <span class="lastfm-track-panel-loved-title" aria-label="Loved track" title="Loved">
         <span class="lastfm-loved-indicator" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.2 6.84 13.15C3.12 9.8 1 7.88 1 5.5 1 3.58 2.51 2 4.4 2c1.07 0 2.09.5 2.75 1.3C7.81 2.5 8.83 2 9.9 2 11.79 2 13.3 3.58 13.3 5.5c0 2.38-2.12 4.3-5.84 7.66L8 14.2Z"/></svg></span>
@@ -5849,8 +5844,6 @@
       metaMarkup: `
         <span>${escapeHtml(track.artist || "Unknown artist")}</span>
         ${track.album ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(track.album)}</span>` : ""}
-        ${track.durationLabel ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(track.durationLabel)}</span>` : ""}
-        ${genreMetaMarkup ? `<span class="lastfm-track-panel-meta-separator">&bull;</span>${genreMetaMarkup}` : ""}
       `,
       primaryMarkup: artMarkup,
       focusMarkup,
@@ -5862,6 +5855,13 @@
       <div class="lastfm-track-panel-tags" aria-label="${escapeHtml(label)}">
         ${tags.map((tag) => `<span class="lastfm-track-tag">${escapeHtml(tag.name)}</span>`).join("")}
       </div>
+    ` : "";
+  }
+  function renderLastFmInlineDetailTagMarkup(tags, label = "Detail tags") {
+    return Array.isArray(tags) && tags.length ? `
+      <span class="lastfm-track-panel-meta-tags" aria-label="${escapeHtml(label)}">
+        ${tags.map((tag) => `<span class="lastfm-track-panel-meta-tag">${escapeHtml(tag.name)}</span>`).join("")}
+      </span>
     ` : "";
   }
   function renderLastFmArtistLinkButton(artistName, artistUrl, options = {}) {
@@ -6210,7 +6210,7 @@
       ? topAlbums.items.filter((entry) => Number(entry?.trackCount || 0) !== 1).slice(0, 12)
       : [];
     const artworkUrl = sanitizeUrl(artist.artworkUrl);
-    const tagsMarkup = renderLastFmDetailTagMarkup(artist.topTags, "Artist genres");
+    const inlineTagsMarkup = renderLastFmInlineDetailTagMarkup(artist.topTags, "Artist genres");
     const summaryMarkup = renderLastFmSummarySection("Yap About this Artist", artist.summary, artist.lastfmUrl, artist.summaryHasMore);
     const artistPlaycountLabel = formatCountNumber(artist.userPlaycount, "0");
     const artistActionMarkup = artist.lastfmUrl ? `
@@ -6273,14 +6273,16 @@
       layoutClassName: "lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary",
       stackClassName: "lastfm-track-panel-stack",
       title: artist.name || "Unknown artist",
-      metaText: "Last.fm artist profile",
+      metaMarkup: `
+        <span>Last fm artist profile</span>
+        ${inlineTagsMarkup}
+      `,
       primaryMarkup: `
         <div class="lastfm-track-panel-art" data-lastfm-panel-art-anchor>
           ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">&#9733;</span>'}
         </div>
       `,
       focusMarkup,
-      tagsMarkup,
       actionsMarkup: artistActionMarkup,
       stackMarkup: `${summaryMarkup}${albumCatalogMarkup}`
     });
@@ -6348,7 +6350,6 @@
         spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
       ]
     });
-    const tagsMarkup = renderLastFmDetailTagMarkup(album.topTags, "Album genres");
     const summaryMarkup = renderLastFmSummarySection("Yap About this Album", album.summary, album.lastfmUrl, album.summaryHasMore);
     const trackListMarkup = `
       <section class="lastfm-track-panel-history lastfm-track-panel-history--album">
@@ -6418,7 +6419,6 @@
       `,
       primaryMarkup: artMarkup,
       focusMarkup,
-      tagsMarkup,
       stackMarkup: `${summaryMarkup}${trackListMarkup}`
     });
   }

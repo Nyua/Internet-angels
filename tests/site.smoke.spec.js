@@ -4054,8 +4054,9 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   expect(panelTypography.lovedTitleIconCount).toBe(1);
   expect(Number.parseFloat(panelTypography.lovedTitleIconWidth)).toBeGreaterThanOrEqual(24);
   await expect(page.locator(".lastfm-track-panel-badge--loved")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-meta-genres")).toContainText("indie pop");
-  await expect(page.locator(".lastfm-track-panel-meta-genres")).toContainText("bedroom pop");
+  await expect(page.locator(".lastfm-track-panel-meta-genres")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-meta")).not.toContainText("3:04");
+  await expect(page.locator(".lastfm-track-panel-meta")).not.toContainText("indie pop");
   await expect(page.locator(".lastfm-track-panel-tags", { hasText: "indie pop" })).toHaveCount(0);
   await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
@@ -4610,7 +4611,7 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(artistPanelLayout.artHeight).toBeGreaterThanOrEqual(220);
   expect(artistPanelLayout.artBackground).toBe("rgba(0, 0, 0, 0)");
   expect(artistPanelLayout.artBorderWidth).toBe("0px");
-  expect(Number.parseFloat(artistPanelLayout.primaryPaddingLeft)).toBeGreaterThan(0);
+  expect(artistPanelLayout.primaryPaddingLeft).toBe("0px");
   const artistPanelFit = await page.evaluate(() => {
     const windowEl = document.querySelector(".lastfm-track-panel-window");
     const bodyEl = document.querySelector(".lastfm-track-panel-body");
