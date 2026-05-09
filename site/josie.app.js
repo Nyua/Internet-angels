@@ -2138,7 +2138,12 @@
       return false;
     }
     function isMobileYouTubeInlineActivationRequired(track = currentTrack) {
-      return false;
+      if (!isYouTubeTrack(track)) return false;
+      const compactTouchLayout = isCompactMobileLayout()
+        || Boolean(window.matchMedia?.("(pointer: coarse)")?.matches)
+        || Boolean(window.matchMedia?.("(hover: none)")?.matches)
+        || isIOSMobileHardware();
+      return compactTouchLayout && !hasYouTubeInlineActivationUnlocked();
     }
     function shouldUseYouTubePosterLayer(track = currentTrack) {
       return Boolean(shouldUseExternalYouTubePlayback(track) || isMobileYouTubeInlineActivationRequired(track));
@@ -14129,8 +14134,13 @@
     siteCursorController = createSiteCursorController();
     scrollableDragController = createScrollableDragController();
     siteScrollDragController = createSiteScrollDragController();
-    await ensureHeroAvatarSelection();
+    const initialHeroAvatarUrl = HERO_AVATAR_LOCKED_URL;
+    const heroAvatarSelectionPromise = ensureHeroAvatarSelection();
     initializeSocialHubIfNeeded();
+    void heroAvatarSelectionPromise.then((nextAvatarUrl) => {
+      if (!socialHubState || !socialHubRenderer || !nextAvatarUrl || nextAvatarUrl === initialHeroAvatarUrl) return;
+      scheduleSocialHubRender(socialHubState.snapshot(Date.now()));
+    });
     if (compactMobileLayoutQuery) {
       if (typeof compactMobileLayoutQuery.addEventListener === "function") {
         compactMobileLayoutQuery.addEventListener("change", syncLayoutMode);

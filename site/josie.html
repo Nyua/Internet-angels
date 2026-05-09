@@ -336,16 +336,14 @@
     <script>
       (() => {
         const designWidthPx = 1300;
+        const designComfortHeightPx = 1240;
         const minScale = 0.58;
         const frameHorizontalGutterPx = 28;
+        const frameVerticalGutterPx = 28;
         const compactMobileBreakpointPx = 820;
         function isCompactMobileViewport() {
           const viewportWidth = window.innerWidth || Number.POSITIVE_INFINITY;
-          if (viewportWidth > compactMobileBreakpointPx) return false;
-          if (typeof window.matchMedia !== "function") return false;
-          return Boolean(
-            window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches
-          );
+          return viewportWidth <= compactMobileBreakpointPx;
         }
         let rafId = 0;
         function applyHubScale() {
@@ -359,6 +357,8 @@
             root.style.margin = "0 auto";
             root.style.removeProperty("transform-origin");
             root.style.removeProperty("transform");
+            frame.style.removeProperty("width");
+            frame.style.removeProperty("max-width");
             frame.style.removeProperty("height");
             return;
           }
@@ -367,8 +367,19 @@
           root.style.removeProperty("margin");
           frame.style.removeProperty("height");
           const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || designWidthPx);
+          const viewportHeight = Math.max(
+            1,
+            Math.min(
+              window.innerHeight || document.documentElement.clientHeight || designComfortHeightPx,
+              window.visualViewport?.height || Number.POSITIVE_INFINITY
+            )
+          );
           const fitWidthScale = (viewportWidth - frameHorizontalGutterPx) / designWidthPx;
-          const scale = Math.max(minScale, Math.min(1, fitWidthScale));
+          const fitHeightScale = (viewportHeight - frameVerticalGutterPx) / designComfortHeightPx;
+          const scale = Math.max(minScale, Math.min(1, fitWidthScale, fitHeightScale));
+          frame.style.width = `${Math.round(designWidthPx * scale)}px`;
+          frame.style.maxWidth = `calc(100% - ${frameHorizontalGutterPx}px)`;
+          root.style.width = `${designWidthPx}px`;
           root.style.zoom = scale.toFixed(4);
           root.style.willChange = scale === 1 ? "auto" : "zoom";
         }
@@ -664,20 +675,16 @@
           return null;
         }
 
-        async function resolveHosts() {
-          const entries = await Promise.all(
-            Object.entries(hostSelectors).map(async ([key, selector]) => {
-              const element = await waitForCondition(() => document.querySelector(selector));
-              return [key, element];
-            })
-          );
-          const hosts = Object.fromEntries(entries);
-          for (const key of Object.keys(hostSelectors)) {
-            if (!hosts[key]) {
-              throw new Error(`Missing host element: ${key}`);
-            }
+        async function resolveHost(key) {
+          const selector = hostSelectors[key];
+          if (!selector) {
+            throw new Error(`Missing host selector: ${key}`);
           }
-          return hosts;
+          const element = await waitForCondition(() => document.querySelector(selector), siteLoadTimeoutMs);
+          if (!element) {
+            throw new Error(`Missing host element: ${key}`);
+          }
+          return element;
         }
 
         function createSliceLayer({ key, hostSelector, decoded, rectResolver, sourcePath }) {
@@ -887,16 +894,15 @@
             return;
           }
 
-          await resolveHosts();
           ensureOverlayRoot();
 
-          const decodedEntries = await Promise.all(
-            sliceOrder.map(async (key) => [key, await decodeGifFrames(slicePaths[key])])
+          const decodedByKey = new Map(
+            sliceOrder.map((key) => [key, decodeGifFrames(slicePaths[key])])
           );
-          const decodedByKey = Object.fromEntries(decodedEntries);
 
           for (const key of sliceOrder) {
-            const decoded = decodedByKey[key];
+            await resolveHost(key);
+            const decoded = await decodedByKey.get(key);
             await playSliceLayer(
               createSliceLayer({
                 key,

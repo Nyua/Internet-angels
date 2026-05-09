@@ -782,6 +782,11 @@ test("mobile root keeps the meow gate while BloomToDeath video is disabled", asy
     paused: node.paused,
     muted: node.muted
   }))).toEqual({ currentSrc: "", paused: true, muted: true });
+  const handoffFrame = page.frameLocator("#handoffFrame");
+  await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
+  await expect(handoffFrame.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false", { timeout: 10_000 });
+  await expect(handoffFrame.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube");
+  await expect(handoffFrame.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
   const mobileIntroSfxLog = await readInteractionSfxLog(page);
   expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
@@ -947,6 +952,56 @@ test("desktop Josie ignores legacy frame-budget downgrade requests", async ({ pa
     window.__internetAngelPerformanceState?.__debugPushFrameDeltas?.(healthyWindow);
   });
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
+});
+
+test("desktop Josie scales the social hub down on shorter desktop viewports", async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await expect.poll(async () => page.locator("#social-hub-root").evaluate((node) => window.getComputedStyle(node).zoom)).toBe("1");
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForTimeout(150);
+  const scaledLayout = await page.evaluate(() => {
+    const frame = document.querySelector("#social-hub-scale-frame");
+    const root = document.querySelector("#social-hub-root");
+    const frameRect = frame instanceof HTMLElement ? frame.getBoundingClientRect() : null;
+    const rootRect = root instanceof HTMLElement ? root.getBoundingClientRect() : null;
+    return {
+      rootZoom: root instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(root).zoom || "1") : 1,
+      frameRight: frameRect?.right ?? 0,
+      frameWidth: frameRect?.width ?? 0,
+      rootWidth: rootRect?.width ?? 0,
+      viewportWidth: window.innerWidth
+    };
+  });
+  expect(scaledLayout.rootZoom).toBeGreaterThan(0.82);
+  expect(scaledLayout.rootZoom).toBeLessThan(0.9);
+  expect(scaledLayout.frameRight).toBeLessThanOrEqual(scaledLayout.viewportWidth);
+  expect(Math.round(scaledLayout.frameWidth)).toBe(Math.round(scaledLayout.rootWidth));
+});
+
+test("josie renders the profile picture without waiting on the avatar manifest", async ({ page }) => {
+  let releaseAvatarManifest = () => {};
+  const avatarManifestGate = new Promise((resolve) => {
+    releaseAvatarManifest = resolve;
+  });
+  await page.route("**/assets/avatar-manifest.json", async (route) => {
+    await avatarManifestGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ avatars: ["/avatars/josie-main-profile.jpg"] })
+    });
+  });
+
+  await page.goto("/josie.html", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
+  await expect(page.locator(".steam-hero-avatar")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("loading", "eager");
+  await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("fetchpriority", "high");
+  await expect(page.locator(".slice-boot-layer[data-slice-boot-key='profilePicture']")).toBeVisible({ timeout: 3_000 });
+  releaseAvatarManifest();
 });
 
 test("desktop Josie no longer background-throttles rendering when the window loses focus", async ({ page }) => {
@@ -3559,15 +3614,16 @@ test("josie plays YouTube inline on mobile without opening YouTube", async ({ pa
     timeout: 30_000
   });
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-external", "false", { timeout: 10_000 });
-  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false");
-  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube");
-  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
-  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "true");
+  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube-poster");
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(1);
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });
   await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false");
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-playing", "true");
   const externalLaunches = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
