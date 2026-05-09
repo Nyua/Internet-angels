@@ -547,7 +547,16 @@ async function readFirstSelectableShuffleTrack(page) {
       const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
       if (!response.ok) return null;
       const data = await response.json();
-      const track = (Array.isArray(data?.tracks) ? data.tracks : []).find((entry) => Number(entry?.segmentIndex || 0) === 0);
+      const track = (Array.isArray(data?.tracks) ? data.tracks : [])
+        .filter((entry) => Number(entry?.segmentIndex || 0) === 0)
+        .sort((a, b) => {
+          const addedAtA = Date.parse(String(a?.addedAt || ""));
+          const addedAtB = Date.parse(String(b?.addedAt || ""));
+          const safeAddedAtA = Number.isFinite(addedAtA) ? addedAtA : 0;
+          const safeAddedAtB = Number.isFinite(addedAtB) ? addedAtB : 0;
+          if (safeAddedAtB !== safeAddedAtA) return safeAddedAtB - safeAddedAtA;
+          return (Number(a?.sortOrder) || 0) - (Number(b?.sortOrder) || 0);
+        })[0];
       if (!track) return null;
       return {
         title: String(track.displayTitle || track.title || "").trim(),
@@ -2039,6 +2048,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const albumTitle = document.querySelector(".lastfm-media-grid--albums .lastfm-media-title");
     const lastFmSection = document.querySelector(".lastfm-section");
     const secondLastFmSection = document.querySelectorAll(".lastfm-section")[1];
+    const thirdLastFmSection = document.querySelectorAll(".lastfm-section")[2];
     const lastFmShowcaseContent = document.querySelector(".steam-showcase-content--lastfm-minimal");
     const lastFmShowcaseShell = document.querySelector(".steam-showcase--lastfm-minimal");
     const recentList = document.querySelector(".lastfm-recent-list");
@@ -2070,6 +2080,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       lastFmShowcaseBeforeDisplay: pseudoDisplayOf(lastFmShowcaseShell, "::before"),
       lastFmShowcaseShellBorderTopWidth: lastFmShowcaseShell ? window.getComputedStyle(lastFmShowcaseShell).borderTopWidth : null,
       secondLastFmSectionBorder: borderOf(secondLastFmSection),
+      thirdLastFmSectionBorder: borderOf(thirdLastFmSection),
       recentListBorder: borderOf(recentList),
       mediaImageWrapBorder: borderOf(mediaImageWrap),
       nowPlayingBadgeBorderWidth: nowPlayingBadgeStyles.borderTopWidth,
@@ -2090,7 +2101,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(lastFmVisualStyles.lastFmShowcaseContentBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.lastFmShowcaseBeforeDisplay).toBe("none");
   expect(lastFmVisualStyles.lastFmShowcaseShellBorderTopWidth).toBe("0px");
-  expect(Number.parseFloat(lastFmVisualStyles.secondLastFmSectionBorder?.topWidth || "0")).toBeGreaterThan(1.5);
+  expect(lastFmVisualStyles.secondLastFmSectionBorder?.topWidth).toBe("0px");
+  expect(lastFmVisualStyles.thirdLastFmSectionBorder?.topWidth).toBe("0px");
   expect(Number.parseFloat(lastFmVisualStyles.recentListBorder?.topWidth || "0")).toBeGreaterThan(1.5);
   expect(Number.parseFloat(lastFmVisualStyles.mediaImageWrapBorder?.bottomWidth || "0")).toBeGreaterThan(1.5);
   expect(lastFmVisualStyles.nowPlayingBadgeBorderWidth).toBe("0px");

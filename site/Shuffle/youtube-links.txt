@@ -2,3 +2,6 @@
 # Optional metadata format:
 # Title | Artist | https://www.youtube.com/watch?v=VIDEO_ID
 https://www.youtube.com/watch?v=r-6lO_UN3NY
+https://www.youtube.com/watch?v=hbwyCQo2xDc
+https://www.youtube.com/watch?v=IL4YmAxxQzM
+https://www.youtube.com/watch?v=foTFjWd21e0

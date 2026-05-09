@@ -192,8 +192,16 @@ export async function buildShuffleManifest({
     const metadata = await metadataLookup(track.youtubeUrl, track);
     return applyYouTubeMetadata(track, metadata);
   }));
+  const orderedTracks = enrichedTracks.slice().sort((a, b) => {
+    const orderA = Number(a?.sortOrder);
+    const orderB = Number(b?.sortOrder);
+    if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) {
+      return orderB - orderA;
+    }
+    return 0;
+  });
 
-  return { tracks: enrichedTracks };
+  return { tracks: orderedTracks };
 }
 
 export async function writeShuffleManifest({

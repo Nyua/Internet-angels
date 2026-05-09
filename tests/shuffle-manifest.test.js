@@ -32,17 +32,20 @@ test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link
   });
   assert.equal(manifest.tracks.length, 2);
   assert.deepEqual(manifest.tracks.map((track) => track.youtubeVideoId), [
-    "r-6lO_UN3NY",
-    "dQw4w9WgXcQ"
+    "dQw4w9WgXcQ",
+    "r-6lO_UN3NY"
   ]);
-  assert.equal(manifest.tracks[0].title, "Cool Song");
-  assert.equal(manifest.tracks[0].artist, "Cool Artist");
-  assert.equal(manifest.tracks[0].mediaType, "youtube");
-  assert.equal(manifest.tracks[0].path, "https://www.youtube.com/watch?v=r-6lO_UN3NY");
-  assert.equal(manifest.tracks[1].title, "Never Gonna Give You Up");
-  assert.equal(manifest.tracks[1].artist, "Rick Astley");
-  assert.equal(manifest.tracks[1].youtubeChannelUrl, "https://www.youtube.com/@RickAstley");
-  assert.equal(manifest.tracks[1].sortOrder, 1);
+  const explicitTrack = manifest.tracks.find((track) => track.youtubeVideoId === "r-6lO_UN3NY");
+  const metadataTrack = manifest.tracks.find((track) => track.youtubeVideoId === "dQw4w9WgXcQ");
+  assert.equal(explicitTrack.title, "Cool Song");
+  assert.equal(explicitTrack.artist, "Cool Artist");
+  assert.equal(explicitTrack.mediaType, "youtube");
+  assert.equal(explicitTrack.path, "https://www.youtube.com/watch?v=r-6lO_UN3NY");
+  assert.equal(explicitTrack.sortOrder, 0);
+  assert.equal(metadataTrack.title, "Never Gonna Give You Up");
+  assert.equal(metadataTrack.artist, "Rick Astley");
+  assert.equal(metadataTrack.youtubeChannelUrl, "https://www.youtube.com/@RickAstley");
+  assert.equal(metadataTrack.sortOrder, 1);
 });
 
 test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => {

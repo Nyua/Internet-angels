@@ -1812,10 +1812,10 @@
   }
   function sortShuffleTracksByRecency(tracks) {
     return tracks.slice().sort((a, b) => {
+      if (b.addedAt !== a.addedAt) return b.addedAt - a.addedAt;
       if (Number.isFinite(a?.sortOrder) && Number.isFinite(b?.sortOrder) && a.sortOrder !== b.sortOrder) {
         return a.sortOrder - b.sortOrder;
       }
-      if (b.addedAt !== a.addedAt) return b.addedAt - a.addedAt;
       if ((a?.segmentIndex || 0) !== (b?.segmentIndex || 0)) return (a?.segmentIndex || 0) - (b?.segmentIndex || 0);
       return a.title.localeCompare(b.title);
     });
@@ -1827,7 +1827,7 @@
     return (Array.isArray(tracks) ? tracks : []).filter((track) => (track?.segmentIndex || 0) === 0);
   }
   function findPreferredInitialShuffleTrack(tracks) {
-    const safeTracks = getSelectableShuffleTracks(tracks);
+    const safeTracks = sortShuffleTracksByRecency(getSelectableShuffleTracks(tracks));
     return safeTracks[0] || null;
   }
   function pickWeightedShuffleTrack(tracks, excludeQueueId = "") {
@@ -6088,8 +6088,9 @@
     });
     const tagsMarkup = renderLastFmDetailTagMarkup(album.topTags, "Album genres");
     const summaryMarkup = renderLastFmSummarySection("Yap About this Album", album.summary, album.lastfmUrl, album.summaryHasMore);
+    const albumTrackListLongClass = trackItems.length >= 10 ? " lastfm-track-panel-history--album-long" : "";
     const trackListMarkup = `
-      <section class="lastfm-track-panel-history lastfm-track-panel-history--album">
+      <section class="lastfm-track-panel-history lastfm-track-panel-history--album${albumTrackListLongClass}">
         <div class="lastfm-track-panel-section-head">
           <h4 class="lastfm-track-panel-section-title">Track list</h4>
           <span class="lastfm-track-panel-section-meta">${escapeHtml(formatCountNumber(trackItems.length, "0"))} songs</span>
