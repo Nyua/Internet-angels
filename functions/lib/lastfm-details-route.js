@@ -9,6 +9,7 @@ import {
 } from "./response.js";
 
 const LASTFM_DETAILS_CACHE_VERSION = "spotify-credentialless-v2";
+const pendingLastFmDetailsPayloads = new Map();
 
 export function normalizeLastFmDetailsQueryValue(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -30,28 +31,44 @@ export function buildLastFmDetailsCacheRequest(request, query, keys) {
 export function createLastFmDetailsRouteHandler(options) {
   const config = options && typeof options === "object" ? options : {};
   async function fetchAndCachePayload({ apiKey, env, query, nowMs, cacheRequest }) {
+    const pendingKey = cacheRequest?.url || "";
+    if (pendingKey && pendingLastFmDetailsPayloads.has(pendingKey)) {
+      return await pendingLastFmDetailsPayloads.get(pendingKey);
+    }
     const routeTimeoutMs = resolveTimeoutMs(env?.LASTFM_DETAILS_ROUTE_TIMEOUT_MS, config.routeTimeoutMs, {
       min: 500,
       max: config.routeTimeoutMs
     });
-    const payload = await runWithTimeout(
-      (signal) => config.fetchPayload({
-        apiKey,
-        env,
-        query,
-        nowMs,
-        signal
-      }),
-      routeTimeoutMs,
-      config.timeoutError
-    );
-    await writeCachedPayload({
-      cache: caches.default,
-      request: cacheRequest,
-      payload,
-      retainTtlSec: config.retainTtlSec
-    });
-    return payload;
+    const payloadPromise = (async () => {
+      const payload = await runWithTimeout(
+        (signal) => config.fetchPayload({
+          apiKey,
+          env,
+          query,
+          nowMs,
+          signal
+        }),
+        routeTimeoutMs,
+        config.timeoutError
+      );
+      await writeCachedPayload({
+        cache: caches.default,
+        request: cacheRequest,
+        payload,
+        retainTtlSec: config.retainTtlSec
+      });
+      return payload;
+    })();
+    if (pendingKey) {
+      pendingLastFmDetailsPayloads.set(pendingKey, payloadPromise);
+    }
+    try {
+      return await payloadPromise;
+    } finally {
+      if (pendingKey && pendingLastFmDetailsPayloads.get(pendingKey) === payloadPromise) {
+        pendingLastFmDetailsPayloads.delete(pendingKey);
+      }
+    }
   }
 
   return async function onRequest(context) {

@@ -18,7 +18,8 @@ import {
   LASTFM_TRACK_SCROBBLES_RETAIN_TTL_SEC,
   LASTFM_TRACK_TAGS_FRESH_TTL_SEC,
   LASTFM_TRACK_TAGS_RETAIN_TTL_SEC,
-  LASTFM_USER
+  LASTFM_USER,
+  SPOTIFY_CREDENTIALLESS_TRACK_DETAILS_BUDGET_MS
 } from "./config.js";
 import { readCachedPayload, writeCachedPayload } from "./cache.js";
 import {
@@ -880,7 +881,7 @@ export async function fetchLastFmTrackDetails({
   const canonicalTrack = getTrackTitle(baseTrackInfo) || rawQuery.track;
   const canonicalAlbum = getTrackAlbumName(baseTrackInfo) || rawQuery.album;
 
-  const [topTags, similarTracks, scrobbles, spotifyMatch] = await Promise.all([
+  const [topTags, similarTracks, scrobbles, spotifyMatch, artistTopTracks] = await Promise.all([
     loadTrackTopTags(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
     loadTrackSimilar(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
     loadTrackScrobbles(apiKey, canonicalArtist, canonicalTrack, nowMs, { signal }),
@@ -890,7 +891,8 @@ export async function fetchLastFmTrackDetails({
       album: canonicalAlbum,
       env,
       nowMs,
-      signal
+      signal,
+      credentiallessBudgetMs: SPOTIFY_CREDENTIALLESS_TRACK_DETAILS_BUDGET_MS
     }).catch(() => ({
       matchStatus: "unavailable",
       embedUrl: "",
@@ -901,14 +903,20 @@ export async function fetchLastFmTrackDetails({
       album: "",
       artworkUrl: "",
       previewUrl: ""
-    }))
+    })),
+    buildRelatedArtistTracks(
+      apiKey,
+      canonicalArtist,
+      normalizeTrackKey(canonicalArtist, canonicalTrack),
+      nowMs,
+      { signal }
+    )
   ]);
 
   const scrobbleItems = Array.isArray(scrobbles?.items) ? scrobbles.items : [];
   const scrobbleTotal = parseInteger(scrobbles?.total);
   const fallbackArtworkUrl = String(scrobbleItems[0]?.artworkUrl || "").trim();
   const trackSummary = buildTrackSummary(baseTrackInfo, fallbackArtworkUrl, topTags, scrobbleTotal, spotifyMatch, similarTracks);
-  const artistTopTracks = await buildRelatedArtistTracks(apiKey, canonicalArtist, normalizeTrackKey(canonicalArtist, canonicalTrack), nowMs, { signal });
   const hasTrackSignals = Boolean(
     artistTopTracks.length ||
     topTags.length ||

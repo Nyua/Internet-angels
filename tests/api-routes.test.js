@@ -9,6 +9,7 @@ import { onRequest as onLastFmTrackDetailsRequest } from "../functions/api/lastf
 import { onRequest as onSteamRequest } from "../functions/api/steam-recent-activity.js";
 import { writeCachedPayload } from "../functions/lib/cache.js";
 import { normalizeDiscordPayload } from "../functions/lib/discord.js";
+import { buildLastFmDetailsCacheRequest } from "../functions/lib/lastfm-details-route.js";
 
 class MockCache {
   constructor() {
@@ -484,6 +485,215 @@ test("lastfm track details route enforces same-origin and validates required que
   assert.equal(badOriginResponse.status, 403);
   assert.equal(missingTrackResponse.status, 400);
   assert.equal((await missingTrackResponse.json()).error, "artist and track are required");
+});
+
+test("lastfm track details route reuses cached details across album query variants", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const cacheSeedRequest = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time&album=This%20Is%20How%20Tomorrow%20Moves");
+  const cacheRequest = buildLastFmDetailsCacheRequest(cacheSeedRequest, {
+    artist: "beabadoobee",
+    track: "One Time",
+    album: ""
+  }, ["artist", "track"]);
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async () => {
+      throw new Error("cache hit should not fetch upstream details");
+    };
+
+    await primeCache(cache, cacheRequest, {
+      sourceStatus: "OK",
+      stale: false,
+      fetchedAt: new Date().toISOString(),
+      query: { artist: "beabadoobee", track: "One Time", album: "This Is How Tomorrow Moves" },
+      track: {
+        title: "One Time",
+        artist: "beabadoobee",
+        album: "This Is How Tomorrow Moves",
+        userPlaycount: 3
+      },
+      spotify: { matchStatus: "matched" },
+      scrobbles: { total: 3, items: [] },
+      artistTopTracks: { artist: "beabadoobee", items: [] }
+    }, 24 * 60 * 60);
+
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, false);
+    assert.equal(payload.track.title, "One Time");
+    assert.equal(payload.track.album, "This Is How Tomorrow Moves");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm track details route dedupes simultaneous cache misses for the same track", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const firstRequest = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time&album=First");
+  const secondRequest = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time&album=Second");
+  let coreTrackInfoCalls = 0;
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const requestUrl = new URL(String(resource));
+      if (requestUrl.origin === "https://accounts.spotify.com") {
+        return Response.json({ access_token: "spotify-token" });
+      }
+      if (requestUrl.origin === "https://api.spotify.com") {
+        return Response.json({ tracks: { items: [] } });
+      }
+
+      const method = requestUrl.searchParams.get("method");
+      if (method === "track.getInfo") {
+        const trackName = requestUrl.searchParams.get("track");
+        if (trackName === "One Time") {
+          coreTrackInfoCalls += 1;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          return Response.json({
+            track: {
+              name: "One Time",
+              artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+              album: { title: "This Is How Tomorrow Moves" },
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              duration: "184000",
+              playcount: "2740015",
+              listeners: "285055",
+              userplaycount: "3",
+              userloved: "1"
+            }
+          });
+        }
+      }
+      if (method === "track.gettoptags") {
+        return Response.json({ toptags: { tag: [] } });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
+      }
+      if (method === "user.gettrackscrobbles") {
+        return Response.json({ trackscrobbles: { "@attr": { total: "3" }, track: [] } });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({ toptracks: { track: [] } });
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      onLastFmTrackDetailsRequest({
+        request: firstRequest,
+        env: {
+          LASTFM_API_KEY: "test-key",
+          SPOTIFY_CLIENT_ID: "spotify-client",
+          SPOTIFY_CLIENT_SECRET: "spotify-secret"
+        }
+      }),
+      onLastFmTrackDetailsRequest({
+        request: secondRequest,
+        env: {
+          LASTFM_API_KEY: "test-key",
+          SPOTIFY_CLIENT_ID: "spotify-client",
+          SPOTIFY_CLIENT_SECRET: "spotify-secret"
+        }
+      })
+    ]);
+    const firstPayload = await firstResponse.json();
+    const secondPayload = await secondResponse.json();
+
+    assert.equal(firstResponse.status, 200);
+    assert.equal(secondResponse.status, 200);
+    assert.equal(firstPayload.track.title, "One Time");
+    assert.equal(secondPayload.track.title, "One Time");
+    assert.equal(coreTrackInfoCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm track details route caps credentialless spotify latency on cache misses", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
+  let credentiallessCalls = 0;
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource, init = {}) => {
+      const requestUrl = new URL(String(resource));
+      if (requestUrl.origin === "https://r.jina.ai") {
+        credentiallessCalls += 1;
+        return await new Promise((resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(init.signal.reason || new Error("aborted"));
+          }, { once: true });
+        });
+      }
+
+      const method = requestUrl.searchParams.get("method");
+      if (method === "track.getInfo") {
+        return Response.json({
+          track: {
+            name: "One Time",
+            artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+            album: { title: "This Is How Tomorrow Moves" },
+            url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+            duration: "184000",
+            playcount: "2740015",
+            listeners: "285055",
+            userplaycount: "3",
+            userloved: "1",
+            wiki: {
+              summary: "A bright and clipped single."
+            }
+          }
+        });
+      }
+      if (method === "track.gettoptags") {
+        return Response.json({ toptags: { tag: [] } });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
+      }
+      if (method === "user.gettrackscrobbles") {
+        return Response.json({ trackscrobbles: { "@attr": { total: "3" }, track: [] } });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({ toptracks: { track: [] } });
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const startedAt = Date.now();
+    const response = await onLastFmTrackDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.track.title, "One Time");
+    assert.equal(payload.spotify.matchStatus, "unavailable");
+    assert.equal(credentiallessCalls, 1);
+    assert.ok(Date.now() - startedAt < 1_500);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
 });
 
 test("lastfm track details route assembles track, scrobble, related-track, and spotify data", async () => {

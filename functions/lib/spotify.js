@@ -345,7 +345,7 @@ async function findCredentiallessSpotifyTrackMatch({
       const normalizedTrack = normalizeMatchText(safeTrack);
       const normalizedArtist = normalizeMatchText(safeArtist);
       const normalizedAlbum = normalizeMatchText(safeAlbum);
-      const deadlineMs = Date.now() + Math.max(500, Number(credentiallessBudgetMs) || SPOTIFY_CREDENTIALLESS_LOOKUP_TIMEOUT_MS);
+      const deadlineMs = Date.now() + Math.max(250, Number(credentiallessBudgetMs) || SPOTIFY_CREDENTIALLESS_LOOKUP_TIMEOUT_MS);
       const scored = [];
       const seenCandidateIds = new Set();
       for (const searchQuery of buildCredentiallessSearchQueries(safeTrack, safeArtist, safeAlbum)) {

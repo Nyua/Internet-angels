@@ -35,7 +35,7 @@ export const onRequest = createLastFmDetailsRouteHandler({
   },
   validateQuery,
   buildCacheRequest(request, query) {
-    return buildLastFmDetailsCacheRequest(request, query, ["artist", "track", "album"]);
+    return buildLastFmDetailsCacheRequest(request, query, ["artist", "track"]);
   },
   buildEmptyPayload: buildEmptyLastFmTrackDetailsPayload,
   fetchPayload({ apiKey, env, query, nowMs, signal }) {
