@@ -1339,6 +1339,7 @@ test("josie skips a missing shuffle file and falls through to another available 
 
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction(() => {
     const track = window.__internetAngelShuffleDebug?.getTrack?.();
     const state = window.__internetAngelShuffleDebug?.getState?.();
@@ -2256,12 +2257,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const mediaImageWrap = document.querySelector(".lastfm-media-image-wrap");
     const steamActivityShell = document.querySelector(".steam-showcase--steam-activity");
     const steamHours = document.querySelector(".steam-activity-header-hours");
-    const steamHoursOnRecord = document.querySelector(".steam-activity-hours");
-    const steamLastPlayed = document.querySelector(".steam-activity-last-played");
     const nowPlayingBadgeProbe = document.createElement("span");
     nowPlayingBadgeProbe.className = "lastfm-now-playing-badge";
     nowPlayingBadgeProbe.textContent = "Now Playing";
-    document.body.appendChild(nowPlayingBadgeProbe);
+    const steamHoursOnRecordProbe = document.createElement("span");
+    steamHoursOnRecordProbe.className = "steam-activity-hours";
+    steamHoursOnRecordProbe.textContent = "hours on record unavailable";
+    const steamLastPlayedProbe = document.createElement("span");
+    steamLastPlayedProbe.className = "steam-activity-last-played";
+    steamLastPlayedProbe.textContent = "last played recently";
+    document.body.append(nowPlayingBadgeProbe, steamHoursOnRecordProbe, steamLastPlayedProbe);
+    const steamHoursOnRecord = document.querySelector(".steam-activity-hours") || steamHoursOnRecordProbe;
+    const steamLastPlayed = document.querySelector(".steam-activity-last-played") || steamLastPlayedProbe;
     const colorOf = (node) => node ? window.getComputedStyle(node).color : null;
     const backgroundOf = (node) => node ? window.getComputedStyle(node).backgroundColor : null;
     const pseudoDisplayOf = (node, pseudo) => node ? window.getComputedStyle(node, pseudo).display : null;
@@ -2293,6 +2300,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       steamLastPlayedColor: colorOf(steamLastPlayed)
     };
     nowPlayingBadgeProbe.remove();
+    steamHoursOnRecordProbe.remove();
+    steamLastPlayedProbe.remove();
     return result;
   });
   expect(lastFmVisualStyles.recentTitleColor).toBe("rgb(210, 214, 223)");
@@ -2362,6 +2371,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(discordCopyState.discordHref).toBe("");
   expect(discordCopyState.discordCopyHandle).toBe("foundlifeless");
 
+  await page.locator(".lastfm-recent-button").first().hover();
+  await expect.poll(() => apiRequests.includes("/api/lastfm-track-details"), { timeout: 10_000 }).toBe(true);
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",
     "/api/discord",
@@ -5761,6 +5772,55 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   });
   expect(stageScrollResult).not.toBeNull();
   expect(stageScrollResult.after).toBeGreaterThan(stageScrollResult.before);
+
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
+  await page.evaluate(() => {
+    const recentDropdown = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
+    if (!(recentDropdown instanceof HTMLElement) || !(topArtistsSection instanceof HTMLElement)) return;
+    const recentRect = recentDropdown.getBoundingClientRect();
+    const topArtistsRect = topArtistsSection.getBoundingClientRect();
+    const overlapOffset = Math.max(0, Math.ceil(topArtistsRect.top - recentRect.bottom + 44));
+    topArtistsSection.style.marginTop = `${-overlapOffset}px`;
+    document.querySelector("#os-stage")?.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForFunction(() => {
+    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
+    return topArtistsSection instanceof HTMLElement
+      && topArtistsSection.dataset.mobileLastfmOccluded === "true"
+      && window.getComputedStyle(topArtistsSection).visibility === "hidden";
+  });
+  const mobileDropdownOcclusionState = await page.evaluate(() => {
+    const recentSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')?.closest(".lastfm-section--mobile-dropdown");
+    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
+    const topArtistsStyles = topArtistsSection instanceof HTMLElement ? window.getComputedStyle(topArtistsSection) : null;
+    return {
+      recentOccluded: recentSection instanceof HTMLElement ? recentSection.dataset.mobileLastfmOccluded || "" : "",
+      topArtistsOccluded: topArtistsSection instanceof HTMLElement ? topArtistsSection.dataset.mobileLastfmOccluded || "" : "",
+      topArtistsAriaHidden: topArtistsSection instanceof HTMLElement ? topArtistsSection.getAttribute("aria-hidden") : "",
+      topArtistsPointerEvents: topArtistsStyles?.pointerEvents || ""
+    };
+  });
+  expect(mobileDropdownOcclusionState.recentOccluded).toBe("");
+  expect(mobileDropdownOcclusionState.topArtistsOccluded).toBe("true");
+  expect(mobileDropdownOcclusionState.topArtistsAriaHidden).toBe("true");
+  expect(mobileDropdownOcclusionState.topArtistsPointerEvents).toBe("none");
+  await page.evaluate(() => {
+    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
+    if (topArtistsSection instanceof HTMLElement) {
+      topArtistsSection.style.marginTop = "";
+    }
+    document.querySelector("#os-stage")?.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForFunction(() => {
+    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
+    return topArtistsSection instanceof HTMLElement && !topArtistsSection.hasAttribute("data-mobile-lastfm-occluded");
+  });
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
 
   await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="top-artists"]').click();
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");

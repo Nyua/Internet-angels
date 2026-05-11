@@ -8311,6 +8311,13 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     pointer-events: auto;
   }
 
+  [data-mobile-lastfm-occluded="true"] {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    content-visibility: hidden;
+  }
+
   .social-hub-showcases.social-hub-showcases--mobile-lastfm .lastfm-section--mobile-dropdown {
     width: min(100%, 320px);
     margin: 0 auto;
