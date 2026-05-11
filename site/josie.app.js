@@ -208,7 +208,7 @@
     const normalizedSiteId = String(siteId || "").trim().toLowerCase();
     if (!normalizedSiteId) return false;
     if (isCompactMobileLayout()) {
-      return normalizedSiteId === "steam" || normalizedSiteId === "discord";
+      return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
     }
     return normalizedSiteId === "steam" || normalizedSiteId === "discord" || normalizedSiteId === "lastfm";
   }
@@ -260,10 +260,11 @@
     const source = Array.isArray(override) && override.length ? override : SOCIAL_HUB_BOOT_RETRY_DELAYS_MS;
     return source.map((delayMs) => Number(delayMs)).filter((delayMs) => Number.isFinite(delayMs) && delayMs >= 0 && delayMs <= 5 * 60 * 1e3);
   }
+  var HERO_PRIORITY_DECORATION_URL = "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true";
   var DISCORD_PROFILE_OVERRIDES = {
     bannerUrl: "",
     bio: "",
-    decorationUrl: ""
+    decorationUrl: HERO_PRIORITY_DECORATION_URL
   };
   var HERO_DESCRIPTION_TEXT = "The Internet Angel";
   var BASE_SEED_AT = Date.parse("2026-02-24T00:00:00.000Z");
@@ -1683,22 +1684,20 @@
   };
   var NON_SHOWCASE_SITE_IDS = /* @__PURE__ */ new Set(["twitter", "discord", "spotify", "soundcloud"]);
   var AVATAR_MANIFEST_URL = "/assets/avatar-manifest.json";
+  var HERO_DEFAULT_AVATAR_URL = "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg";
   var HERO_RANDOM_AVATAR_URLS = [
-    "/avatars/avatar_joser.jpg",
-    "/avatars/josie-main-profile.jpg",
-    "/avatars/josie-main-profile1.jpg",
-    "/avatars/josie-main-profile2.jpg",
-    "/avatars/josie-main-profile3.jpg",
-    "/avatars/josie-main-profile4.jpg"
+    HERO_DEFAULT_AVATAR_URL,
+    "/avatars/f9f9b24abe5a5ed6231f9107cb230c79.jpg",
+    "/avatars/HDjGl4FbsAEkfOT.jpg"
   ];
   var heroAvatarManifestPromise = null;
   function pickRandomHeroAvatarUrl(entries = HERO_RANDOM_AVATAR_URLS) {
     const pool = (Array.isArray(entries) ? entries : HERO_RANDOM_AVATAR_URLS).filter((entry) => String(entry || "").trim().length > 0);
-    if (!pool.length) return "/avatars/josie-main-profile.jpg";
+    if (!pool.length) return HERO_DEFAULT_AVATAR_URL;
     const index = Math.floor(Math.random() * pool.length);
     return pool[index] || pool[0];
   }
-  var HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl();
+  var HERO_AVATAR_LOCKED_URL = HERO_DEFAULT_AVATAR_URL;
   async function ensureHeroAvatarSelection() {
     if (heroAvatarManifestPromise) return heroAvatarManifestPromise;
     heroAvatarManifestPromise = (async () => {
@@ -1708,9 +1707,15 @@
           throw new Error(`Avatar manifest fetch failed (${response.status})`);
         }
         const data = await response.json();
-        HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl(Array.isArray(data?.avatars) ? data.avatars : HERO_RANDOM_AVATAR_URLS);
+        const manifestAvatars = (Array.isArray(data?.avatars) ? data.avatars : []).filter((entry) => String(entry || "").trim().length > 0);
+        if (manifestAvatars.includes(HERO_AVATAR_LOCKED_URL)) {
+          return HERO_AVATAR_LOCKED_URL;
+        }
+        HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl(manifestAvatars.length ? manifestAvatars : HERO_RANDOM_AVATAR_URLS);
       } catch {
-        HERO_AVATAR_LOCKED_URL = pickRandomHeroAvatarUrl();
+        if (!HERO_AVATAR_LOCKED_URL) {
+          HERO_AVATAR_LOCKED_URL = HERO_DEFAULT_AVATAR_URL;
+        }
       }
       return HERO_AVATAR_LOCKED_URL;
     })();
@@ -1945,7 +1950,7 @@
     let performanceDegraded = isDesktopPerformanceDegraded();
     let pendingSegmentSeekTime = null;
     let segmentAdvanceCooldownUntilMs = 0;
-    let backgroundVideoEnabled = true;
+    let backgroundVideoEnabled = false;
     let backgroundVideoLayer = null;
     let backgroundVideoEl = null;
     let backgroundVideoTrackKey = "";
@@ -1958,11 +1963,15 @@
     let youtubePlayerState = -1;
     let youtubeProgressTimer = 0;
     let youtubeInlineActivationUnlocked = false;
+    let youtubeInlinePlaybackPrimedForActivation = false;
     const youtubeExternalFallbackVideoIds = /* @__PURE__ */ new Set();
     const YOUTUBE_INLINE_ACTIVATION_MESSAGE_TYPE = "josie-youtube-inline-activation";
+    const YOUTUBE_INLINE_ACTIVATION_READY_MESSAGE_TYPE = "josie-youtube-inline-activation-ready";
     const YOUTUBE_INLINE_ACTIVATION_STORAGE_KEY = "internetAngelYoutubeInlineActivationAt";
     const YOUTUBE_INLINE_ACTIVATION_FRESH_MS = 2 * 60 * 1e3;
     const YOUTUBE_EXTERNAL_FALLBACK_ERROR_CODES = /* @__PURE__ */ new Set([5, 101, 150, 153]);
+    const SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY = "small";
+    const SHUFFLE_MEDIA_PRELOAD_MODE = "metadata";
     const stateSubscribers = /* @__PURE__ */ new Set();
     const audioEl = new Audio();
     const queuedSegmentAudioEl = new Audio();
@@ -2057,11 +2066,11 @@
     if (typeof window === "object") {
       window.__internetAngelShuffleWaveformAvoidance = waveformAvoidanceState;
     }
-    audioEl.preload = "auto";
+    audioEl.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
     audioEl.playsInline = true;
     audioEl.crossOrigin = "anonymous";
     audioEl.volume = SHUFFLE_MAX_VOLUME;
-    queuedSegmentAudioEl.preload = "auto";
+    queuedSegmentAudioEl.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
     queuedSegmentAudioEl.playsInline = true;
     queuedSegmentAudioEl.crossOrigin = "anonymous";
     function resolveTrackUrl(track) {
@@ -2134,6 +2143,28 @@
       }
       return youtubeInlineActivationUnlocked;
     }
+    function postYouTubeInlineActivationReady(reason = "primed") {
+      if (!window.__josieHandoffMode || window.parent === window) return;
+      try {
+        window.parent.postMessage({
+          type: YOUTUBE_INLINE_ACTIVATION_READY_MESSAGE_TYPE,
+          reason
+        }, window.location.origin);
+      } catch {
+      }
+    }
+    function unlockPlaybackFromTrustedActivation() {
+      window.__josieHandoffPending = false;
+      window.__amesSiteLoadPlaying = false;
+      if (!window.__amesSiteLoadComplete) {
+        window.__amesSiteLoadComplete = true;
+        try {
+          window.dispatchEvent(new CustomEvent(SITE_LOAD_COMPLETE_EVENT));
+        } catch {
+        }
+      }
+      finalizePlaybackUnlock();
+    }
     function shouldUseExternalYouTubePlayback(track = currentTrack) {
       return false;
     }
@@ -2146,7 +2177,7 @@
       return compactTouchLayout && !hasYouTubeInlineActivationUnlocked();
     }
     function shouldUseYouTubePosterLayer(track = currentTrack) {
-      return Boolean(shouldUseExternalYouTubePlayback(track) || isMobileYouTubeInlineActivationRequired(track));
+      return Boolean(shouldUseExternalYouTubePlayback(track) || (isMobileYouTubeInlineActivationRequired(track) && !youtubeInlinePlaybackPrimedForActivation));
     }
     function markYouTubeExternalFallback(track, reason = "") {
       const videoId = getTrackYouTubeVideoId(track);
@@ -2352,11 +2383,11 @@
       } catch {
       }
     }
-    function requestMaxYouTubeQuality() {
+    function requestLowMemoryYouTubeQuality() {
       if (!youtubePlayer) return;
       try {
-        youtubePlayer.setPlaybackQualityRange?.("hd2160", "highres");
-        youtubePlayer.setPlaybackQuality?.("highres");
+        youtubePlayer.setPlaybackQualityRange?.("tiny", SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY);
+        youtubePlayer.setPlaybackQuality?.(SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY);
       } catch {
       }
     }
@@ -2374,7 +2405,7 @@
             settled = true;
             youtubePlayerReady = true;
             syncYouTubeVolume();
-            requestMaxYouTubeQuality();
+            requestLowMemoryYouTubeQuality();
             resolve(player);
           };
           const timeout = window.setTimeout(() => {
@@ -2394,7 +2425,7 @@
               origin: window.location.origin,
               playsinline: 1,
               rel: 0,
-              vq: "hd2160"
+              vq: SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY
             },
             events: {
               onReady(event) {
@@ -2419,7 +2450,7 @@
                   segmentAdvanceCooldownUntilMs = 0;
                   void chooseNextTrack({ autoplay: true, excludeCurrent: hasAlternateShuffleTrack() });
                 }
-                requestMaxYouTubeQuality();
+                requestLowMemoryYouTubeQuality();
                 syncUi();
               },
               onError(event) {
@@ -2501,6 +2532,7 @@
       const videoId = getTrackYouTubeVideoId(track);
       if (!videoId) return recoverFromBrokenTrack(track, { autoplay: options.autoplay !== false });
       trackLoadAutoplayIntent = options.autoplay !== false;
+      youtubeInlinePlaybackPrimedForActivation = options.primeInline === true && !trackLoadAutoplayIntent;
       pendingSegmentSeekTime = null;
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
@@ -2520,7 +2552,8 @@
         syncUi();
         return true;
       }
-      if (isMobileYouTubeInlineActivationRequired(currentTrack)) {
+      const allowInlinePrime = options.primeInline === true && !trackLoadAutoplayIntent;
+      if (isMobileYouTubeInlineActivationRequired(currentTrack) && !allowInlinePrime) {
         stopYouTubePlayback();
         loadState = "ready";
         void ensureYouTubeIframeApi().catch(() => {
@@ -2533,7 +2566,7 @@
         const player = await ensureYouTubePlayer(getTrackYouTubeVideoId(currentTrack));
         if (disposed || currentTrack !== track) return false;
         const startSeconds = Number.isFinite(options.seekTime) ? Math.max(0, Number(options.seekTime)) : getTrackSegmentStart(track);
-        const payload = { videoId, startSeconds, suggestedQuality: "highres" };
+        const payload = { videoId, startSeconds, suggestedQuality: SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY };
         if (trackLoadAutoplayIntent) {
           await waitForSiteLoadCompletion();
           youtubePlayerState = getYouTubeStateConstant("PLAYING", 1);
@@ -2544,7 +2577,7 @@
           player.cueVideoById?.(payload);
           loadState = "ready";
         }
-        requestMaxYouTubeQuality();
+        requestLowMemoryYouTubeQuality();
         updateCurrentTrackFromYouTubeData();
         syncYouTubeVolume();
         syncUi();
@@ -2580,14 +2613,14 @@
         video.setAttribute("data-shuffle-background-video", "");
         video.muted = true;
         video.playsInline = true;
-        video.preload = "auto";
-        video.setAttribute("preload", "auto");
+        video.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
+        video.setAttribute("preload", SHUFFLE_MEDIA_PRELOAD_MODE);
         layer.append(video);
       }
       video.muted = true;
       video.playsInline = true;
-      video.preload = "auto";
-      video.setAttribute("preload", "auto");
+      video.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
+      video.setAttribute("preload", SHUFFLE_MEDIA_PRELOAD_MODE);
       video.loop = false;
       backgroundVideoLayer = layer;
       backgroundVideoEl = video;
@@ -4237,7 +4270,7 @@
         try {
           const player = await ensureYouTubePlayer(getTrackYouTubeVideoId(currentTrack));
           syncYouTubeVolume();
-          requestMaxYouTubeQuality();
+          requestLowMemoryYouTubeQuality();
           youtubePlayerState = getYouTubeStateConstant("PLAYING", 1);
           player.playVideo?.();
           startYouTubeProgressTimer();
@@ -4261,6 +4294,21 @@
     async function activateYouTubeInlinePlayback(activatedAt = Date.now()) {
       if (disposed) return false;
       markYouTubeInlineActivationUnlocked(activatedAt);
+      unlockPlaybackFromTrustedActivation();
+      if (isYouTubeTrack(currentTrack) && youtubePlayer && youtubePlayerReady && !shouldUseExternalYouTubePlayback(currentTrack)) {
+        try {
+          syncYouTubeVolume();
+          requestLowMemoryYouTubeQuality();
+          youtubePlayerState = getYouTubeStateConstant("PLAYING", 1);
+          youtubePlayer.playVideo?.();
+          startYouTubeProgressTimer();
+          loadState = "ready";
+          syncBackgroundVideoPlayback({ force: true });
+          syncUi();
+          return true;
+        } catch {
+        }
+      }
       await ensureManifest();
       if (disposed) return false;
       if (!currentTrack) {
@@ -4291,6 +4339,21 @@
       markYouTubeInlineActivationUnlocked(Number.isFinite(activatedAt) ? activatedAt : Date.now());
       void activateYouTubeInlinePlayback(activatedAt);
     }
+    async function primeHandoffYouTubePlayback() {
+      if (!window.__josieHandoffPending || disposed || currentTrack) return false;
+      await ensureManifest();
+      if (disposed || currentTrack || !waveformTracks.length) return false;
+      const preferredTrack = findPreferredInitialShuffleTrack(waveformTracks) || pickWeightedShuffleTrack(waveformTracks, "");
+      if (!isYouTubeTrack(preferredTrack)) {
+        postYouTubeInlineActivationReady("non-youtube");
+        return false;
+      }
+      const primed = await chooseAndLoadTrack(preferredTrack, { autoplay: false, primeInline: true });
+      if (primed) {
+        postYouTubeInlineActivationReady("youtube-primed");
+      }
+      return primed;
+    }
     async function chooseAndLoadTrack(track, options = {}) {
       if (!track) return false;
       if (isYouTubeTrack(track)) {
@@ -4304,6 +4367,7 @@
       pendingSegmentSeekTime = null;
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
+      youtubeInlinePlaybackPrimedForActivation = false;
       primeQueuedSegmentAudio(track);
       loadState = "loading";
       barLevelValues = new Float32Array(0);
@@ -4607,6 +4671,9 @@
         window.cancelAnimationFrame(rafId);
         rafId = 0;
       }
+      if (window.__internetAngelActivateYouTubeInlinePlaybackFromParent) {
+        delete window.__internetAngelActivateYouTubeInlinePlaybackFromParent;
+      }
       window.removeEventListener("message", onYouTubeInlineActivationMessage);
       window.removeEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
       if (previewCtx && previewCtx.state !== "closed") {
@@ -4618,6 +4685,7 @@
       audioEl.load();
       stopYouTubePlayback();
       backgroundVideoEnabled = false;
+      youtubeInlinePlaybackPrimedForActivation = false;
       syncBackgroundVideoPlayback({ force: true });
       clearQueuedSegmentAudio();
       waveformTrackLookup = /* @__PURE__ */ new Map();
@@ -4696,10 +4764,20 @@
     });
     window.addEventListener("message", onYouTubeInlineActivationMessage);
     window.addEventListener(INTERNET_ANGEL_PERFORMANCE_CHANGE_EVENT, onPerformanceTierChange);
+    window.__internetAngelActivateYouTubeInlinePlaybackFromParent = (payload = {}) => {
+      const activatedAt = typeof payload === "object" && payload !== null
+        ? Number(payload.activatedAt || payload.at || Date.now())
+        : Number(payload || Date.now());
+      return activateYouTubeInlinePlayback(Number.isFinite(activatedAt) ? activatedAt : Date.now());
+    };
     syncVisualizerPerformanceMode();
     rafId = window.requestAnimationFrame(renderLoop);
     void ensureManifest().then((tracks) => {
       if (disposed || !tracks.length || currentTrack) return;
+      if (window.__josieHandoffPending) {
+        void primeHandoffYouTubePlayback();
+        return;
+      }
       void queueInitialTrackPlayback();
     });
     return {
@@ -5771,6 +5849,10 @@
       mobile: compactMobile,
       unavailableMeta: "Spotify player unavailable for this track."
     });
+    const previewPlayerMarkup = compactMobile ? renderLastFmTrackPanelPreviewPlayer(track, spotify, {
+      metaText: "30 second Spotify preview"
+    }) : "";
+    const focusMediaMarkup = previewPlayerMarkup ? "" : spotifySlotMarkup;
     const artMarkup = renderLastFmPanelArtFlip({
       artworkUrl,
       fallbackGlyph: "♫",
@@ -5830,7 +5912,7 @@
           <span class="lastfm-track-panel-stat-value">${escapeHtml(scrobbleTotalLabel)}</span>
         </div>
         ${historyMarkup}
-        ${spotifySlotMarkup ? `<div class="lastfm-track-panel-focus-media">${spotifySlotMarkup}</div>` : ""}
+        ${focusMediaMarkup ? `<div class="lastfm-track-panel-focus-media">${focusMediaMarkup}</div>` : ""}
       </section>
     `;
     return renderLastFmPanelViewModel({
@@ -5851,6 +5933,7 @@
         ${track.album ? `<span class="lastfm-track-panel-meta-separator">&bull;</span><span>${escapeHtml(track.album)}</span>` : ""}
       `,
       primaryMarkup: artMarkup,
+      mediaControlMarkup: previewPlayerMarkup,
       focusMarkup,
       stackMarkup: `${summaryMarkup}`
     });
@@ -6801,6 +6884,7 @@
     const MOBILE_PROFILE_SELECTION_CLEAR_DELAY_MS = 1200;
     const ANGELS_FOOTER_LUNGE_MS = 720;
     const ANGELS_FOOTER_COLLISION_HOLD_MS = 180;
+    const LASTFM_PANEL_CLIENT_CACHE_LIMIT = 36;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
@@ -10268,7 +10352,10 @@
       const normalizedQuery = definition.normalizeQuery(query);
       const cacheKey = definition.buildCacheKey(normalizedQuery);
       if (lastFmTrackDetailsCache.has(cacheKey)) {
-        return { cacheKey, normalizedQuery, payload: lastFmTrackDetailsCache.get(cacheKey) };
+        const cachedPayload = lastFmTrackDetailsCache.get(cacheKey);
+        lastFmTrackDetailsCache.delete(cacheKey);
+        lastFmTrackDetailsCache.set(cacheKey, cachedPayload);
+        return { cacheKey, normalizedQuery, payload: cachedPayload };
       }
       if (lastFmTrackDetailsInflight.has(cacheKey)) {
         return await lastFmTrackDetailsInflight.get(cacheKey);
@@ -10294,7 +10381,7 @@
           { cacheMode: "default" }
         );
         const normalizedPayload = definition.normalizePayload(payload, normalizedQuery);
-        lastFmTrackDetailsCache.set(cacheKey, normalizedPayload);
+        rememberLastFmPanelDetails(cacheKey, normalizedPayload);
         return { cacheKey, normalizedQuery, payload: normalizedPayload };
       })();
       lastFmTrackDetailsInflight.set(cacheKey, request);
@@ -10305,6 +10392,19 @@
       };
       request.then(clearInflight, clearInflight);
       return request;
+    }
+    function rememberLastFmPanelDetails(cacheKey, payload) {
+      const safeKey = String(cacheKey || "").trim();
+      if (!safeKey) return;
+      if (lastFmTrackDetailsCache.has(safeKey)) {
+        lastFmTrackDetailsCache.delete(safeKey);
+      }
+      lastFmTrackDetailsCache.set(safeKey, payload);
+      while (lastFmTrackDetailsCache.size > LASTFM_PANEL_CLIENT_CACHE_LIMIT) {
+        const oldestKey = lastFmTrackDetailsCache.keys().next().value;
+        if (typeof oldestKey === "undefined") break;
+        lastFmTrackDetailsCache.delete(oldestKey);
+      }
     }
     function prefetchLastFmPanelDetails(panelType, query) {
       const definition = getLastFmPanelDefinition(panelType);
@@ -10581,9 +10681,7 @@
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
       root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
-      if (compactMobile) {
-        hideLastFmTrackDetails("silent");
-      } else {
+      if (!compactMobile) {
         clearMobileDiscordRevealTimer();
         clearMobileLinksRevealTimer();
         clearMobileLastFmRevealTimer();
@@ -10602,13 +10700,21 @@
         });
       }
       if (compactMobile) {
-        clearMobileLastFmRevealTimer();
-        mobileLastFmRevealPlayed = false;
-        mobileLastFmDropdownOpen = false;
-        mobileTopArtistsDropdownOpen = false;
-        showcases.innerHTML = "";
-        showcases.hidden = true;
-        showcases.classList.remove("social-hub-showcases--mobile-lastfm");
+        const lastFmSite = sites.find((site) => site.id === "lastfm");
+        if (lastFmSite) {
+          showcases.hidden = false;
+          showcases.classList.add("social-hub-showcases--mobile-lastfm");
+          showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, payloadById.get("lastfm")), {
+            mobile: true,
+            mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending",
+            mobileRecentDropdownOpen: mobileLastFmDropdownOpen,
+            mobileTopArtistsDropdownOpen
+          });
+        } else {
+          showcases.innerHTML = "";
+          showcases.hidden = true;
+          showcases.classList.remove("social-hub-showcases--mobile-lastfm");
+        }
       } else {
         showcases.classList.remove("social-hub-showcases--mobile-lastfm");
         showcases.hidden = false;
@@ -10639,6 +10745,7 @@
       if (compactMobile) {
         syncMobileLinkSelectedState();
         scheduleMobileDiscordReveal();
+        scheduleMobileLastFmReveal();
       }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);

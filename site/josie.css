@@ -973,6 +973,15 @@ body.site-load-playing .os-ambient-backdrop {
   background: #000;
 }
 
+.shuffle-video-background[aria-hidden="true"][data-shuffle-background-kind="youtube"] .shuffle-youtube-player-frame {
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  filter: none;
+  transform: translate3d(-120vw, -120vh, 0);
+}
+
 .shuffle-youtube-player-frame--poster {
   background-position: center;
   background-repeat: no-repeat;
@@ -10397,6 +10406,11 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-layout--focus-menu,
   .lastfm-track-panel-focus--track {
     grid-template-columns: 1fr;
+  }
+
+  .lastfm-track-panel-window.lastfm-track-panel-window--mobile.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-title {
+    font-size: clamp(34px, 10vw, 44px);
+    line-height: 1;
   }
 }
 

@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BloomToDeath</title>
   <link rel="icon" href="data:,">
+  <link rel="preload" href="/fonts/OMORI_GAME2.ttf" as="font" type="font/ttf" crossorigin>
   <style>
+    @font-face {
+      font-family: "OmoriGame2";
+      src: url("/fonts/OMORI_GAME2.ttf") format("truetype");
+      font-display: block;
+    }
+
     :root {
       --intro-bg: #000;
       --intro-fg: rgba(255, 255, 255, 0.92);
@@ -16,6 +23,8 @@
       --intro-card-glow: rgba(255, 255, 255, 0.08);
       --intro-card-copy: rgba(255, 255, 255, 0.96);
       --handoff-fade-duration: 220ms;
+      --handoff-wipe-duration: 860ms;
+      --handoff-wipe-ease: cubic-bezier(0.82, 0, 0.18, 1);
     }
 
     * {
@@ -44,10 +53,13 @@
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
+      clip-path: inset(0 100% 0 0);
       transition:
-        opacity var(--handoff-fade-duration) ease,
+        clip-path var(--handoff-wipe-duration) var(--handoff-wipe-ease),
+        opacity 1ms linear,
         visibility 0s linear var(--handoff-fade-duration);
       background: #000;
+      will-change: clip-path;
     }
 
     .handoff-frame {
@@ -99,12 +111,13 @@
       display: none;
       align-items: center;
       justify-content: center;
-      background:
-        radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01) 72%),
-        rgba(8, 8, 10, 0.08);
-      backdrop-filter: blur(14px) saturate(120%);
-      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      background: #000;
       z-index: 5;
+      clip-path: inset(0 0 0 0);
+      transition:
+        clip-path var(--handoff-wipe-duration) var(--handoff-wipe-ease),
+        opacity var(--handoff-fade-duration) ease;
+      will-change: clip-path;
     }
 
     .intro-start-wrap.is-visible {
@@ -120,14 +133,9 @@
       border: 0;
       border-radius: 0;
       padding: 24px;
-      background:
-        radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.08), transparent 32%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015));
+      background: #000;
       color: var(--intro-fg);
-      box-shadow:
-        0 10px 40px rgba(0, 0, 0, 0.14);
-      backdrop-filter: blur(16px) saturate(130%);
-      -webkit-backdrop-filter: blur(16px) saturate(130%);
+      box-shadow: none;
       cursor: pointer;
       overflow: hidden;
       isolation: isolate;
@@ -144,6 +152,7 @@
       content: "";
       position: absolute;
       inset: auto;
+      display: none;
       pointer-events: none;
       z-index: -1;
     }
@@ -168,29 +177,37 @@
 
     .intro-start-button:hover,
     .intro-start-button:focus-visible {
-      transform: scale(1.002);
-      box-shadow:
-        0 12px 48px rgba(0, 0, 0, 0.18);
+      transform: none;
+      box-shadow: none;
       outline: none;
     }
 
+    .intro-start-button:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.68);
+      outline-offset: -14px;
+    }
+
     .intro-start-card-message {
-      max-width: 19ch;
+      max-width: min(19ch, calc(100vw - 48px));
       color: var(--intro-card-copy);
       font:
-        700
-        clamp(28px, 3vw, 44px)
-        / 1.08
-        "Space Mono",
-        "IBM Plex Mono",
-        Consolas,
-        Menlo,
-        monospace;
-      letter-spacing: 0.02em;
+        400
+        clamp(34px, 4.2vw, 68px)
+        / 0.92
+        "OmoriGame2",
+        "PixelMplus12",
+        "Trebuchet MS",
+        sans-serif;
+      letter-spacing: 0;
       text-wrap: balance;
+      overflow-wrap: break-word;
       text-shadow:
-        0 0 28px rgba(255, 255, 255, 0.08),
-        0 1px 1px rgba(0, 0, 0, 0.32);
+        0 0 1px rgba(255, 255, 255, 0.86),
+        0 2px 0 rgba(0, 0, 0, 0.9);
+      transition:
+        opacity 220ms ease,
+        transform 520ms var(--handoff-wipe-ease);
+      will-change: opacity, transform;
     }
 
     @media (max-width: 640px) {
@@ -210,6 +227,7 @@
     body.is-handoff-complete .handoff-frame-wrap {
       opacity: 1;
       visibility: visible;
+      clip-path: inset(0 0 0 0);
       transition-delay: 0s;
     }
 
@@ -225,10 +243,35 @@
       opacity: 0.22;
     }
 
+    body.is-intro-activated .intro-start-card-message {
+      opacity: 0.62;
+    }
+
+    body.is-handoff-visible .intro-start-wrap {
+      clip-path: inset(0 0 0 100%);
+    }
+
+    body.is-handoff-visible .intro-start-card-message,
+    body.is-handoff-complete .intro-start-card-message {
+      opacity: 0;
+      transform: translateX(32px);
+    }
+
     body.is-handoff-complete .intro-overlay,
     body.is-handoff-complete .intro-start-wrap {
       opacity: 0;
       pointer-events: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      :root {
+        --handoff-fade-duration: 1ms;
+        --handoff-wipe-duration: 1ms;
+      }
+
+      .intro-start-card-message {
+        transition-duration: 1ms;
+      }
     }
   </style>
 </head>
@@ -252,7 +295,7 @@
       type="button"
       aria-label="Enter site. This user is a cat; therefore meow."
     >
-      <span class="intro-start-card-message">This user is a cat; therefore meow.</span>
+      <span class="intro-start-card-message">This User is A cat; Therefore, Meow</span>
     </button>
   </div>
 
@@ -261,8 +304,9 @@
   <script>
     (() => {
       const handoffLeadSeconds = 2;
-      const introEndHandoffDelayMs = 180;
-      const repeatVisitHandoffDelayMs = 160;
+      const introWipeDurationMs = 860;
+      const introEndHandoffDelayMs = introWipeDurationMs;
+      const repeatVisitHandoffDelayMs = introWipeDurationMs;
       const defaultHandoffReadyTimeoutMs = 12_000;
       const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
       const introVideoPath = "Timelapse/Wings.mp4";
@@ -270,7 +314,9 @@
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
       const youtubeInlineActivationMessageType = "josie-youtube-inline-activation";
+      const youtubeInlineActivationReadyMessageType = "josie-youtube-inline-activation-ready";
       const youtubeInlineActivationStorageKey = "internetAngelYoutubeInlineActivationAt";
+      const introStartFallbackDelayMs = 2_800;
       const introVideo = document.getElementById("introVideo");
       const introOverlay = document.getElementById("introOverlay");
       const introStartWrap = document.getElementById("introStartWrap");
@@ -293,6 +339,7 @@
       let repeatVisitHandoffTimer = 0;
       let handoffReadyFallbackTimer = 0;
       let introEndHandoffTimer = 0;
+      let introStartFallbackTimer = 0;
       let youtubeInlineActivationAt = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
@@ -443,6 +490,29 @@
         introStartWrap?.classList.remove("is-visible");
       }
 
+      function clearIntroStartFallbackTimer() {
+        if (!introStartFallbackTimer) return;
+        window.clearTimeout(introStartFallbackTimer);
+        introStartFallbackTimer = 0;
+      }
+
+      function showStartButtonWhenReady() {
+        clearIntroStartFallbackTimer();
+        showStartButton();
+      }
+
+      function armIntroStartFallbackTimer() {
+        if (introStartFallbackTimer) return;
+        introStartFallbackTimer = window.setTimeout(() => {
+          introStartFallbackTimer = 0;
+          showStartButton();
+        }, introStartFallbackDelayMs);
+      }
+
+      function markIntroActivated() {
+        document.body.classList.add("is-intro-activated");
+      }
+
       function stopIntroPlayback() {
         if (!(introVideo instanceof HTMLVideoElement)) return;
         introVideo.pause();
@@ -486,6 +556,24 @@
         }
       }
 
+      function activateYouTubeInlinePlaybackInFrame() {
+        if (!(handoffFrame instanceof HTMLIFrameElement) || !youtubeInlineActivationAt) return false;
+        try {
+          const frameWindow = handoffFrame.contentWindow;
+          if (!frameWindow) return false;
+          frameWindow.__internetAngelYouTubeInlineActivationAt = youtubeInlineActivationAt;
+          const activate = frameWindow.__internetAngelActivateYouTubeInlinePlaybackFromParent;
+          if (typeof activate !== "function") return false;
+          activate({
+            activatedAt: youtubeInlineActivationAt,
+            source: "intro-start-button"
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
       function rememberYouTubeInlineActivationGesture() {
         youtubeInlineActivationAt = Date.now();
         window.__internetAngelYouTubeInlineActivationAt = youtubeInlineActivationAt;
@@ -493,6 +581,7 @@
           window.sessionStorage?.setItem(youtubeInlineActivationStorageKey, String(youtubeInlineActivationAt));
         } catch {
         }
+        activateYouTubeInlinePlaybackInFrame();
         postYouTubeInlineActivationToFrame();
       }
 
@@ -552,6 +641,7 @@
         clearRepeatVisitTimer();
         clearHandoffReadyFallbackTimer();
         clearIntroEndHandoffTimer();
+        clearIntroStartFallbackTimer();
         stopIntroPlayback();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
@@ -574,6 +664,7 @@
         clearRepeatVisitTimer();
         clearHandoffReadyFallbackTimer();
         clearIntroEndHandoffTimer();
+        clearIntroStartFallbackTimer();
         stopIntroPlayback();
         window.location.replace(resolveJosieDocumentUrl().toString());
       }
@@ -677,9 +768,16 @@
         if (event.origin !== window.location.origin) return;
         if (event.source !== handoffFrame?.contentWindow) return;
         const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
+        if (messageType === youtubeInlineActivationReadyMessageType) {
+          showStartButtonWhenReady();
+          activateYouTubeInlinePlaybackInFrame();
+          postYouTubeInlineActivationToFrame();
+          return;
+        }
         if (messageType !== introReadyMessageType) return;
         iframeReady = true;
         clearHandoffReadyFallbackTimer();
+        activateYouTubeInlinePlaybackInFrame();
         postYouTubeInlineActivationToFrame();
         if (!handoffVisible && (introStarted || repeatVisitClickArmed)) {
           if (shouldExpediteHandoff()) {
@@ -697,7 +795,11 @@
         introVideo.src = introVideoPath;
         introVideo.load();
       }
-      showStartButton();
+      if (skipMovieMode) {
+        armIntroStartFallbackTimer();
+      } else {
+        showStartButton();
+      }
       window.__internetAngelPerformanceState?.markReady?.();
 
       introVideo.addEventListener("loadeddata", () => {
@@ -734,6 +836,7 @@
       });
 
       introStartButton?.addEventListener("click", () => {
+        markIntroActivated();
         rememberYouTubeInlineActivationGesture();
         void interactionSfx?.initFromGesture?.("introStartButton");
         void tryPlayIntro();

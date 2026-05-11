@@ -428,6 +428,10 @@ async function installYouTubePlayerMock(page) {
         let videoId = String(options.videoId || "");
         let timer = 0;
         const listeners = options.events || {};
+        const playbackQualityCalls = [];
+        const playbackQualityRangeCalls = [];
+        const loadVideoByIdCalls = [];
+        const cueVideoByIdCalls = [];
         const emitState = (nextState) => {
           state = nextState;
           listeners.onStateChange?.({ target: player, data: state });
@@ -469,10 +473,18 @@ async function installYouTubePlayerMock(page) {
           host.append(iframe);
         }
         const player = {
+          __playerVars: { ...(options.playerVars || {}) },
+          __initialVideoId: videoId,
+          __playbackQualityCalls: playbackQualityCalls,
+          __playbackQualityRangeCalls: playbackQualityRangeCalls,
+          __loadVideoByIdCalls: loadVideoByIdCalls,
+          __cueVideoByIdCalls: cueVideoByIdCalls,
           loadVideoById(payload) {
+            loadVideoByIdCalls.push(payload);
             setVideo(payload, true);
           },
           cueVideoById(payload) {
+            cueVideoByIdCalls.push(payload);
             setVideo(payload, false);
           },
           playVideo() {
@@ -522,8 +534,12 @@ async function installYouTubePlayerMock(page) {
           isMuted() {
             return muted;
           },
-          setPlaybackQuality() {},
-          setPlaybackQualityRange() {},
+          setPlaybackQuality(value) {
+            playbackQualityCalls.push(String(value || ""));
+          },
+          setPlaybackQualityRange(minQuality, maxQuality) {
+            playbackQualityRangeCalls.push([String(minQuality || ""), String(maxQuality || "")]);
+          },
           getAvailableQualityLevels() {
             return ["highres", "hd2160", "hd1080", "large", "medium", "small"];
           },
@@ -566,6 +582,11 @@ async function readFirstSelectableShuffleTrack(page) {
       return null;
     }
   });
+}
+
+function expectedShuffleDisplayArtist(track) {
+  const artist = String(track?.artist || "").trim();
+  return artist === "Youtube" ? "YouTube" : artist;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -785,8 +806,19 @@ test("mobile root keeps the meow gate while BloomToDeath video is disabled", asy
   const handoffFrame = page.frameLocator("#handoffFrame");
   await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
   await expect(handoffFrame.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false", { timeout: 10_000 });
+  await expect(handoffFrame.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-playing", "true", { timeout: 10_000 });
   await expect(handoffFrame.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube");
   await expect(handoffFrame.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  const handoffPlaybackState = await page.frames().find((frame) => /[?&]handoff=1(?:&|$)/.test(frame.url()))?.evaluate(() => ({
+    handoffPending: Boolean(window.__josieHandoffPending),
+    siteLoadComplete: Boolean(window.__amesSiteLoadComplete),
+    playerCount: Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers.length : 0
+  }));
+  expect(handoffPlaybackState).toMatchObject({
+    handoffPending: false,
+    siteLoadComplete: true,
+    playerCount: 1
+  });
   const mobileIntroSfxLog = await readInteractionSfxLog(page);
   expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
@@ -881,7 +913,7 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   expect(degradedVisualizerState.waveCanvas).toBe(true);
   expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
   expect(degradedVisualizerState.title).toBe(expectedTrack?.title || "");
-  expect(degradedVisualizerState.artist).toBe(expectedTrack?.artist || "");
+  expect(degradedVisualizerState.artist).toBe(expectedShuffleDisplayArtist(expectedTrack));
 });
 
 test("desktop Josie optimizes rendering only when graphics acceleration is unavailable", async ({ page }) => {
@@ -991,17 +1023,91 @@ test("josie renders the profile picture without waiting on the avatar manifest",
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ avatars: ["/avatars/josie-main-profile.jpg"] })
+      body: JSON.stringify({ avatars: ["/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg"] })
     });
   });
 
   await page.goto("/josie.html", { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
   await expect(page.locator(".steam-hero-avatar")).toHaveCount(1);
+  const heroAvatarSrc = await page.locator(".steam-hero-avatar").getAttribute("src");
+  expect(new URL(heroAvatarSrc, "http://127.0.0.1:8788").pathname).toBe("/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("loading", "eager");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("fetchpriority", "high");
+  await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
+  await expect(page.locator(".steam-hero-avatar-decoration")).toHaveAttribute("loading", "eager");
+  await expect(page.locator(".steam-hero-avatar-decoration")).toHaveAttribute("fetchpriority", "high");
+  await expect(page.locator(".steam-hero-avatar-decoration")).toHaveAttribute(
+    "src",
+    "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true"
+  );
+  const priorityImagePreloads = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('link[rel="preload"][as="image"]')).map((link) => ({
+      href: link.href,
+      fetchpriority: link.getAttribute("fetchpriority") || ""
+    }));
+  });
+  expect(priorityImagePreloads).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        href: "http://127.0.0.1:8788/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg",
+        fetchpriority: "high"
+      }),
+      expect.objectContaining({
+        href: "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true",
+        fetchpriority: "high"
+      })
+    ])
+  );
   await expect(page.locator(".slice-boot-layer[data-slice-boot-key='profilePicture']")).toBeVisible({ timeout: 3_000 });
   releaseAvatarManifest();
+});
+
+test("josie keeps the Shuffle video background opt-in and low-memory", async ({ page }) => {
+  await page.goto("/josie.html", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction(() => {
+    const button = document.querySelector("[data-mobile-speaker-toggle]");
+    return button instanceof HTMLElement
+      && button.dataset.audioHasTrack === "true"
+      && button.dataset.audioPlaying === "true";
+  });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "false");
+  await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
+
+  const memoryState = await page.evaluate(() => {
+    const layer = document.querySelector("#shuffle-video-background");
+    const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
+    const youtubeFrame = youtubeHost?.querySelector("iframe");
+    const youtubeFrameRect = youtubeHost instanceof HTMLElement ? youtubeHost.getBoundingClientRect() : null;
+    const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
+    return {
+      ariaHidden: layer instanceof HTMLElement ? layer.getAttribute("aria-hidden") : "",
+      backgroundKind: layer instanceof HTMLElement ? layer.dataset.shuffleBackgroundKind || "" : "",
+      youtubeFramePresent: youtubeFrame instanceof HTMLIFrameElement,
+      youtubeFrameWidth: youtubeFrameRect?.width || 0,
+      youtubeFrameHeight: youtubeFrameRect?.height || 0,
+      playerVars: player?.__playerVars || null,
+      loadCalls: player?.__loadVideoByIdCalls || [],
+      qualityCalls: player?.__playbackQualityCalls || [],
+      qualityRangeCalls: player?.__playbackQualityRangeCalls || []
+    };
+  });
+  expect(memoryState.backgroundKind).toBe("youtube");
+  expect(memoryState.ariaHidden).toBe("true");
+  expect(memoryState.youtubeFramePresent).toBe(true);
+  expect(memoryState.youtubeFrameWidth).toBeLessThanOrEqual(1.5);
+  expect(memoryState.youtubeFrameHeight).toBeLessThanOrEqual(1.5);
+  expect(memoryState.playerVars?.vq).toBe("small");
+  expect(memoryState.loadCalls[0]?.suggestedQuality).toBe("small");
+  expect(memoryState.qualityCalls).toContain("small");
+  expect(memoryState.qualityCalls).not.toEqual(expect.arrayContaining(["highres", "hd2160"]));
+  expect(memoryState.qualityRangeCalls).toEqual(expect.arrayContaining([["tiny", "small"]]));
+
+  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
+  await expect(page.locator("body")).toHaveClass(/shuffle-video-background-active/);
 });
 
 test("desktop Josie no longer background-throttles rendering when the window loses focus", async ({ page }) => {
@@ -1641,7 +1747,32 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && button.dataset.audioPlaying === "true";
   });
   await expect(page.locator("[data-site-video-toggle]")).toBeVisible();
-  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true", { timeout: 10_000 });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "false", { timeout: 10_000 });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use music video background");
+  const inactiveVideoBackgroundState = await page.evaluate(() => {
+    const layer = document.querySelector("#shuffle-video-background");
+    const youtubeFrameShell = document.querySelector("[data-shuffle-youtube-player]");
+    const youtubeFrameRect = youtubeFrameShell instanceof HTMLElement ? youtubeFrameShell.getBoundingClientRect() : null;
+    const video = document.querySelector("[data-shuffle-background-video]");
+    return {
+      active: document.body.classList.contains("shuffle-video-background-active"),
+      ariaHidden: layer instanceof HTMLElement ? layer.getAttribute("aria-hidden") : "",
+      backgroundKind: layer instanceof HTMLElement ? layer.dataset.shuffleBackgroundKind || "" : "",
+      frameWidth: youtubeFrameRect?.width || 0,
+      frameHeight: youtubeFrameRect?.height || 0,
+      videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : ""
+    };
+  });
+  expect(inactiveVideoBackgroundState.active).toBe(false);
+  expect(inactiveVideoBackgroundState.ariaHidden).toBe("true");
+  if (inactiveVideoBackgroundState.backgroundKind === "youtube") {
+    expect(inactiveVideoBackgroundState.frameWidth).toBeLessThanOrEqual(1.5);
+    expect(inactiveVideoBackgroundState.frameHeight).toBeLessThanOrEqual(1.5);
+  } else {
+    expect(inactiveVideoBackgroundState.videoSrc).toBe("");
+  }
+  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use starry background");
   await page.waitForFunction(() => {
     const layer = document.querySelector("#shuffle-video-background");
@@ -1649,7 +1780,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
     const youtubeFrame = youtubeHost?.querySelector("iframe");
     const hasLocalVideo = video instanceof HTMLVideoElement
-      && video.preload === "auto"
+      && video.preload === "metadata"
       && (video.currentSrc || video.src).includes("/Shuffle/");
     const hasYouTubeFrame = layer instanceof HTMLElement
       && layer.dataset.shuffleBackgroundKind === "youtube"
@@ -1700,9 +1831,24 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   if (videoBackgroundState.backgroundKind === "youtube") {
     expect(videoBackgroundState.youtubeFrameSrc).toContain("youtube");
+    const youtubeMemoryState = await page.evaluate(() => {
+      const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
+      return player ? {
+        playerVars: player.__playerVars,
+        loadCalls: player.__loadVideoByIdCalls,
+        cueCalls: player.__cueVideoByIdCalls,
+        qualityCalls: player.__playbackQualityCalls,
+        qualityRangeCalls: player.__playbackQualityRangeCalls
+      } : null;
+    });
+    expect(youtubeMemoryState?.playerVars?.vq).toBe("small");
+    expect(youtubeMemoryState?.qualityCalls).toContain("small");
+    expect(youtubeMemoryState?.qualityCalls).not.toEqual(expect.arrayContaining(["highres", "hd2160"]));
+    expect(youtubeMemoryState?.qualityRangeCalls).toEqual(expect.arrayContaining([["tiny", "small"]]));
+    expect(youtubeMemoryState?.loadCalls?.[0]?.suggestedQuality).toBe("small");
   } else {
     expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
-    expect(videoBackgroundState.videoPreload).toBe("auto");
+    expect(videoBackgroundState.videoPreload).toBe("metadata");
   }
   expect(videoBackgroundState.grainImage).toContain("svg");
   expect(videoBackgroundState.grainSize).not.toBe("auto");
@@ -1715,7 +1861,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use music video background");
   await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");
-  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedTrack?.artist || "");
+  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
     const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
@@ -3202,6 +3348,45 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
       return popup;
     };
   });
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "One Time",
+              artist: { name: "beabadoobee" },
+              album: { "#text": "This Is How Tomorrow Moves" },
+              image: [{ "#text": "https://example.com/one-time-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee/_/One+Time",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) }
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "beabadoobee",
+              playcount: "128",
+              image: [{ "#text": "https://example.com/artist-1.jpg", size: "large" }],
+              url: "https://www.last.fm/music/beabadoobee"
+            }
+          ]
+        },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
 
   const apiRequests = [];
   page.on("request", (outboundRequest) => {
@@ -3240,9 +3425,9 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(2)).toHaveAttribute("data-mobile-site-id", "discord");
   await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="lastfm"]')).toHaveCount(0);
-  await expect(page.locator("#social-hub-showcases")).toBeHidden();
-  await expect(page.locator("#social-hub-showcases")).not.toHaveClass(/social-hub-showcases--mobile-lastfm/);
-  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases")).toBeVisible();
+  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(1);
   const mobileIconRowShell = await page.locator(".steam-sidebar-list--mobile-icons").evaluate((node) => {
     const styles = window.getComputedStyle(node);
     return {
@@ -3269,7 +3454,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(expectedTrack?.title || "");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedTrack?.artist || "");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
   await expect.poll(async () => {
     return page.evaluate(() => {
       const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
@@ -3536,9 +3721,9 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
 
   expect(apiRequests).toEqual(expect.arrayContaining([
     "/api/steam-recent-activity",
-    "/api/discord"
+    "/api/discord",
+    "/api/lastfm"
   ]));
-  expect(apiRequests).not.toContain("/api/lastfm");
 });
 
 test("josie plays YouTube inline on mobile without opening YouTube", async ({ page }) => {
@@ -3618,7 +3803,7 @@ test("josie plays YouTube inline on mobile without opening YouTube", async ({ pa
   await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube-poster");
   await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(1);
   await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
-  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
+  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "false");
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });
@@ -5356,7 +5541,7 @@ test("josie keeps track details on the inline spotify layout when spotify has no
   expect(apiRequests.some((url) => url.includes("api.spotify.com"))).toBe(false);
 });
 
-test.skip("josie shows a Last.fm-only compact mobile showcase and opens track details", async ({ page }) => {
+test("josie shows a Last.fm-only compact mobile showcase and opens track details", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
     const originalMatchMedia = window.matchMedia.bind(window);
@@ -5615,7 +5800,7 @@ test.skip("josie shows a Last.fm-only compact mobile showcase and opens track de
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
 });
 
-test.skip("josie stacks the compact mobile track panel cleanly and plays the Spotify preview clip", async ({ page }) => {
+test("josie stacks the compact mobile track panel cleanly and plays the Spotify preview clip", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript(() => {
     const originalMatchMedia = window.matchMedia.bind(window);
@@ -5820,33 +6005,36 @@ test.skip("josie stacks the compact mobile track panel cleanly and plays the Spo
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm")), { timeout: 10_000 }).toBe(true);
 
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
   await expect(page.locator(".lastfm-track-panel-window--mobile")).toHaveCount(1);
-  await expect(page.locator("[data-track-preview-player]")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-focus-media .lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator("[data-track-preview-player]")).toHaveCount(1);
+  await expect(page.locator("[data-track-preview-player]")).toHaveAttribute("data-track-preview-state", "paused");
+  await expect(page.locator(".lastfm-track-panel-media-control [data-track-preview-player]")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(0);
 
   const mobilePanelMetrics = await page.evaluate(() => {
     const panelWindow = document.querySelector(".lastfm-track-panel-window");
     const art = document.querySelector(".lastfm-track-panel-art");
     const header = document.querySelector(".lastfm-track-panel-header");
     const title = document.querySelector(".lastfm-track-panel-title");
-    const spotifySlot = document.querySelector(".lastfm-track-panel-spotify-slot");
-    if (!(panelWindow instanceof HTMLElement) || !(art instanceof HTMLElement) || !(header instanceof HTMLElement) || !(title instanceof HTMLElement) || !(spotifySlot instanceof HTMLElement)) {
+    const previewPlayer = document.querySelector("[data-track-preview-player]");
+    if (!(panelWindow instanceof HTMLElement) || !(art instanceof HTMLElement) || !(header instanceof HTMLElement) || !(title instanceof HTMLElement) || !(previewPlayer instanceof HTMLElement)) {
       return null;
     }
     const artRect = art.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
-    const spotifyRect = spotifySlot.getBoundingClientRect();
+    const previewRect = previewPlayer.getBoundingClientRect();
     return {
       overflowY: window.getComputedStyle(panelWindow).overflowY,
       scrollWidth: panelWindow.scrollWidth,
       clientWidth: panelWindow.clientWidth,
       headerBelowArt: headerRect.top >= artRect.bottom - 1,
       titleSize: Number.parseFloat(window.getComputedStyle(title).fontSize) || 0,
-      spotifyWidth: spotifyRect.width
+      previewWidth: previewRect.width
     };
   });
   expect(mobilePanelMetrics).not.toBeNull();
@@ -5854,7 +6042,16 @@ test.skip("josie stacks the compact mobile track panel cleanly and plays the Spo
   expect(mobilePanelMetrics.scrollWidth).toBeLessThanOrEqual(mobilePanelMetrics.clientWidth + 1);
   expect(mobilePanelMetrics.headerBelowArt).toBe(true);
   expect(mobilePanelMetrics.titleSize).toBeLessThan(50);
-  expect(mobilePanelMetrics.spotifyWidth).toBeGreaterThan(240);
+  expect(mobilePanelMetrics.previewWidth).toBeGreaterThan(240);
+
+  const previewPlayer = page.locator("[data-track-preview-player]");
+  await previewPlayer.locator("[data-track-preview-toggle]").click();
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "playing");
+  await expect(previewPlayer.locator("[data-track-preview-toggle]")).toHaveAttribute("aria-label", "Pause Spotify preview");
+  await expect(previewPlayer.locator("[data-track-preview-time]")).toContainText("0:00 / 0:30");
+  await previewPlayer.locator("[data-track-preview-toggle]").click();
+  await expect(previewPlayer).toHaveAttribute("data-track-preview-state", "paused");
+  await expect(previewPlayer.locator("[data-track-preview-toggle]")).toHaveAttribute("aria-label", "Play Spotify preview");
 
   await expect(page.locator(".lastfm-track-panel-related")).toHaveCount(0);
   await expect(page.locator(".lastfm-track-panel-section-title", { hasText: "My recent plays" })).toBeVisible();
