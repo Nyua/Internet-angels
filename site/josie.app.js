@@ -43,13 +43,18 @@
   var internetAngelReactivePulseState = { beat: 0, flash: 0, sampled: false };
   var josieTitleTypewriterTimer = 0;
   var josieTitleTypewriterToken = 0;
+  var josieDefaultTitleTypewriterDelayMs = 2_000;
+  var josieTitleTypewriterDelayMs = (() => {
+    const override = Number(window.__internetAngelTitleTypewriterDelayMs);
+    return Number.isFinite(override) && override >= 0 ? override : josieDefaultTitleTypewriterDelayMs;
+  })();
+  window.__internetAngelResolvedTitleTypewriterDelayMs = josieTitleTypewriterDelayMs;
   function startDocumentTitleTypewriter(finalTitle = "Josie") {
     const safeTitle = String(finalTitle || "").trim();
     if (!safeTitle) return;
     const token = ++josieTitleTypewriterToken;
     const chars = Array.from(safeTitle);
-    const initialDelayMs = 260;
-    const stepDelayMs = 245;
+    const frames = chars.map((_, index) => chars.slice(0, index + 1).join(""));
     let index = 0;
     if (josieTitleTypewriterTimer) {
       window.clearTimeout(josieTitleTypewriterTimer);
@@ -63,18 +68,15 @@
     };
     const writeNext = () => {
       if (token !== josieTitleTypewriterToken) return;
-      if (index >= chars.length) {
-        document.title = safeTitle;
-        window.__internetAngelTitleTypewriterDone = true;
-        return;
-      }
-      index += 1;
-      document.title = chars.slice(0, index).join("");
-      schedule(writeNext, stepDelayMs);
+      const nextTitle = frames[index] || safeTitle;
+      document.title = nextTitle;
+      window.__internetAngelTitleTypewriterFrame = nextTitle;
+      window.__internetAngelTitleTypewriterDone = nextTitle === safeTitle;
+      index = (index + 1) % frames.length;
+      schedule(writeNext, josieTitleTypewriterDelayMs);
     };
     window.__internetAngelTitleTypewriterDone = false;
-    document.title = "";
-    schedule(writeNext, initialDelayMs);
+    writeNext();
   }
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -260,6 +262,7 @@
     const source = Array.isArray(override) && override.length ? override : SOCIAL_HUB_BOOT_RETRY_DELAYS_MS;
     return source.map((delayMs) => Number(delayMs)).filter((delayMs) => Number.isFinite(delayMs) && delayMs >= 0 && delayMs <= 5 * 60 * 1e3);
   }
+  var HERO_PRIORITY_AVATAR_URL = "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg";
   var HERO_PRIORITY_DECORATION_URL = "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true";
   var DISCORD_PROFILE_OVERRIDES = {
     bannerUrl: "",
@@ -333,7 +336,7 @@
         name: "foundlifeless",
         handle: "@foundlifeless",
         url: "https://discord.com/users/331350000154050560",
-        avatarUrl: "",
+        avatarUrl: HERO_PRIORITY_AVATAR_URL,
         statusText: "Unknown",
         statusKey: "unknown",
         bannerUrl: overrideBanner,
@@ -354,7 +357,7 @@
         username: "foundlifeless",
         statusKey: "unknown",
         statusLabel: "Unknown",
-        avatarUrl: "",
+        avatarUrl: HERO_PRIORITY_AVATAR_URL,
         avatarDecorationUrl: overrideDecoration,
         bannerUrl: overrideBanner,
         hasNitro: false,
@@ -1336,9 +1339,9 @@
       statusKey: firstNonEmpty(safePresence.statusKey, profile?.statusKey, "unknown"),
       statusLabel: firstNonEmpty(profile?.statusText, safePresence.statusLabel, "Unknown"),
       avatarUrl: firstNonEmpty(
+        profile?.avatarUrl,
         safePresence.avatarUrl,
-        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
-        profile?.avatarUrl
+        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar)
       ),
       avatarDecorationUrl: firstNonEmpty(
         safePresence.avatarDecorationUrl,
@@ -1456,8 +1459,8 @@
         handle,
         url: resolveUrl(site.url),
         avatarUrl: firstNonEmpty(
-          buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
-          previous.profile.avatarUrl
+          previous.profile.avatarUrl,
+          buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar)
         ),
         statusText: firstNonEmpty(statusText, previous.profile.statusText, "Unknown"),
         statusKey,
@@ -1684,7 +1687,7 @@
   };
   var NON_SHOWCASE_SITE_IDS = /* @__PURE__ */ new Set(["twitter", "discord", "spotify", "soundcloud"]);
   var AVATAR_MANIFEST_URL = "/assets/avatar-manifest.json";
-  var HERO_DEFAULT_AVATAR_URL = "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg";
+  var HERO_DEFAULT_AVATAR_URL = HERO_PRIORITY_AVATAR_URL;
   var HERO_RANDOM_AVATAR_URLS = [
     HERO_DEFAULT_AVATAR_URL,
     "/avatars/f9f9b24abe5a5ed6231f9107cb230c79.jpg",
@@ -2187,6 +2190,32 @@
       }
       return false;
     }
+    function primeYouTubeInlinePlayerForActivation(track = currentTrack) {
+      if (!isMobileYouTubeInlineActivationRequired(track)) return false;
+      const videoId = getTrackYouTubeVideoId(track);
+      if (!videoId || youtubePlayerReadyPromise) return false;
+      youtubeInlinePlaybackPrimedForActivation = true;
+      void ensureYouTubePlayer(videoId).then((player) => {
+        if (disposed || currentTrack !== track || hasYouTubeInlineActivationUnlocked()) return;
+        const payload = {
+          videoId,
+          startSeconds: getTrackSegmentStart(track),
+          suggestedQuality: SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY
+        };
+        player.cueVideoById?.(payload);
+        loadState = "ready";
+        requestLowMemoryYouTubeQuality();
+        syncYouTubeVolume();
+        syncBackgroundVideoPlayback({ force: true });
+        syncUi();
+      }).catch(() => {
+        if (disposed || currentTrack !== track || hasYouTubeInlineActivationUnlocked()) return;
+        youtubeInlinePlaybackPrimedForActivation = false;
+        syncBackgroundVideoPlayback({ force: true });
+        syncUi();
+      });
+      return true;
+    }
     function resolveTrackVideoPath(track) {
       if (isYouTubeTrack(track)) return String(track?.youtubeUrl || track?.path || "").trim();
       const directPath = String(track?.videoPath || "").trim();
@@ -2556,8 +2585,7 @@
       if (isMobileYouTubeInlineActivationRequired(currentTrack) && !allowInlinePrime) {
         stopYouTubePlayback();
         loadState = "ready";
-        void ensureYouTubeIframeApi().catch(() => {
-        });
+        primeYouTubeInlinePlayerForActivation(currentTrack);
         syncBackgroundVideoPlayback({ force: true });
         syncUi();
         return true;
@@ -4295,6 +4323,10 @@
       if (disposed) return false;
       markYouTubeInlineActivationUnlocked(activatedAt);
       unlockPlaybackFromTrustedActivation();
+      if (isYouTubeTrack(currentTrack) && !shouldUseExternalYouTubePlayback(currentTrack)) {
+        backgroundVideoEnabled = true;
+        syncBackgroundVideoPlayback({ force: true });
+      }
       if (isYouTubeTrack(currentTrack) && youtubePlayer && youtubePlayerReady && !shouldUseExternalYouTubePlayback(currentTrack)) {
         try {
           syncYouTubeVolume();
@@ -5088,8 +5120,8 @@
               <div class="discord-presence-body">
                 <div class="discord-presence-avatar-stack">
                   <div class="discord-presence-avatar-wrap discord-presence-avatar-wrap--${escapeHtml(model.statusKey || "offline")}">
-                    ${model.avatarUrl ? `<img class="discord-presence-avatar" src="${escapeHtml(model.avatarUrl)}" alt="" loading="lazy" decoding="async" />` : '<div class="discord-presence-avatar discord-presence-avatar--fallback">D</div>'}
-                    ${model.avatarDecorationUrl ? `<img class="discord-presence-avatar-decoration" src="${escapeHtml(model.avatarDecorationUrl)}" alt="" loading="lazy" decoding="async" aria-hidden="true" />` : ""}
+                    ${model.avatarUrl ? `<img class="discord-presence-avatar" src="${escapeHtml(model.avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" />` : '<div class="discord-presence-avatar discord-presence-avatar--fallback">D</div>'}
+                    ${model.avatarDecorationUrl ? `<img class="discord-presence-avatar-decoration" src="${escapeHtml(model.avatarDecorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" aria-hidden="true" />` : ""}
                     <span class="discord-presence-status-badge" data-status="${escapeHtml(model.statusKey || "offline")}" aria-hidden="true"></span>
                   </div>
                 </div>
@@ -5139,8 +5171,8 @@
     const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
     const avatarMarkup = compact ? "" : `
         <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
-          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="async" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
-          ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="async" aria-hidden="true" />` : ""}
+          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
+          ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" aria-hidden="true" />` : ""}
         </div>
     `;
     return `
@@ -8031,6 +8063,7 @@
       }
       if (state.inlineActivationRequired) {
         shufflePlayerController.setMuted(false);
+        shufflePlayerController.setVideoBackgroundMode?.(true);
         await shufflePlayerController.activateYouTubeInlinePlayback?.();
         return;
       }
@@ -8046,6 +8079,14 @@
       event.preventDefault();
       primeInteractionSfx("siteVideoToggle");
       playInteractionSfx("toggle_soft", "siteVideoToggle");
+      const state = shufflePlayerController.getState();
+      if (state.inlineActivationRequired) {
+        shufflePlayerController.setMuted(false);
+        shufflePlayerController.setVideoBackgroundMode?.(true);
+        await shufflePlayerController.activateYouTubeInlinePlayback?.();
+        syncMobileSpeakerToggle(true);
+        return;
+      }
       await shufflePlayerController.toggleVideoBackground?.();
       syncMobileSpeakerToggle(true);
     }
@@ -8953,15 +8994,15 @@
       const contentMarkup = definition.renderContent(loadState.payload);
       updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
         panelType: definition.panelType,
-        loading: true
+        loading: definition.panelType !== "artist"
       });
-      const afterRenderFinished = await waitForLastFmPanelAfterRender(
+      await waitForLastFmPanelAfterRender(
         definition.afterRender?.(loadState.payload, loadState.cacheKey),
         {
           isStillActive: () => lastFmTrackPanelActiveKey === loadState.cacheKey
         }
       );
-      if (!afterRenderFinished || lastFmTrackPanelActiveKey !== loadState.cacheKey) {
+      if (lastFmTrackPanelActiveKey !== loadState.cacheKey) {
         return false;
       }
       settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
@@ -10617,7 +10658,7 @@
         } else {
           updateLastFmTrackPanelCurrentSceneMarkup(contentMarkup, {
             panelType: definition.panelType,
-            loading: true
+            loading: definition.panelType !== "artist"
           });
           await waitForLastFmPanelAfterRender(definition.afterRender?.(loadState.payload, loadState.cacheKey));
           if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;

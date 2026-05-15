@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BloomToDeath</title>
-  <link rel="icon" href="data:,">
+  <title>Bloom</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2064%2064%22%3E%3Ctext%20x=%2250%25%22%20y=%2252%25%22%20text-anchor=%22middle%22%20dominant-baseline=%22middle%22%20font-size=%2246%22%3E%F0%9F%AA%BD%3C/text%3E%3C/svg%3E">
   <link rel="preload" href="/fonts/OMORI_GAME2.ttf" as="font" type="font/ttf" crossorigin>
   <style>
     @font-face {
@@ -16,11 +16,6 @@
     :root {
       --intro-bg: #000;
       --intro-fg: rgba(255, 255, 255, 0.92);
-      --intro-border: rgba(255, 255, 255, 0.16);
-      --intro-shadow: rgba(0, 0, 0, 0.48);
-      --intro-card-bg: rgba(14, 14, 16, 0.72);
-      --intro-card-border: rgba(255, 255, 255, 0.12);
-      --intro-card-glow: rgba(255, 255, 255, 0.08);
       --intro-card-copy: rgba(255, 255, 255, 0.96);
       --handoff-fade-duration: 220ms;
       --handoff-wipe-duration: 860ms;
@@ -70,41 +65,6 @@
       background: #000;
     }
 
-    .intro-video {
-      position: fixed;
-      left: 50%;
-      top: 50%;
-      width: auto;
-      height: auto;
-      max-width: none;
-      max-height: none;
-      object-fit: contain;
-      background: #000;
-      z-index: 3;
-      opacity: 1;
-      transform: translate(-50%, -50%);
-      transition: opacity var(--handoff-fade-duration) ease;
-    }
-
-    .intro-video.is-ready {
-      opacity: 1;
-    }
-
-    .intro-video.is-hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .intro-overlay {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 4;
-      opacity: 1;
-      transition: opacity var(--handoff-fade-duration) ease;
-      background: transparent;
-    }
-
     .intro-start-wrap {
       position: fixed;
       inset: 0;
@@ -124,8 +84,11 @@
       display: flex;
     }
 
+    .intro-start-wrap[hidden] {
+      display: none;
+    }
+
     .intro-start-button {
-      --intro-start-background-opacity: 0.2;
       position: relative;
       display: grid;
       width: 100%;
@@ -145,34 +108,6 @@
         transform 180ms ease,
         box-shadow 180ms ease,
         background 180ms ease;
-    }
-
-    .intro-start-button::before,
-    .intro-start-button::after {
-      content: "";
-      position: absolute;
-      inset: auto;
-      display: none;
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    .intro-start-button::before {
-      inset: -4% -2%;
-      background:
-        radial-gradient(circle at 33% 58%, rgba(255, 255, 255, 0.11), transparent 24%),
-        radial-gradient(circle at 66% 44%, rgba(255, 255, 255, 0.09), transparent 22%),
-        radial-gradient(circle at 52% 70%, rgba(255, 255, 255, 0.07), transparent 20%);
-      filter: blur(40px);
-      opacity: var(--intro-start-background-opacity);
-    }
-
-    .intro-start-button::after {
-      inset: 0;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 18%, rgba(255, 255, 255, 0)),
-        radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.16), transparent 40%);
-      opacity: var(--intro-start-background-opacity);
     }
 
     .intro-start-button:hover,
@@ -214,13 +149,6 @@
       .intro-start-button {
         padding: 24px;
       }
-
-      .intro-video {
-        width: 100vw;
-        height: auto;
-        max-width: 100vw;
-        max-height: 100dvh;
-      }
     }
 
     body.is-handoff-visible .handoff-frame-wrap,
@@ -235,20 +163,13 @@
       pointer-events: auto;
     }
 
-    body.is-handoff-visible .intro-video {
-      opacity: 0.16;
-    }
-
-    body.is-handoff-visible .intro-overlay {
-      opacity: 0.22;
-    }
-
     body.is-intro-activated .intro-start-card-message {
       opacity: 0.62;
     }
 
     body.is-handoff-visible .intro-start-wrap {
       clip-path: inset(0 0 0 100%);
+      pointer-events: none;
     }
 
     body.is-handoff-visible .intro-start-card-message,
@@ -257,7 +178,6 @@
       transform: translateX(32px);
     }
 
-    body.is-handoff-complete .intro-overlay,
     body.is-handoff-complete .intro-start-wrap {
       opacity: 0;
       pointer-events: none;
@@ -286,8 +206,6 @@
       referrerpolicy="same-origin"
     ></iframe>
   </div>
-  <video id="introVideo" class="intro-video" playsinline preload="auto"></video>
-  <div id="introOverlay" class="intro-overlay" aria-hidden="true"></div>
   <div id="introStartWrap" class="intro-start-wrap" aria-live="polite">
     <button
       id="introStartButton"
@@ -303,22 +221,13 @@
   <script src="/interaction-sfx.js?v=20260329-josie-102"></script>
   <script>
     (() => {
-      const handoffLeadSeconds = 2;
-      const introWipeDurationMs = 860;
-      const introEndHandoffDelayMs = introWipeDurationMs;
-      const repeatVisitHandoffDelayMs = introWipeDurationMs;
+      const handoffWipeDurationMs = 860;
       const defaultHandoffReadyTimeoutMs = 12_000;
-      const introSeenStorageKey = "internetAngelBloomToDeathIntroSeen";
-      const introVideoPath = "Timelapse/Wings.mp4";
-      const bloomToDeathVideoEnabled = false;
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
       const youtubeInlineActivationMessageType = "josie-youtube-inline-activation";
       const youtubeInlineActivationReadyMessageType = "josie-youtube-inline-activation-ready";
       const youtubeInlineActivationStorageKey = "internetAngelYoutubeInlineActivationAt";
-      const introStartFallbackDelayMs = 2_800;
-      const introVideo = document.getElementById("introVideo");
-      const introOverlay = document.getElementById("introOverlay");
       const introStartWrap = document.getElementById("introStartWrap");
       const introStartButton = document.getElementById("introStartButton");
       const handoffFrameWrap = document.getElementById("handoffFrameWrap");
@@ -327,27 +236,24 @@
         page: "intro"
       }) || null;
       window.__internetAngelInteractionSfx = interactionSfx;
-      let introStarted = false;
+      let gateActivated = false;
       let iframePreloading = false;
       let iframeReady = false;
       let handoffVisible = false;
       let handoffCompleted = false;
       let fallbackNavigationTriggered = false;
-      let repeatVisitMode = false;
-      let skipMovieMode = false;
-      let repeatVisitClickArmed = false;
-      let repeatVisitHandoffTimer = 0;
       let handoffReadyFallbackTimer = 0;
-      let introEndHandoffTimer = 0;
-      let introStartFallbackTimer = 0;
+      let handoffCompleteTimer = 0;
       let youtubeInlineActivationAt = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
       let titleTypewriterToken = 0;
-      const titleTypewriterTimingScale = 2;
-      const titleTypewriterStartDelayMs = 180 * titleTypewriterTimingScale;
-      const titleTypewriterStepDelayMs = 95 * titleTypewriterTimingScale;
-      const titleTypewriterHoldDelayMs = 900 * titleTypewriterTimingScale;
+      const defaultTitleTypewriterDelayMs = 2_000;
+      const titleTypewriterDelayMs = (() => {
+        const override = Number(window.__internetAngelTitleTypewriterDelayMs);
+        return Number.isFinite(override) && override >= 0 ? override : defaultTitleTypewriterDelayMs;
+      })();
+      window.__internetAngelResolvedTitleTypewriterDelayMs = titleTypewriterDelayMs;
       const handoffReadyTimeoutMs = (() => {
         const override = Number(window.__internetAngelBootTimeoutMs);
         if (Number.isFinite(override) && override >= 0) {
@@ -355,7 +261,6 @@
         }
         return defaultHandoffReadyTimeoutMs;
       })();
-      let monitorRafId = 0;
 
       function startDocumentTitleTypewriter(finalTitle) {
         const safeTitle = String(finalTitle || "").trim();
@@ -372,29 +277,21 @@
             callback();
           }, delayMs);
         };
-        if (safeTitle === "BloomToDeath") {
-          // Fall through to the same per-character typing behavior used elsewhere.
-        }
         const chars = Array.from(safeTitle);
+        const frames = safeTitle === "BloomToDeath"
+          ? ["Bloom", "BloomTo", "BloomToDeath"]
+          : chars.map((_, index) => chars.slice(0, index + 1).join(""));
         let index = 0;
         const writeNext = () => {
           if (token !== titleTypewriterToken) return;
-          if (index >= chars.length) {
-            document.title = safeTitle;
-            window.__internetAngelTitleTypewriterDone = true;
-            schedule(() => {
-              index = 0;
-              document.title = "";
-              schedule(writeNext, titleTypewriterStartDelayMs);
-            }, titleTypewriterHoldDelayMs);
-            return;
-          }
-          index += 1;
-          document.title = chars.slice(0, index).join("");
-          schedule(writeNext, titleTypewriterStepDelayMs);
+          const nextTitle = frames[index] || safeTitle;
+          document.title = nextTitle;
+          window.__internetAngelTitleTypewriterFrame = nextTitle;
+          window.__internetAngelTitleTypewriterDone = nextTitle === safeTitle;
+          index = (index + 1) % frames.length;
+          schedule(writeNext, titleTypewriterDelayMs);
         };
-        document.title = "";
-        schedule(writeNext, titleTypewriterStartDelayMs);
+        writeNext();
       }
 
       function setState(nextState) {
@@ -403,16 +300,12 @@
         document.body.dataset.bloomToDeathState = nextState;
       }
 
-      function shouldSkipIntro() {
-        return false;
-      }
-
       function resolveJosieDisplayPath() {
         return "/josie";
       }
 
       function resolveJosieDocumentPath() {
-        const isProductionDomain = /(^|\\.)internet-angel\\.net$/i.test(window.location.hostname);
+        const isProductionDomain = /(^|\.)internet-angel\.net$/i.test(window.location.hostname);
         return isProductionDomain ? "/josie" : "/josie.html";
       }
 
@@ -430,94 +323,24 @@
         return url;
       }
 
-      function hasSeenIntroBefore() {
-        try {
-          return window.localStorage.getItem(introSeenStorageKey) === "1";
-        } catch {
-          return false;
-        }
-      }
-
-      function markIntroAsSeen() {
-        try {
-          window.localStorage.setItem(introSeenStorageKey, "1");
-        } catch {
-        }
-      }
-
-      function clearMonitorLoop() {
-        if (!monitorRafId) return;
-        window.cancelAnimationFrame(monitorRafId);
-        monitorRafId = 0;
-      }
-
-      function clearRepeatVisitTimer() {
-        if (!repeatVisitHandoffTimer) return;
-        window.clearTimeout(repeatVisitHandoffTimer);
-        repeatVisitHandoffTimer = 0;
-      }
-
       function clearHandoffReadyFallbackTimer() {
         if (!handoffReadyFallbackTimer) return;
         window.clearTimeout(handoffReadyFallbackTimer);
         handoffReadyFallbackTimer = 0;
       }
 
-      function armHandoffReadyFallbackTimer() {
-        if (handoffReadyFallbackTimer || handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
-        handoffReadyFallbackTimer = window.setTimeout(() => {
-          handoffReadyFallbackTimer = 0;
-          if (handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
-          performFallbackNavigation();
-        }, handoffReadyTimeoutMs);
-      }
-
-      function clearIntroEndHandoffTimer() {
-        if (!introEndHandoffTimer) return;
-        window.clearTimeout(introEndHandoffTimer);
-        introEndHandoffTimer = 0;
-      }
-
-      function shouldExpediteHandoff() {
-        return skipMovieMode || repeatVisitClickArmed;
+      function clearHandoffCompleteTimer() {
+        if (!handoffCompleteTimer) return;
+        window.clearTimeout(handoffCompleteTimer);
+        handoffCompleteTimer = 0;
       }
 
       function showStartButton() {
         introStartWrap?.classList.add("is-visible");
       }
 
-      function hideStartButton() {
-        introStartWrap?.classList.remove("is-visible");
-      }
-
-      function clearIntroStartFallbackTimer() {
-        if (!introStartFallbackTimer) return;
-        window.clearTimeout(introStartFallbackTimer);
-        introStartFallbackTimer = 0;
-      }
-
-      function showStartButtonWhenReady() {
-        clearIntroStartFallbackTimer();
-        showStartButton();
-      }
-
-      function armIntroStartFallbackTimer() {
-        if (introStartFallbackTimer) return;
-        introStartFallbackTimer = window.setTimeout(() => {
-          introStartFallbackTimer = 0;
-          showStartButton();
-        }, introStartFallbackDelayMs);
-      }
-
       function markIntroActivated() {
         document.body.classList.add("is-intro-activated");
-      }
-
-      function stopIntroPlayback() {
-        if (!(introVideo instanceof HTMLVideoElement)) return;
-        introVideo.pause();
-        introVideo.muted = true;
-        introVideo.defaultMuted = true;
       }
 
       function updateTopLevelUrlForJosie() {
@@ -526,9 +349,18 @@
         startDocumentTitleTypewriter("Josie");
       }
 
+      function armHandoffReadyFallbackTimer() {
+        if (!gateActivated || handoffReadyFallbackTimer || handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
+        handoffReadyFallbackTimer = window.setTimeout(() => {
+          handoffReadyFallbackTimer = 0;
+          if (handoffCompleted || fallbackNavigationTriggered || iframeReady) return;
+          performFallbackNavigation();
+        }, handoffReadyTimeoutMs);
+      }
+
       function preloadJosieFrame(options = {}) {
         if (!(handoffFrame instanceof HTMLIFrameElement)) return;
-        const armFallback = options?.armFallback !== false;
+        const armFallback = options?.armFallback === true;
         if (iframePreloading) {
           if (armFallback) {
             armHandoffReadyFallbackTimer();
@@ -585,12 +417,6 @@
         postYouTubeInlineActivationToFrame();
       }
 
-      function isTransitionWindowOpen() {
-        if (!(introVideo instanceof HTMLVideoElement)) return false;
-        if (!Number.isFinite(introVideo.duration) || introVideo.duration <= 0) return false;
-        return introVideo.currentTime >= Math.max(0, introVideo.duration - handoffLeadSeconds);
-      }
-
       function notifyIframeHandoffComplete() {
         try {
           handoffFrame?.contentWindow?.postMessage({ type: introCompleteMessageType }, window.location.origin);
@@ -611,11 +437,23 @@
         return iframeReady;
       }
 
+      function scheduleHandoffCompletion() {
+        if (handoffCompleteTimer || handoffCompleted || fallbackNavigationTriggered) return;
+        handoffCompleteTimer = window.setTimeout(() => {
+          handoffCompleteTimer = 0;
+          completeHandoff();
+        }, handoffWipeDurationMs);
+      }
+
       function beginVisualHandoff() {
-        if (handoffVisible || fallbackNavigationTriggered || !(handoffFrameWrap instanceof HTMLElement)) return;
+        if (handoffVisible || fallbackNavigationTriggered) return handoffVisible;
+        if (!(handoffFrameWrap instanceof HTMLElement)) return false;
         if (!syncIframeReadyFromDocument()) {
-          setState("handoff_pending");
-          return;
+          if (gateActivated) {
+            setState("handoff_pending");
+            armHandoffReadyFallbackTimer();
+          }
+          return false;
         }
         handoffVisible = true;
         setState("handoff_visible");
@@ -623,6 +461,8 @@
         updateTopLevelUrlForJosie();
         document.body.classList.add("is-handoff-visible");
         handoffFrameWrap.removeAttribute("aria-hidden");
+        scheduleHandoffCompletion();
+        return true;
       }
 
       function completeHandoff() {
@@ -637,19 +477,10 @@
         handoffCompleted = true;
         setState("handoff_complete");
         interactionSfx?.setPage?.("josie");
-        clearMonitorLoop();
-        clearRepeatVisitTimer();
         clearHandoffReadyFallbackTimer();
-        clearIntroEndHandoffTimer();
-        clearIntroStartFallbackTimer();
-        stopIntroPlayback();
+        clearHandoffCompleteTimer();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
-        introVideo?.classList.add("is-hidden");
-        introVideo?.setAttribute("aria-hidden", "true");
-        if (introOverlay instanceof HTMLElement) {
-          introOverlay.hidden = true;
-        }
         if (introStartWrap instanceof HTMLElement) {
           introStartWrap.hidden = true;
         }
@@ -660,116 +491,29 @@
         if (fallbackNavigationTriggered) return;
         fallbackNavigationTriggered = true;
         setState("handoff_fallback_navigation");
-        clearMonitorLoop();
-        clearRepeatVisitTimer();
         clearHandoffReadyFallbackTimer();
-        clearIntroEndHandoffTimer();
-        clearIntroStartFallbackTimer();
-        stopIntroPlayback();
+        clearHandoffCompleteTimer();
         window.location.replace(resolveJosieDocumentUrl().toString());
       }
 
-      function beginRepeatVisitHandoff() {
-        if (!repeatVisitClickArmed || handoffCompleted || fallbackNavigationTriggered) return;
-        if (!syncIframeReadyFromDocument()) {
-          setState("handoff_pending");
-          return;
-        }
+      function handleGateClick() {
+        if (handoffCompleted || fallbackNavigationTriggered) return;
+        gateActivated = true;
+        markIntroActivated();
+        rememberYouTubeInlineActivationGesture();
+        void interactionSfx?.initFromGesture?.("introStartButton");
+        preloadJosieFrame({ armFallback: true });
         beginVisualHandoff();
-        if (repeatVisitHandoffTimer) return;
-        repeatVisitHandoffTimer = window.setTimeout(() => {
-          repeatVisitHandoffTimer = 0;
-          completeHandoff();
-        }, repeatVisitHandoffDelayMs);
       }
 
-      function evaluateHandoffWindow() {
-        if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
-        if (shouldExpediteHandoff()) {
-          beginRepeatVisitHandoff();
-          return;
-        }
-        syncIframeReadyFromDocument();
-        if (iframeReady && isTransitionWindowOpen()) {
-          beginVisualHandoff();
-        }
-      }
-
-      function syncHandoffProgress() {
-        monitorRafId = 0;
-        evaluateHandoffWindow();
-        if (!handoffCompleted && !fallbackNavigationTriggered) {
-          monitorRafId = window.requestAnimationFrame(syncHandoffProgress);
-        }
-      }
-
-      function ensureMonitorLoop() {
-        if (monitorRafId || handoffCompleted || fallbackNavigationTriggered) return;
-        monitorRafId = window.requestAnimationFrame(syncHandoffProgress);
-      }
-
-      async function tryPlayIntro() {
-        if (!(introVideo instanceof HTMLVideoElement)) return false;
-        preloadJosieFrame();
-        introStarted = true;
-        if (skipMovieMode) {
-          stopIntroPlayback();
-          repeatVisitClickArmed = true;
-          beginRepeatVisitHandoff();
-          return true;
-        }
-        introVideo.defaultMuted = false;
-        introVideo.muted = false;
-        try {
-          await introVideo.play();
-          markIntroAsSeen();
-          setState("playing_intro");
-          hideStartButton();
-          ensureMonitorLoop();
-          return true;
-        } catch {
-          introStarted = false;
-          showStartButton();
-          setState("idle");
-          return false;
-        }
-      }
-
-      function requestIntroSkip() {
-        if (!introStarted || handoffCompleted || fallbackNavigationTriggered) return;
-        if (state !== "playing_intro" && state !== "handoff_pending" && state !== "handoff_visible") return;
-        repeatVisitClickArmed = true;
-        stopIntroPlayback();
-        if (handoffVisible) {
-          completeHandoff();
-          return;
-        }
-        beginRepeatVisitHandoff();
-        ensureMonitorLoop();
-      }
-
-      if (!(introVideo instanceof HTMLVideoElement)) return;
-      startDocumentTitleTypewriter("BloomToDeath");
-      setState("idle");
-      repeatVisitMode = false;
-      skipMovieMode = !bloomToDeathVideoEnabled || shouldSkipIntro();
-      document.body.dataset.bloomToDeathRepeatVisit = "false";
-      document.body.dataset.bloomToDeathSkipMovie = String(skipMovieMode);
-      document.body.dataset.bloomToDeathVideoEnabled = String(bloomToDeathVideoEnabled);
-      if (skipMovieMode) {
-        introVideo.removeAttribute("src");
-        introVideo.classList.add("is-hidden");
-        introVideo.setAttribute("aria-hidden", "true");
-        introVideo.load?.();
-        preloadJosieFrame({ armFallback: false });
-      }
+      if (!(introStartButton instanceof HTMLButtonElement)) return;
+      if (!(handoffFrame instanceof HTMLIFrameElement)) return;
 
       window.addEventListener("message", (event) => {
         if (event.origin !== window.location.origin) return;
-        if (event.source !== handoffFrame?.contentWindow) return;
+        if (event.source !== handoffFrame.contentWindow) return;
         const messageType = event.data && typeof event.data === "object" ? event.data.type : "";
         if (messageType === youtubeInlineActivationReadyMessageType) {
-          showStartButtonWhenReady();
           activateYouTubeInlinePlaybackInFrame();
           postYouTubeInlineActivationToFrame();
           return;
@@ -779,68 +523,17 @@
         clearHandoffReadyFallbackTimer();
         activateYouTubeInlinePlaybackInFrame();
         postYouTubeInlineActivationToFrame();
-        if (!handoffVisible && (introStarted || repeatVisitClickArmed)) {
-          if (shouldExpediteHandoff()) {
-            beginRepeatVisitHandoff();
-            return;
-          }
-          evaluateHandoffWindow();
-          if (!handoffVisible && state !== "playing_intro") {
-            setState("handoff_pending");
-          }
-        }
-      });
-
-      if (!skipMovieMode) {
-        introVideo.src = introVideoPath;
-        introVideo.load();
-      }
-      if (skipMovieMode) {
-        armIntroStartFallbackTimer();
-      } else {
-        showStartButton();
-      }
-      window.__internetAngelPerformanceState?.markReady?.();
-
-      introVideo.addEventListener("loadeddata", () => {
-        introVideo.classList.add("is-ready");
-      }, { once: true });
-
-      ["timeupdate", "seeked", "durationchange"].forEach((eventName) => {
-        introVideo.addEventListener(eventName, () => {
-          evaluateHandoffWindow();
-        });
-      });
-
-      introVideo.addEventListener("ended", () => {
-        if (iframeReady) {
+        if (gateActivated) {
           beginVisualHandoff();
-          clearIntroEndHandoffTimer();
-          introEndHandoffTimer = window.setTimeout(() => {
-            introEndHandoffTimer = 0;
-            completeHandoff();
-          }, introEndHandoffDelayMs);
-          return;
         }
-        performFallbackNavigation();
-      });
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && introStarted && introVideo.paused && !introVideo.ended && !shouldExpediteHandoff()) {
-          void tryPlayIntro();
-        }
-      });
-      document.addEventListener("click", (event) => {
-        if (event instanceof MouseEvent && event.button !== 0) return;
-        if (event.target instanceof Element && event.target.closest("#introStartButton")) return;
-        requestIntroSkip();
       });
 
-      introStartButton?.addEventListener("click", () => {
-        markIntroActivated();
-        rememberYouTubeInlineActivationGesture();
-        void interactionSfx?.initFromGesture?.("introStartButton");
-        void tryPlayIntro();
-      });
+      introStartButton.addEventListener("click", handleGateClick);
+      startDocumentTitleTypewriter("BloomToDeath");
+      setState("idle");
+      showStartButton();
+      preloadJosieFrame({ armFallback: false });
+      window.__internetAngelPerformanceState?.markReady?.();
     })();
   </script>
 </body>
