@@ -636,38 +636,6 @@ test("site pages use the browser default favicon", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => Number(window.__internetAngelResolvedTitleTypewriterDelayMs))).toBe(2_000);
 });
 
-test("portfolio route is public-safe and uses the title typewriter", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__internetAngelTitleTypewriterDelayMs = 200;
-  });
-  await page.goto("/portfolio", { waitUntil: "domcontentloaded" });
-
-  await expect(page).toHaveTitle("Portfolio");
-  await expect(page.locator('link[rel="icon"]')).toHaveCount(0);
-  await expect(page.locator(".portfolio-brand")).toHaveText("Joshua Colgate");
-  await expect(page.locator("h1")).toHaveText("Entry-Level Animal Care, Creative & Digital Portfolio");
-  await expect(page.locator("#experience")).toContainText("Family Cattery & Pet Care Experience");
-  await expect(page.locator("#projects")).toContainText("Add approved, non-identifying animal-care image only");
-  await expect(page.locator("#contact")).toContainText("work@example.com");
-  await expect(page.locator("#contact")).toContainText("Joshua Colgate");
-  await expect(page.locator('link[href*="OMORI"], link[href*="PixelMplus"]')).toHaveCount(0);
-  await expect(page.locator("style")).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => Number(window.__internetAngelResolvedTitleTypewriterDelayMs))).toBe(200);
-  for (const expectedTitle of [
-    "Portfolio | Entry-Level",
-    "Portfolio | Entry-Level Animal Care",
-    "Portfolio | Entry-Level Animal Care, Creative & Digital Work"
-  ]) {
-    await page.waitForTimeout(220);
-    await expect(page).toHaveTitle(expectedTitle);
-  }
-
-  const pageText = await page.locator("body").innerText();
-  expect(pageText).not.toMatch(/\b\d{4}\s?\d{3}\s?\d{3}\b/);
-  expect(pageText).not.toMatch(/Boat Harbour/i);
-  expect(pageText).not.toMatch(/Joshua_Colgate_Resume_2026\.pdf/i);
-});
-
 test("root keeps the black meow gate and preloads Josie", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(BLOOM_TITLE_PATTERN);
@@ -3521,12 +3489,13 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";
   });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
-  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
+  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(5);
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(0)).toHaveAttribute("data-mobile-site-id", "soundcloud");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(2)).toHaveAttribute("data-mobile-site-id", "discord");
-  await expect(page.locator(".steam-sidebar-link--icon-only").nth(5)).toHaveAttribute("data-mobile-site-id", "portfolio");
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(4)).toHaveAttribute("data-mobile-site-id", "twitter");
   await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="lastfm"]')).toHaveCount(0);
+  await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="portfolio"]')).toHaveCount(0);
   await expect(page.locator("#social-hub-showcases")).toBeVisible();
   await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
   await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(1);
@@ -3542,7 +3511,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileIconRowShell.paddingTop).toBeGreaterThanOrEqual(10);
   expect(mobileIconRowShell.paddingBottom).toBeGreaterThanOrEqual(10);
   const mobileAuraVariables = await page.locator(".steam-sidebar-link--icon-only").evaluateAll((nodes) => nodes.map((node) => window.getComputedStyle(node).getPropertyValue("--mobile-link-aura-rgb").trim()));
-  expect(new Set(mobileAuraVariables).size).toBe(6);
+  expect(new Set(mobileAuraVariables).size).toBe(5);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();

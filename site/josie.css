@@ -5545,14 +5545,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   --sidebar-row-accent-rgb: 255, 212, 195;
 }
 
-.steam-sidebar-row--portfolio .steam-sidebar-site-icon {
-  color: #89d9ef;
-}
-
-.steam-sidebar-row--portfolio {
-  --sidebar-row-accent-rgb: 137, 217, 239;
-}
-
 @media (min-width: 821px) {
   .steam-sidebar-row--soundcloud,
   .steam-sidebar-row--soundcloud::before,
@@ -5678,13 +5670,6 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     --desktop-link-aura-rgb: 255, 148, 84;
     --desktop-link-aura-secondary-rgb: 255, 232, 204;
     --desktop-link-aura-sheen-rgb: 255, 246, 232;
-  }
-
-  .steam-sidebar-row--portfolio {
-    --desktop-link-platform-color: #c6f3ff;
-    --desktop-link-aura-rgb: 137, 217, 239;
-    --desktop-link-aura-secondary-rgb: 229, 250, 255;
-    --desktop-link-aura-sheen-rgb: 245, 253, 255;
   }
 
   .steam-sidebar-row--spotify {
