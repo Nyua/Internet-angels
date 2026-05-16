@@ -435,8 +435,8 @@
             window.matchMedia("(pointer: coarse)")?.matches || window.matchMedia("(hover: none)")?.matches
           );
         }
-        const targetFrameMs = 1000 / 24;
-        const slicePlaybackSlowdown = 0.46;
+        const targetFrameMs = 1000 / 30;
+        const slicePlaybackSlowdown = 0.72;
         const defaultDurationMs = 2200;
         const loadingIconReferenceBoxes = {
           profileLinks: { x: 463, y: 338, width: 263, height: 235 },
@@ -487,6 +487,7 @@
         let overlayRoot = null;
         let loopHandle = 0;
         let siteLoadForceReleased = false;
+        let siteLoadSequenceStarted = false;
         window.__amesLoadingIconVariantPath = slicePaths.loadingIcon;
         window.__amesLoadingIconUsesVariant = false;
 
@@ -646,7 +647,7 @@
               return {
                 frames: [],
                 frameDelaysMs: [],
-                totalDurationMs: Math.max(240, Math.round((timing.totalDurationMs || defaultDurationMs) * slicePlaybackSlowdown)),
+                totalDurationMs: Math.max(240, Math.round(timing.totalDurationMs || defaultDurationMs)),
                 nativePlayback
               };
             }
@@ -922,6 +923,8 @@
         }
 
         function startSequence() {
+          if (siteLoadSequenceStarted || siteLoadForceReleased || window.__amesSiteLoadComplete) return;
+          siteLoadSequenceStarted = true;
           if (isCompactMobileViewport()) {
             setSiteLoadPlaying(false);
             return;

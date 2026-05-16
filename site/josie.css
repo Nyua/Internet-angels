@@ -4770,8 +4770,8 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 @media (min-width: 821px) {
   #social-hub-root[data-social-hub-ready="true"] [data-desktop-unfold] {
     transform-origin: top center;
-    animation: socialHubDesktopUnfold 560ms cubic-bezier(0.2, 0.85, 0.18, 1) both;
-    animation-delay: calc(var(--desktop-unfold-order, 0) * 120ms);
+    animation: socialHubDesktopUnfold var(--desktop-unfold-duration, 780ms) cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--desktop-unfold-order, 0) * var(--desktop-unfold-stagger, 95ms));
     will-change: opacity, transform, clip-path, filter;
   }
 }
@@ -4779,14 +4779,21 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 @keyframes socialHubDesktopUnfold {
   0% {
     opacity: 0;
-    transform: translateY(-14px) scaleY(0.26);
+    transform: translate3d(0, -10px, 0) scaleY(0.82);
     clip-path: inset(0 0 100% 0 round 28px);
-    filter: blur(6px);
+    filter: blur(4px);
+  }
+
+  64% {
+    opacity: 0.96;
+    transform: translate3d(0, 1px, 0) scaleY(1.01);
+    clip-path: inset(0 0 0 0 round 28px);
+    filter: blur(0.5px);
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0) scaleY(1);
+    transform: translate3d(0, 0, 0) scaleY(1);
     clip-path: inset(0 0 0 0 round 28px);
     filter: blur(0);
   }
@@ -4795,14 +4802,21 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 @keyframes socialHubDesktopUnfoldHero {
   0% {
     opacity: 0;
-    transform: translateY(-14px) scaleY(0.26);
+    transform: translate3d(0, -10px, 0) scaleY(0.82);
     clip-path: inset(-52px -56px 100% -56px round 28px);
-    filter: blur(6px);
+    filter: blur(4px);
+  }
+
+  64% {
+    opacity: 0.96;
+    transform: translate3d(0, 1px, 0) scaleY(1.01);
+    clip-path: inset(-52px -56px 0 -56px round 28px);
+    filter: blur(0.5px);
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0) scaleY(1);
+    transform: translate3d(0, 0, 0) scaleY(1);
     clip-path: inset(-52px -56px 0 -56px round 28px);
     filter: blur(0);
   }
@@ -4811,13 +4825,19 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
 @keyframes socialHubDesktopUnfoldSidebar {
   0% {
     opacity: 0;
-    transform: translateY(-14px) scaleY(0.26);
-    filter: blur(6px);
+    transform: translate3d(0, -10px, 0) scaleY(0.82);
+    filter: blur(4px);
+  }
+
+  64% {
+    opacity: 0.96;
+    transform: translate3d(0, 1px, 0) scaleY(1.01);
+    filter: blur(0.5px);
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0) scaleY(1);
+    transform: translate3d(0, 0, 0) scaleY(1);
     filter: blur(0);
   }
 }

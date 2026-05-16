@@ -6910,6 +6910,8 @@
     let mobileLastFmDropdownOcclusionRaf = 0;
     let mobileLastFmDropdownOcclusionTimer = 0;
     let mobileLastFmDropdownOccludedElements = /* @__PURE__ */ new Set();
+    let desktopUnfoldPlayed = false;
+    let desktopUnfoldClearTimer = 0;
     let activeAngelsFooter = null;
     let angelsFooterCollisionTimer = 0;
     let angelsFooterLungeTimer = 0;
@@ -6923,6 +6925,9 @@
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
+    const DESKTOP_UNFOLD_DURATION_MS = 780;
+    const DESKTOP_UNFOLD_STAGGER_MS = 95;
+    const DESKTOP_UNFOLD_CLEAR_PAD_MS = 180;
     const LASTFM_PANEL_SCENE_LOADING_SPIN_MS = 1840;
     const LASTFM_PANEL_SCENE_HUNG_SPIN_MS = 4200;
     const LASTFM_PANEL_MORPH_VEIL_FADE_MS = 120;
@@ -7385,7 +7390,14 @@
         if (!(node instanceof HTMLElement)) return;
         node.removeAttribute("data-desktop-unfold");
         node.style.removeProperty("--desktop-unfold-order");
+        node.style.removeProperty("--desktop-unfold-duration");
+        node.style.removeProperty("--desktop-unfold-stagger");
       });
+    }
+    function clearDesktopUnfoldTimer() {
+      if (!desktopUnfoldClearTimer) return;
+      window.clearTimeout(desktopUnfoldClearTimer);
+      desktopUnfoldClearTimer = 0;
     }
     function getDesktopUnfoldTargets() {
       if (!(root2 instanceof HTMLElement)) return [];
@@ -7408,13 +7420,27 @@
       return targets;
     }
     function applyDesktopUnfoldOrdering(compactMobile = isCompactMobileLayout()) {
-      clearDesktopUnfoldOrdering();
+      if (desktopUnfoldPlayed) {
+        if (!desktopUnfoldClearTimer) {
+          clearDesktopUnfoldOrdering();
+        }
+        return;
+      }
+      clearDesktopUnfoldTimer();
       if (compactMobile) return;
       const targets = getDesktopUnfoldTargets();
+      if (!targets.length) return;
       targets.forEach((target, index) => {
         target.dataset.desktopUnfold = "true";
         target.style.setProperty("--desktop-unfold-order", String(index));
+        target.style.setProperty("--desktop-unfold-duration", `${DESKTOP_UNFOLD_DURATION_MS}ms`);
+        target.style.setProperty("--desktop-unfold-stagger", `${DESKTOP_UNFOLD_STAGGER_MS}ms`);
       });
+      desktopUnfoldPlayed = true;
+      desktopUnfoldClearTimer = window.setTimeout(() => {
+        desktopUnfoldClearTimer = 0;
+        clearDesktopUnfoldOrdering();
+      }, DESKTOP_UNFOLD_DURATION_MS + DESKTOP_UNFOLD_STAGGER_MS * Math.max(0, targets.length - 1) + DESKTOP_UNFOLD_CLEAR_PAD_MS);
     }
     function animateMobileLastFmDropdown(dropdown) {
       if (!(dropdown instanceof HTMLDetailsElement) || !dropdown.open) return;
@@ -11003,6 +11029,8 @@
       clearMobileDiscordRevealTimer();
       clearMobileLinksRevealTimer();
       clearMobileLastFmRevealTimer();
+      clearDesktopUnfoldTimer();
+      clearDesktopUnfoldOrdering();
       clearMobileLastFmDropdownOcclusion();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
