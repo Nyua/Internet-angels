@@ -14,6 +14,8 @@ const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
 const josieHtmlPath = path.join(distDir, "josie.html");
 const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
+const portfolioHtmlPath = path.join(distDir, "portfolio.html");
+const portfolioDirectoryIndexPath = path.join(distDir, "portfolio", "index.html");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
 const allowOversizedAssets = process.argv.includes("--allow-oversized-assets");
 const rawSourceVideoPattern = /\(\s*1080p\s*,\s*h264\s*\)/i;
@@ -190,6 +192,10 @@ rewriteHtmlAssetVersions();
 if (fs.existsSync(josieHtmlPath)) {
   fs.mkdirSync(path.dirname(josieDirectoryIndexPath), { recursive: true });
   fs.copyFileSync(josieHtmlPath, josieDirectoryIndexPath);
+}
+if (fs.existsSync(portfolioHtmlPath)) {
+  fs.mkdirSync(path.dirname(portfolioDirectoryIndexPath), { recursive: true });
+  fs.copyFileSync(portfolioHtmlPath, portfolioDirectoryIndexPath);
 }
 
 const oversizedFiles = collectOversizedFiles(distDir);
