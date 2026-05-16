@@ -263,11 +263,10 @@
     return source.map((delayMs) => Number(delayMs)).filter((delayMs) => Number.isFinite(delayMs) && delayMs >= 0 && delayMs <= 5 * 60 * 1e3);
   }
   var HERO_PRIORITY_AVATAR_URL = "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg";
-  var HERO_PRIORITY_DECORATION_URL = "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true";
   var DISCORD_PROFILE_OVERRIDES = {
     bannerUrl: "",
     bio: "",
-    decorationUrl: HERO_PRIORITY_DECORATION_URL
+    decorationUrl: ""
   };
   var HERO_DESCRIPTION_TEXT = "The Internet Angel";
   var BASE_SEED_AT = Date.parse("2026-02-24T00:00:00.000Z");
@@ -1339,16 +1338,18 @@
       statusKey: firstNonEmpty(safePresence.statusKey, profile?.statusKey, "unknown"),
       statusLabel: firstNonEmpty(profile?.statusText, safePresence.statusLabel, "Unknown"),
       avatarUrl: firstNonEmpty(
-        profile?.avatarUrl,
         safePresence.avatarUrl,
-        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar)
+        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar),
+        profile?.avatarUrl
       ),
       avatarDecorationUrl: firstNonEmpty(
         safePresence.avatarDecorationUrl,
+        buildDiscordDecorationUrl(discordUser?.avatar_decoration_data?.asset),
         profile?.decorationUrl
       ),
       bannerUrl: firstNonEmpty(
         safePresence.bannerUrl,
+        buildDiscordBannerUrl(discordUser?.id || userId, discordUser?.banner),
         profile?.bannerUrl
       ),
       spotify: {
@@ -1454,13 +1455,21 @@
       const activityItems = mapLanyardActivities(activities, site.url);
       const statusSource = Boolean(discordUser || activities.length);
       const overrideSource = Boolean(overrideBio || overrideBannerUrl || overrideDecorationUrl);
+      const liveAvatarUrl = firstNonEmpty(
+        discordPayload?.presence?.avatarUrl,
+        buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar)
+      );
+      const liveDecorationUrl = firstNonEmpty(
+        discordPayload?.presence?.avatarDecorationUrl,
+        buildDiscordDecorationUrl(discordUser?.avatar_decoration_data?.asset)
+      );
       const profilePatch = {
         name: displayName,
         handle,
         url: resolveUrl(site.url),
         avatarUrl: firstNonEmpty(
-          previous.profile.avatarUrl,
-          buildDiscordAvatarUrl(discordUser?.id || userId, discordUser?.avatar)
+          liveAvatarUrl,
+          previous.profile.avatarUrl
         ),
         statusText: firstNonEmpty(statusText, previous.profile.statusText, "Unknown"),
         statusKey,
@@ -1471,9 +1480,9 @@
           previous.profile.bannerUrl
         ),
         decorationUrl: firstNonEmpty(
-          overrideDecorationUrl,
-          buildDiscordDecorationUrl(discordUser?.avatar_decoration_data?.asset),
-          previous.profile.decorationUrl
+          liveDecorationUrl,
+          previous.profile.decorationUrl,
+          overrideDecorationUrl
         ),
         bio: firstNonEmpty(
           overrideBio,

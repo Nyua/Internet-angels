@@ -62,6 +62,11 @@ test("normalizeDiscordPayload preserves spotify and nitro presence fields", () =
         id: "331350000154050560",
         username: "foundlifeless",
         global_name: "FoundLifeless",
+        avatar: "avatar-hash",
+        banner: "a_banner-hash",
+        avatar_decoration_data: {
+          asset: "a_decoration-asset"
+        },
         premium_type: 2
       },
       discord_status: "online",
@@ -82,6 +87,9 @@ test("normalizeDiscordPayload preserves spotify and nitro presence fields", () =
   assert.equal(payload.data.listening_to_spotify, true);
   assert.equal(payload.presence.hasNitro, true);
   assert.equal(payload.presence.displayName, "FoundLifeless");
+  assert.equal(payload.presence.avatarUrl, "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256");
+  assert.equal(payload.presence.avatarDecorationUrl, "https://cdn.discordapp.com/avatar-decoration-presets/a_decoration-asset.png?size=160&passthrough=true");
+  assert.equal(payload.presence.bannerUrl, "https://cdn.discordapp.com/banners/331350000154050560/a_banner-hash.gif?size=640");
   assert.equal(payload.presence.primaryActivity.label, "Listening to");
   assert.equal(payload.presence.spotify.albumArtUrl, "https://i.scdn.co/image/example");
   assert.equal(payload.presence.spotify.trackUrl, "https://open.spotify.com/track/spotify-track-123");

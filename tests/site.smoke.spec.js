@@ -1057,6 +1057,59 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   const avatarManifestGate = new Promise((resolve) => {
     releaseAvatarManifest = resolve;
   });
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "Josie",
+            global_name: "Josie",
+            avatar: "live-avatar-hash",
+            avatar_decoration_data: {
+              asset: "a_live-decoration"
+            },
+            premium_type: 2
+          },
+          activities: [],
+          discord_status: "online",
+          listening_to_spotify: false,
+          spotify: {},
+          active_on_discord_web: false,
+          active_on_discord_desktop: true,
+          active_on_discord_mobile: false,
+          kv: {}
+        },
+        presence: {
+          displayName: "Josie",
+          username: "foundlifeless",
+          statusKey: "online",
+          statusLabel: "Online",
+          avatarUrl: "",
+          avatarDecorationUrl: "",
+          bannerUrl: "",
+          hasNitro: true,
+          nitroBadgeIconUrl: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png",
+          customStatusText: "",
+          primaryActivity: null,
+          spotify: {
+            isListening: false,
+            song: "",
+            artist: "",
+            album: "",
+            albumArtUrl: "",
+            trackUrl: ""
+          }
+        }
+      })
+    });
+  });
   await page.route("**/assets/avatar-manifest.json", async (route) => {
     await avatarManifestGate;
     await route.fulfill({
@@ -1080,14 +1133,18 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveAttribute("decoding", "sync");
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveAttribute(
     "src",
-    "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true"
+    "https://cdn.discordapp.com/avatar-decoration-presets/a_live-decoration.png?size=160&passthrough=true"
   );
   await expect(page.locator(".discord-presence-avatar")).toHaveCount(1);
   const discordAvatarSrc = await page.locator(".discord-presence-avatar").getAttribute("src");
-  expect(new URL(discordAvatarSrc, "http://127.0.0.1:8788").pathname).toBe("/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg");
+  expect(discordAvatarSrc).toBe("https://cdn.discordapp.com/avatars/331350000154050560/live-avatar-hash.png?size=256");
   await expect(page.locator(".discord-presence-avatar")).toHaveAttribute("loading", "eager");
   await expect(page.locator(".discord-presence-avatar")).toHaveAttribute("fetchpriority", "high");
   await expect(page.locator(".discord-presence-avatar")).toHaveAttribute("decoding", "sync");
+  await expect(page.locator(".discord-presence-avatar-decoration")).toHaveAttribute(
+    "src",
+    "https://cdn.discordapp.com/avatar-decoration-presets/a_live-decoration.png?size=160&passthrough=true"
+  );
   await expect(page.locator(".discord-presence-avatar-decoration")).toHaveAttribute("loading", "eager");
   await expect(page.locator(".discord-presence-avatar-decoration")).toHaveAttribute("fetchpriority", "high");
   await expect(page.locator(".discord-presence-avatar-decoration")).toHaveAttribute("decoding", "sync");
@@ -1102,14 +1159,10 @@ test("josie renders the profile picture without waiting on the avatar manifest",
       expect.objectContaining({
         href: "http://127.0.0.1:8788/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg",
         fetchpriority: "high"
-      }),
-      expect.objectContaining({
-        href: "https://cdn.discordapp.com/avatar-decoration-presets/a_c86b11a49bb8057ce9c974a6f7ad658a.png?size=160&passthrough=true",
-        fetchpriority: "high"
       })
     ])
   );
-  await expect(page.locator(".slice-boot-layer[data-slice-boot-key='profilePicture']")).toBeVisible({ timeout: 3_000 });
+  expect(priorityImagePreloads.some((preload) => preload.href.includes("a_c86b11a49bb8057ce9c974a6f7ad658a"))).toBe(false);
   releaseAvatarManifest();
 });
 
@@ -2549,6 +2602,9 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
             display_name: "foundlifeless",
             global_name: "FoundLifeless",
             avatar: "avatar-hash",
+            avatar_decoration_data: {
+              asset: "a_live-decoration"
+            },
             premium_type: 2
           },
           activities: [
@@ -2619,6 +2675,14 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   await expect(page.locator(".discord-presence-headline")).toContainText("Listening to up + down");
   await expect(page.locator(".discord-presence-meta")).toHaveCount(0);
   await expect(page.locator(".discord-presence-nitro-badge")).toHaveCount(1);
+  await expect(page.locator(".discord-presence-avatar")).toHaveAttribute(
+    "src",
+    "https://cdn.discordapp.com/avatars/331350000154050560/avatar-hash.png?size=256"
+  );
+  await expect(page.locator(".discord-presence-avatar-decoration")).toHaveAttribute(
+    "src",
+    "https://cdn.discordapp.com/avatar-decoration-presets/a_live-decoration.png?size=160&passthrough=true"
+  );
   await expect(page.locator(".discord-presence-album-art")).toHaveAttribute("src", /example-up-down/);
   await expect(page.locator(".discord-presence-custom-emoji")).toHaveAttribute("src", /cdn\.discordapp\.com\/emojis\/123456789012345678\.png/);
   await expect(page.locator(".discord-presence-status-dot")).toHaveCount(0);

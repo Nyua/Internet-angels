@@ -46,6 +46,27 @@ function buildSpotifyTrackUrl(trackId) {
   return safeTrackId ? `https://open.spotify.com/track/${encodeURIComponent(safeTrackId)}` : "";
 }
 
+function buildDiscordAvatarUrl(userId, avatarHash) {
+  const safeUserId = normalizeText(userId);
+  const safeHash = normalizeText(avatarHash);
+  if (!safeUserId || !safeHash) return "";
+  const ext = safeHash.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${safeUserId}/${safeHash}.${ext}?size=256`;
+}
+
+function buildDiscordBannerUrl(userId, bannerHash) {
+  const safeUserId = normalizeText(userId);
+  const safeHash = normalizeText(bannerHash);
+  if (!safeUserId || !safeHash) return "";
+  const ext = safeHash.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/banners/${safeUserId}/${safeHash}.${ext}?size=640`;
+}
+
+function buildDiscordDecorationUrl(asset) {
+  const safeAsset = normalizeText(asset);
+  return safeAsset ? `https://cdn.discordapp.com/avatar-decoration-presets/${safeAsset}.png?size=160&passthrough=true` : "";
+}
+
 function buildCustomStatusText(activity) {
   const safeActivity = activity && typeof activity === "object" ? activity : null;
   if (!safeActivity) return "";
@@ -106,9 +127,9 @@ function buildDiscordPresence({ discordUser, activities, discordStatus, listenin
     username,
     statusKey,
     statusLabel,
-    avatarUrl: "",
-    avatarDecorationUrl: "",
-    bannerUrl: "",
+    avatarUrl: buildDiscordAvatarUrl(safeUser.id, safeUser.avatar),
+    avatarDecorationUrl: buildDiscordDecorationUrl(safeUser.avatar_decoration_data?.asset),
+    bannerUrl: buildDiscordBannerUrl(safeUser.id, safeUser.banner),
     hasNitro,
     nitroBadgeIconUrl: hasNitro ? DISCORD_NITRO_BADGE_ICON_URL : "",
     customStatusText: customStatus,
