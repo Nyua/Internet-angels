@@ -121,6 +121,12 @@
       outline-offset: -14px;
     }
 
+    .intro-start-card {
+      display: grid;
+      place-items: center;
+      gap: clamp(12px, 2.4vw, 22px);
+    }
+
     .intro-start-card-message {
       max-width: min(19ch, calc(100vw - 48px));
       color: var(--intro-card-copy);
@@ -142,6 +148,27 @@
         opacity 220ms ease,
         transform 520ms var(--handoff-wipe-ease);
       will-change: opacity, transform;
+    }
+
+    .intro-start-click-gif {
+      width: clamp(88px, 18vw, 184px);
+      height: auto;
+      display: block;
+      image-rendering: pixelated;
+      opacity: 0;
+      transform: translateY(-6px) scale(0.96);
+      transition:
+        opacity 90ms ease,
+        transform 160ms ease;
+    }
+
+    .intro-start-click-gif[hidden] {
+      display: none;
+    }
+
+    body.is-intro-gif-playing .intro-start-click-gif {
+      opacity: 1;
+      transform: translateY(0) scale(1);
     }
 
     @media (max-width: 640px) {
@@ -172,6 +199,7 @@
     }
 
     body.is-handoff-visible .intro-start-card-message,
+    body.is-handoff-visible .intro-start-click-gif,
     body.is-handoff-complete .intro-start-card-message {
       opacity: 0;
       transform: translateX(32px);
@@ -212,7 +240,20 @@
       type="button"
       aria-label="Enter site. This user is a cat; therefore meow."
     >
-      <span class="intro-start-card-message">This User is A cat; Therefore, Meow</span>
+      <span class="intro-start-card">
+        <span class="intro-start-card-message">This User is A cat; Therefore, Meow</span>
+        <img
+          id="introClickGif"
+          class="intro-start-click-gif"
+          src=""
+          data-intro-click-gif-src="/assets/something.gif"
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          hidden
+        >
+      </span>
     </button>
   </div>
 
@@ -229,6 +270,7 @@
       const youtubeInlineActivationStorageKey = "internetAngelYoutubeInlineActivationAt";
       const introStartWrap = document.getElementById("introStartWrap");
       const introStartButton = document.getElementById("introStartButton");
+      const introClickGif = document.getElementById("introClickGif");
       const handoffFrameWrap = document.getElementById("handoffFrameWrap");
       const handoffFrame = document.getElementById("handoffFrame");
       const interactionSfx = window.__createInternetAngelInteractionSfx?.({
@@ -243,6 +285,8 @@
       let fallbackNavigationTriggered = false;
       let handoffReadyFallbackTimer = 0;
       let handoffCompleteTimer = 0;
+      let introClickGifPlaybackTimer = 0;
+      let introClickGifPlayed = false;
       let youtubeInlineActivationAt = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
@@ -340,6 +384,36 @@
 
       function markIntroActivated() {
         document.body.classList.add("is-intro-activated");
+      }
+
+      function clearIntroClickGifPlaybackTimer() {
+        if (!introClickGifPlaybackTimer) return;
+        window.clearTimeout(introClickGifPlaybackTimer);
+        introClickGifPlaybackTimer = 0;
+      }
+
+      function stopIntroClickGifPlayback() {
+        clearIntroClickGifPlaybackTimer();
+        document.body.classList.remove("is-intro-gif-playing");
+        if (introClickGif instanceof HTMLImageElement) {
+          introClickGif.hidden = true;
+          introClickGif.removeAttribute("src");
+        }
+      }
+
+      function playIntroClickGifOnce() {
+        if (introClickGifPlayed || !(introClickGif instanceof HTMLImageElement)) return;
+        const gifSource = String(introClickGif.getAttribute("data-intro-click-gif-src") || "").trim();
+        if (!gifSource) return;
+        introClickGifPlayed = true;
+        clearIntroClickGifPlaybackTimer();
+        introClickGif.hidden = false;
+        introClickGif.src = "";
+        window.requestAnimationFrame(() => {
+          introClickGif.src = `${gifSource}?play=${Date.now()}`;
+          document.body.classList.add("is-intro-gif-playing");
+        });
+        introClickGifPlaybackTimer = window.setTimeout(stopIntroClickGifPlayback, 1_440);
       }
 
       function updateTopLevelUrlForJosie() {
@@ -483,6 +557,7 @@
         if (introStartWrap instanceof HTMLElement) {
           introStartWrap.hidden = true;
         }
+        stopIntroClickGifPlayback();
         notifyIframeHandoffComplete();
       }
 
@@ -499,6 +574,7 @@
         if (handoffCompleted || fallbackNavigationTriggered) return;
         gateActivated = true;
         markIntroActivated();
+        playIntroClickGifOnce();
         rememberYouTubeInlineActivationGesture();
         void interactionSfx?.initFromGesture?.("introStartButton");
         preloadJosieFrame({ armFallback: true });

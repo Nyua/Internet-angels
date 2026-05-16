@@ -656,6 +656,7 @@ test("root keeps the black meow gate and preloads Josie", async ({ page }) => {
   await expect(page.locator("#handoffFrame")).toHaveAttribute("src", /handoff=1/);
   await expect(page.locator("#introVideo")).toHaveCount(0);
   await expect(page.locator("#asciiCanvas")).toHaveCount(0);
+  await expect(page.locator("#introClickGif")).toBeHidden();
 
   const introState = await page.evaluate(() => {
     const gate = document.querySelector("#introStartWrap");
@@ -679,6 +680,47 @@ test("root keeps the black meow gate and preloads Josie", async ({ page }) => {
   expect(introState.bodyBackground).toBe("rgb(0, 0, 0)");
   expect(introState.gateDisplay).toBe("flex");
   expect(introState.buttonBackground).toBe("rgb(0, 0, 0)");
+});
+
+test("root plays the meow gif once under the gate text", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelBootTimeoutMs = 5_000;
+  });
+  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#introStartButton")).toBeVisible();
+  await expect(page.locator("#introClickGif")).toBeHidden();
+
+  await page.locator("#introStartButton").click();
+  const meowGif = page.locator("#introClickGif");
+  await expect(meowGif).toBeVisible();
+  await expect(meowGif).toHaveAttribute("src", /\/assets\/something\.gif\?play=\d+/);
+
+  const meowGifPlacement = await page.evaluate(() => {
+    const message = document.querySelector(".intro-start-card-message");
+    const gif = document.querySelector("#introClickGif");
+    if (!(message instanceof HTMLElement) || !(gif instanceof HTMLImageElement)) return null;
+    const messageRect = message.getBoundingClientRect();
+    const gifRect = gif.getBoundingClientRect();
+    return {
+      isPlaying: document.body.classList.contains("is-intro-gif-playing"),
+      gifBelowMessage: gifRect.top >= messageRect.bottom - 2,
+      gifWidth: gifRect.width,
+      gifHeight: gifRect.height
+    };
+  });
+  expect(meowGifPlacement).toMatchObject({
+    isPlaying: true,
+    gifBelowMessage: true
+  });
+  expect(meowGifPlacement?.gifWidth).toBeGreaterThan(40);
+  expect(meowGifPlacement?.gifHeight).toBeGreaterThan(20);
+
+  await expect(meowGif).toBeHidden({ timeout: 2_500 });
+  await expect(page.locator("body")).not.toHaveClass(/is-intro-gif-playing/);
 });
 
 test("root repeat visits use the same meow gate and record YouTube activation", async ({ page }) => {
