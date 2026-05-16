@@ -682,17 +682,22 @@ test("root keeps the black meow gate and preloads Josie", async ({ page }) => {
   expect(introState.buttonBackground).toBe("rgb(0, 0, 0)");
 });
 
-test("root plays the meow gif once under the gate text", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__internetAngelBootTimeoutMs = 5_000;
-  });
-  await page.route(/\/josie(?:\.html)?\?handoff=1$/, async (route) => {
-    await route.abort();
-  });
-
+test("root times the meow gif with the handoff wipe without moving the gate text", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#introStartButton")).toBeVisible();
   await expect(page.locator("#introClickGif")).toBeHidden();
+  const handoffFrame = page.frameLocator("#handoffFrame");
+  await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
+
+  const textRectBeforeClick = await page.locator(".intro-start-card-message").evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  });
 
   await page.locator("#introStartButton").click();
   const meowGif = page.locator("#introClickGif");
@@ -708,6 +713,10 @@ test("root plays the meow gif once under the gate text", async ({ page }) => {
     return {
       isPlaying: document.body.classList.contains("is-intro-gif-playing"),
       gifBelowMessage: gifRect.top >= messageRect.bottom - 2,
+      messageLeft: messageRect.left,
+      messageTop: messageRect.top,
+      messageWidth: messageRect.width,
+      messageHeight: messageRect.height,
       gifWidth: gifRect.width,
       gifHeight: gifRect.height
     };
@@ -716,8 +725,21 @@ test("root plays the meow gif once under the gate text", async ({ page }) => {
     isPlaying: true,
     gifBelowMessage: true
   });
+  expect(Math.abs((meowGifPlacement?.messageLeft || 0) - textRectBeforeClick.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs((meowGifPlacement?.messageTop || 0) - textRectBeforeClick.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs((meowGifPlacement?.messageWidth || 0) - textRectBeforeClick.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs((meowGifPlacement?.messageHeight || 0) - textRectBeforeClick.height)).toBeLessThanOrEqual(1);
   expect(meowGifPlacement?.gifWidth).toBeGreaterThan(40);
   expect(meowGifPlacement?.gifHeight).toBeGreaterThan(20);
+
+  await expect(page.locator("body")).toHaveAttribute("data-bloom-to-death-state", /handoff_visible|handoff_complete/, { timeout: 2_500 });
+  const meowGifTiming = await page.evaluate(() => window.__internetAngelIntroClickGifTiming || null);
+  expect(meowGifTiming).not.toBeNull();
+  const measuredLeadMs = (meowGifTiming?.handoffStartedAt || 0) - (meowGifTiming?.startedAt || 0);
+  const gifEndsAtMs = (meowGifTiming?.startedAt || 0) + (meowGifTiming?.runtimeMs || 0);
+  const wipeCenterAtMs = (meowGifTiming?.handoffStartedAt || 0) + (meowGifTiming?.wipeCenterMs || 0);
+  expect(Math.abs(measuredLeadMs - (meowGifTiming?.handoffLeadMs || 0))).toBeLessThanOrEqual(180);
+  expect(Math.abs(gifEndsAtMs - wipeCenterAtMs)).toBeLessThanOrEqual(180);
 
   await expect(meowGif).toBeHidden({ timeout: 2_500 });
   await expect(page.locator("body")).not.toHaveClass(/is-intro-gif-playing/);

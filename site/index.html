@@ -122,9 +122,9 @@
     }
 
     .intro-start-card {
+      position: relative;
       display: grid;
       place-items: center;
-      gap: clamp(12px, 2.4vw, 22px);
     }
 
     .intro-start-card-message {
@@ -151,12 +151,16 @@
     }
 
     .intro-start-click-gif {
+      position: absolute;
+      top: calc(100% + clamp(12px, 2.4vw, 22px));
+      left: 50%;
       width: clamp(88px, 18vw, 184px);
       height: auto;
       display: block;
       image-rendering: pixelated;
+      pointer-events: none;
       opacity: 0;
-      transform: translateY(-6px) scale(0.96);
+      transform: translate(-50%, -6px) scale(0.96);
       transition:
         opacity 90ms ease,
         transform 160ms ease;
@@ -168,7 +172,7 @@
 
     body.is-intro-gif-playing .intro-start-click-gif {
       opacity: 1;
-      transform: translateY(0) scale(1);
+      transform: translate(-50%, 0) scale(1);
     }
 
     @media (max-width: 640px) {
@@ -198,11 +202,8 @@
       pointer-events: none;
     }
 
-    body.is-handoff-visible .intro-start-card-message,
-    body.is-handoff-visible .intro-start-click-gif,
     body.is-handoff-complete .intro-start-card-message {
       opacity: 0;
-      transform: translateX(32px);
     }
 
     body.is-handoff-complete .intro-start-wrap {
@@ -262,6 +263,9 @@
   <script>
     (() => {
       const handoffWipeDurationMs = 1720;
+      const introClickGifRuntimeMs = 1_440;
+      const handoffWipeCenterMs = handoffWipeDurationMs / 2;
+      const introClickGifHandoffLeadMs = Math.max(0, introClickGifRuntimeMs - handoffWipeCenterMs);
       const defaultHandoffReadyTimeoutMs = 12_000;
       const introReadyMessageType = "josie-handoff-ready";
       const introCompleteMessageType = "josie-handoff-complete";
@@ -286,7 +290,9 @@
       let handoffReadyFallbackTimer = 0;
       let handoffCompleteTimer = 0;
       let introClickGifPlaybackTimer = 0;
+      let introHandoffDelayTimer = 0;
       let introClickGifPlayed = false;
+      let introClickGifStartedAt = 0;
       let youtubeInlineActivationAt = 0;
       let state = "idle";
       let titleTypewriterTimer = 0;
@@ -304,6 +310,13 @@
         }
         return defaultHandoffReadyTimeoutMs;
       })();
+      window.__internetAngelIntroClickGifTiming = {
+        runtimeMs: introClickGifRuntimeMs,
+        wipeCenterMs: handoffWipeCenterMs,
+        handoffLeadMs: introClickGifHandoffLeadMs,
+        startedAt: 0,
+        handoffStartedAt: 0
+      };
 
       function startDocumentTitleTypewriter(finalTitle) {
         const safeTitle = String(finalTitle || "").trim();
@@ -378,6 +391,12 @@
         handoffCompleteTimer = 0;
       }
 
+      function clearIntroHandoffDelayTimer() {
+        if (!introHandoffDelayTimer) return;
+        window.clearTimeout(introHandoffDelayTimer);
+        introHandoffDelayTimer = 0;
+      }
+
       function showStartButton() {
         introStartWrap?.classList.add("is-visible");
       }
@@ -401,11 +420,24 @@
         }
       }
 
+      function syncIntroClickGifTiming(nextTiming = {}) {
+        window.__internetAngelIntroClickGifTiming = {
+          runtimeMs: introClickGifRuntimeMs,
+          wipeCenterMs: handoffWipeCenterMs,
+          handoffLeadMs: introClickGifHandoffLeadMs,
+          startedAt: introClickGifStartedAt,
+          handoffStartedAt: window.__internetAngelIntroClickGifTiming?.handoffStartedAt || 0,
+          ...nextTiming
+        };
+      }
+
       function playIntroClickGifOnce() {
         if (introClickGifPlayed || !(introClickGif instanceof HTMLImageElement)) return;
         const gifSource = String(introClickGif.getAttribute("data-intro-click-gif-src") || "").trim();
         if (!gifSource) return;
         introClickGifPlayed = true;
+        introClickGifStartedAt = performance.now();
+        syncIntroClickGifTiming({ startedAt: introClickGifStartedAt, handoffStartedAt: 0 });
         clearIntroClickGifPlaybackTimer();
         introClickGif.hidden = false;
         introClickGif.src = "";
@@ -413,7 +445,13 @@
           introClickGif.src = `${gifSource}?play=${Date.now()}`;
           document.body.classList.add("is-intro-gif-playing");
         });
-        introClickGifPlaybackTimer = window.setTimeout(stopIntroClickGifPlayback, 1_440);
+        introClickGifPlaybackTimer = window.setTimeout(stopIntroClickGifPlayback, introClickGifRuntimeMs);
+      }
+
+      function resolveIntroHandoffAlignmentDelayMs() {
+        if (!introClickGifStartedAt) return 0;
+        const elapsedMs = Math.max(0, performance.now() - introClickGifStartedAt);
+        return Math.max(0, introClickGifHandoffLeadMs - elapsedMs);
       }
 
       function updateTopLevelUrlForJosie() {
@@ -528,7 +566,21 @@
           }
           return false;
         }
+        const alignmentDelayMs = gateActivated && introClickGifPlayed ? resolveIntroHandoffAlignmentDelayMs() : 0;
+        if (alignmentDelayMs > 16) {
+          setState("handoff_pending");
+          armHandoffReadyFallbackTimer();
+          if (!introHandoffDelayTimer) {
+            introHandoffDelayTimer = window.setTimeout(() => {
+              introHandoffDelayTimer = 0;
+              beginVisualHandoff();
+            }, alignmentDelayMs);
+          }
+          return false;
+        }
+        clearIntroHandoffDelayTimer();
         handoffVisible = true;
+        syncIntroClickGifTiming({ handoffStartedAt: performance.now() });
         setState("handoff_visible");
         interactionSfx?.setPage?.("josie");
         updateTopLevelUrlForJosie();
@@ -552,6 +604,7 @@
         interactionSfx?.setPage?.("josie");
         clearHandoffReadyFallbackTimer();
         clearHandoffCompleteTimer();
+        clearIntroHandoffDelayTimer();
         document.body.classList.remove("is-handoff-visible");
         document.body.classList.add("is-handoff-complete");
         if (introStartWrap instanceof HTMLElement) {
@@ -567,6 +620,7 @@
         setState("handoff_fallback_navigation");
         clearHandoffReadyFallbackTimer();
         clearHandoffCompleteTimer();
+        clearIntroHandoffDelayTimer();
         window.location.replace(resolveJosieDocumentUrl().toString());
       }
 
