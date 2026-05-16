@@ -26,7 +26,6 @@
     "input:not([type='hidden']):not([disabled])",
     "select:not([disabled])",
     "textarea:not([disabled])",
-    "[data-shuffle-surface]",
     "[tabindex]:not([tabindex='-1'])"
   ].join(", ");
   var socialHubInitialized = false;
@@ -1951,9 +1950,6 @@
       sampled: false
     };
     let visualizerLayerHost = null;
-    let visualizerFocusMode = false;
-    let visualizerFocusKeydownListener = null;
-    let visualizerFocusLinkClickListener = null;
     let appliedVisualizerMode = "";
     let appliedVisualizerDeviceProfile = "";
     let appliedVisualizerModePlayerRoot = null;
@@ -3545,42 +3541,6 @@
       appliedVisualizerModePlayerRoot = playerRoot;
       appliedVisualizerModeWaveSurface = waveSurface;
     }
-    function resolveVisualizerFocusLayer() {
-      const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
-        ? visualizerLayerHost
-        : document.getElementById("os-shuffle-visualizer-layer");
-      visualizerLayerHost = layerHost instanceof HTMLElement ? layerHost : null;
-      return visualizerLayerHost;
-    }
-    function syncVisualizerFocusMode() {
-      if (visualizerFocusMode) {
-        visualizerFocusMode = false;
-        invalidateWaveLayout();
-      }
-      const mode = "idle";
-      const layerHost = resolveVisualizerFocusLayer();
-      document.body?.setAttribute("data-visualizer-focus-mode", mode);
-      if (layerHost instanceof HTMLElement) {
-        layerHost.setAttribute("data-visualizer-focus-mode", mode);
-      }
-      if (playerRoot instanceof HTMLElement) {
-        playerRoot.setAttribute("data-visualizer-focus-mode", mode);
-      }
-      if (waveSurface instanceof HTMLElement) {
-        waveSurface.setAttribute("data-visualizer-focus-mode", mode);
-        waveSurface.setAttribute("aria-label", "Audio visualizer");
-      }
-    }
-    function setVisualizerFocusMode(active) {
-      visualizerFocusMode = false;
-      syncVisualizerFocusMode();
-      if (playbackUnlocked && !compactPlayerMode) {
-        ensureWaveCanvasSize();
-      }
-    }
-    function toggleVisualizerFocusMode() {
-      setVisualizerFocusMode(false);
-    }
     function resolveShuffleTheme(track) {
       const themeKey = firstNonEmpty(
         track?.queueId,
@@ -3958,7 +3918,6 @@
     }
     function syncUi() {
       syncVisualizerPerformanceMode();
-      syncVisualizerFocusMode();
       const state = buildPublicState();
       const previousState = lastUiState;
       if (titleEl instanceof HTMLElement) {
@@ -4115,9 +4074,7 @@
         invalidateWaveLayout();
         return null;
       }
-      const targetDrawTop = visualizerFocusMode
-        ? Math.round(surfaceRect.top)
-        : Math.round(viewportHeight - drawHeight - SHUFFLE_STAGE_BOTTOM_OFFSET_PX);
+      const targetDrawTop = Math.round(viewportHeight - drawHeight - SHUFFLE_STAGE_BOTTOM_OFFSET_PX);
       const drawTop = clamp2(
         targetDrawTop,
         0,
@@ -4509,7 +4466,6 @@
       }
       viewportGeometryListener = () => {
         invalidateWaveLayout();
-        syncVisualizerFocusMode();
         if (playbackUnlocked && !compactPlayerMode) {
           ensureWaveCanvasSize();
           return;
@@ -4538,15 +4494,6 @@
         window.visualViewport?.removeEventListener("scroll", viewportGeometryListener);
         viewportGeometryListener = null;
       }
-      if (visualizerFocusKeydownListener) {
-        window.removeEventListener("keydown", visualizerFocusKeydownListener, true);
-        visualizerFocusKeydownListener = null;
-      }
-      if (visualizerFocusLinkClickListener) {
-        window.removeEventListener("click", visualizerFocusLinkClickListener, true);
-        visualizerFocusLinkClickListener = null;
-      }
-      setVisualizerFocusMode(false);
       playerRoot = null;
       waveSurface = null;
       lastUiState = null;
@@ -13625,11 +13572,6 @@
             <path class="site-pointer-cross-shape" d="M6 6 18 18 M18 6 6 18"></path>
           </svg>
         </span>
-        <span class="site-pointer-expand" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path class="site-pointer-expand-shape" d="M8.4 4.8H4.8v3.6M4.8 4.8l5.2 5.2M15.6 19.2h3.6v-3.6M19.2 19.2 14 14M15.6 4.8h3.6v3.6M19.2 4.8 14 10M8.4 19.2H4.8v-3.6M4.8 19.2l5.2-5.2"></path>
-          </svg>
-        </span>
         <span class="site-pointer-core"></span>
         <span class="site-pointer-arrow"></span>
       </span>
@@ -13934,9 +13876,7 @@
         return;
       }
       cursorEl.classList.add("is-interactive");
-      const morphToken = currentInteractiveTarget.matches("[data-shuffle-surface]")
-        ? "expand"
-        : currentInteractiveTarget.getAttribute("data-cursor-morph") || "orb";
+      const morphToken = currentInteractiveTarget.getAttribute("data-cursor-morph") || "orb";
       applyCursorMorph(morphToken);
       syncCursorContrast(currentInteractiveTarget, x, y);
       if (currentMorphToken !== morphToken) {

@@ -1373,7 +1373,7 @@ test("josie exposes a keyboard skip link into the social hub", async ({ page }) 
   await expect(page).toHaveURL(/#social-hub-root$/);
 });
 
-test("josie keeps the visualizer inline when the desktop surface is clicked", async ({ page }) => {
+test("josie keeps the visualizer surface out of expand cursor mode", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
@@ -1390,8 +1390,24 @@ test("josie keeps the visualizer inline when the desktop surface is clicked", as
       isPrimary: true
     }));
   });
-  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "idle");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-focus-mode", "idle");
+  await emitCustomCursorHover(page, "#os-shuffle-visualizer-surface");
+  const visualizerCursorState = await page.evaluate(() => {
+    const cursor = document.querySelector(".site-pointer");
+    const layer = document.querySelector("#os-shuffle-visualizer-layer");
+    const surface = document.querySelector("#os-shuffle-visualizer-surface");
+    return {
+      cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
+      cursorInteractive: cursor instanceof HTMLElement ? cursor.classList.contains("is-interactive") : false,
+      bodyFocusMode: document.body.getAttribute("data-visualizer-focus-mode"),
+      layerFocusMode: layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-focus-mode") : null,
+      surfaceFocusMode: surface instanceof HTMLElement ? surface.getAttribute("data-visualizer-focus-mode") : null
+    };
+  });
+  expect(visualizerCursorState.cursorMorph).toBe("orb");
+  expect(visualizerCursorState.cursorInteractive).toBe(false);
+  expect(visualizerCursorState.bodyFocusMode).toBeNull();
+  expect(visualizerCursorState.layerFocusMode).toBeNull();
+  expect(visualizerCursorState.surfaceFocusMode).toBeNull();
   await expect(page.locator("#social-hub-scale-frame")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveCount(0);
 });
@@ -1830,8 +1846,41 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   const audioControl = page.locator("[data-site-audio-control]");
   await expect(audioControl).toBeVisible();
   await expect(page.locator(".site-audio-volume-label")).toHaveCount(0);
-  const initialAudioControlWidth = await audioControl.evaluate((node) => node.getBoundingClientRect().width);
-  expect(initialAudioControlWidth).toBeLessThanOrEqual(90);
+  const initialAudioControlState = await audioControl.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const videoToggle = node.querySelector("[data-site-video-toggle]");
+    return {
+      width: rect.width,
+      videoToggleVisible: videoToggle instanceof HTMLElement
+        && !videoToggle.hidden
+        && window.getComputedStyle(videoToggle).display !== "none",
+      formerVideoButtonPoint: {
+        x: rect.left + 63,
+        y: rect.top + rect.height / 2
+      }
+    };
+  });
+  const restingAudioControlWidthLimit = initialAudioControlState.videoToggleVisible ? 90 : 50;
+  expect(initialAudioControlState.width).toBeLessThanOrEqual(restingAudioControlWidthLimit);
+  if (!initialAudioControlState.videoToggleVisible) {
+    await page.mouse.move(
+      initialAudioControlState.formerVideoButtonPoint.x,
+      initialAudioControlState.formerVideoButtonPoint.y
+    );
+    const formerVideoButtonHoverState = await page.evaluate((point) => {
+      const audioShell = document.querySelector("[data-site-audio-control]");
+      const cursor = document.querySelector(".site-pointer");
+      const hitTarget = document.elementFromPoint(point.x, point.y);
+      return {
+        hitAudioShell: audioShell instanceof HTMLElement && hitTarget instanceof Node
+          ? audioShell.contains(hitTarget)
+          : false,
+        cursorInteractive: cursor instanceof HTMLElement ? cursor.classList.contains("is-interactive") : false
+      };
+    }, initialAudioControlState.formerVideoButtonPoint);
+    expect(formerVideoButtonHoverState.hitAudioShell).toBe(false);
+    expect(formerVideoButtonHoverState.cursorInteractive).toBe(false);
+  }
   await audioControl.hover();
   await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_000 }).toBeGreaterThan(190);
   await page.locator("[data-site-volume-slider]").evaluate((node) => {
@@ -1841,7 +1890,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-volume", "0.42");
   await page.mouse.move(420, 420);
-  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_500 }).toBeLessThanOrEqual(90);
+  await expect.poll(async () => audioControl.evaluate((node) => node.getBoundingClientRect().width), { timeout: 2_500 }).toBeLessThanOrEqual(restingAudioControlWidthLimit);
   await page.locator("[data-mobile-speaker-toggle]").click();
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
   await page.waitForFunction(() => {
@@ -4323,7 +4372,7 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
       isPrimary: true
     }));
   });
-  await expect(page.locator("body")).toHaveAttribute("data-visualizer-focus-mode", "idle");
+  await expect.poll(async () => page.evaluate(() => document.body.getAttribute("data-visualizer-focus-mode"))).toBeNull();
   await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveCount(0);
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
