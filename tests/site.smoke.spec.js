@@ -25,8 +25,8 @@ const SPOTIFY_PREVIEW_AUDIO_BUFFER = createSilentWavBuffer();
 const BLOOM_TITLE_PATTERN = /^Bloom(?:To(?:Death)?)?$/;
 const JOSIE_TITLE_PATTERN = /^J(?:o(?:s(?:i(?:e)?)?)?)?$/;
 
-async function stubSpotifyIframeApi(page) {
-  await page.addInitScript(() => {
+async function stubSpotifyIframeApi(page, options = {}) {
+  await page.addInitScript((stubOptions) => {
     window.__spotifyEmbedControllers = [];
     window.__spotifyEmbedControllerMode = { hangNext: false, delayNextMs: 0 };
     const createController = (target, options, callback) => {
@@ -41,14 +41,22 @@ async function stubSpotifyIframeApi(page) {
       }
       const realizeController = () => {
         const listeners = new Map();
+        let iframe = null;
         if (target instanceof HTMLElement) {
           target.innerHTML = "";
-          const iframe = document.createElement("iframe");
-          iframe.className = "lastfm-track-panel-spotify-embed";
+          iframe = document.createElement("iframe");
+          if (!stubOptions?.replaceTarget) {
+            iframe.className = "lastfm-track-panel-spotify-embed";
+          }
           iframe.src = "about:blank";
           iframe.title = "Stub Spotify embed";
           iframe.setAttribute("aria-hidden", "true");
-          target.appendChild(iframe);
+          iframe.setAttribute("allow", "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture");
+          if (stubOptions?.replaceTarget && target.parentElement) {
+            target.replaceWith(iframe);
+          } else {
+            target.appendChild(iframe);
+          }
         }
         const emit = (eventName, payload) => {
           const handlers = listeners.get(eventName) || [];
@@ -69,6 +77,10 @@ async function stubSpotifyIframeApi(page) {
             emit("playback_update", { data: { isPaused: true } });
           },
           destroy() {
+            if (iframe instanceof HTMLIFrameElement && iframe.isConnected) {
+              iframe.remove();
+              return;
+            }
             if (target instanceof HTMLElement) {
               target.innerHTML = "";
             }
@@ -95,7 +107,7 @@ async function stubSpotifyIframeApi(page) {
       const entry = window.__spotifyEmbedControllers?.[index];
       entry?.controller?.__emit?.(eventName, payload);
     };
-  });
+  }, options);
 }
 
 async function setLastFmPanelSceneDebug(page, nextDebug = {}) {
@@ -4142,7 +4154,7 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   });
 
   await stubWindowOpen(page);
-  await stubSpotifyIframeApi(page);
+  await stubSpotifyIframeApi(page, { replaceTarget: true });
 
   let oneTimeDetailsFulfilled = false;
   const trackScrobbleItems = Array.from({ length: 31 }, (_, index) => ({

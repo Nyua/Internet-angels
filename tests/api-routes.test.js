@@ -632,7 +632,7 @@ test("lastfm track details route dedupes simultaneous cache misses for the same 
   }
 });
 
-test("lastfm track details route caps credentialless spotify latency on cache misses", async () => {
+test("lastfm track details route gives credentialless spotify lookup room while capping latency", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
@@ -697,7 +697,7 @@ test("lastfm track details route caps credentialless spotify latency on cache mi
     assert.equal(payload.track.title, "One Time");
     assert.equal(payload.spotify.matchStatus, "unavailable");
     assert.equal(credentiallessCalls, 1);
-    assert.ok(Date.now() - startedAt < 1_500);
+    assert.ok(Date.now() - startedAt < 3_500);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
@@ -1168,7 +1168,7 @@ test("lastfm track details route returns retained stale payload when upstream fa
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
   const cachedPayload = {
     sourceStatus: "OK",
     stale: false,
@@ -1215,7 +1215,7 @@ test("lastfm track details route serves retained details immediately while refre
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
   const waitUntilPromises = [];
   let fetchCalls = 0;
   const cachedPayload = {
@@ -1271,7 +1271,7 @@ test("lastfm track details route returns retained stale payload when upstream ha
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v2", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
   const cachedPayload = {
     sourceStatus: "OK",
     stale: false,

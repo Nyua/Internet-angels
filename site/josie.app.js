@@ -9308,7 +9308,8 @@
           src="${escapeHtml(safeEmbedUrl)}"
           title="Spotify preview for ${escapeHtml(trackTitle || "track")}"
           loading="lazy"
-          allow="autoplay; clipboard-write; picture-in-picture"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          allowfullscreen
           scrolling="no"
         ></iframe>
       `;
@@ -9318,11 +9319,23 @@
     }
     function suppressSpotifyEmbedScrollbars(embedTarget) {
       if (!(embedTarget instanceof HTMLElement)) return;
-      embedTarget.style.overflow = "hidden";
-      embedTarget.style.scrollbarWidth = "none";
-      const iframe = embedTarget.querySelector("iframe");
+      const embedSlot = embedTarget.matches("[data-spotify-track-embed-slot]")
+        ? embedTarget
+        : embedTarget.closest("[data-spotify-track-embed-slot]");
+      const iframe = embedTarget instanceof HTMLIFrameElement
+        ? embedTarget
+        : embedTarget.querySelector("iframe") || embedSlot?.querySelector("iframe");
       if (!(iframe instanceof HTMLIFrameElement)) return;
+      const frameHost = iframe.closest("[data-spotify-track-embed-target]")
+        || (iframe.parentElement instanceof HTMLElement ? iframe.parentElement : null);
+      if (frameHost instanceof HTMLElement) {
+        frameHost.classList.add("lastfm-track-panel-spotify-embed-host");
+        frameHost.style.overflow = "hidden";
+        frameHost.style.scrollbarWidth = "none";
+      }
       iframe.classList.add("lastfm-track-panel-spotify-embed");
+      iframe.setAttribute("allow", "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture");
+      iframe.setAttribute("allowfullscreen", "");
       iframe.setAttribute("scrolling", "no");
       iframe.style.overflow = "hidden";
       iframe.style.scrollbarWidth = "none";
@@ -9390,7 +9403,7 @@
                 return;
               }
               lastFmSpotifyEmbedController = controller;
-              suppressSpotifyEmbedScrollbars(embedTarget);
+              suppressSpotifyEmbedScrollbars(embedSlot instanceof HTMLElement ? embedSlot : embedTarget);
               controller?.addListener?.("playback_started", () => {
                 if (loadToken !== lastFmSpotifyEmbedLoadToken) return;
                 pauseShuffleForTrackPreview();
