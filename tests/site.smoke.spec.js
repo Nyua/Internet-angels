@@ -3678,12 +3678,13 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
     return row instanceof HTMLElement && row.dataset.mobileLinksReveal === "visible";
   });
   await expect(page.locator(".steam-sidebar-list--mobile-icons")).toBeVisible();
-  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(5);
+  await expect(page.locator(".steam-sidebar-link--icon-only")).toHaveCount(6);
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(0)).toHaveAttribute("data-mobile-site-id", "soundcloud");
   await expect(page.locator(".steam-sidebar-link--icon-only").nth(1)).toHaveAttribute("data-mobile-site-id", "spotify");
-  await expect(page.locator(".steam-sidebar-link--icon-only").nth(2)).toHaveAttribute("data-mobile-site-id", "discord");
-  await expect(page.locator(".steam-sidebar-link--icon-only").nth(4)).toHaveAttribute("data-mobile-site-id", "twitter");
-  await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="lastfm"]')).toHaveCount(0);
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(2)).toHaveAttribute("data-mobile-site-id", "lastfm");
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(3)).toHaveAttribute("data-mobile-site-id", "discord");
+  await expect(page.locator(".steam-sidebar-link--icon-only").nth(5)).toHaveAttribute("data-mobile-site-id", "twitter");
+  await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="lastfm"]')).toHaveCount(1);
   await expect(page.locator('.steam-sidebar-link--icon-only[data-mobile-site-id="portfolio"]')).toHaveCount(0);
   await expect(page.locator("#social-hub-showcases")).toBeVisible();
   await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
@@ -3700,7 +3701,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileIconRowShell.paddingTop).toBeGreaterThanOrEqual(10);
   expect(mobileIconRowShell.paddingBottom).toBeGreaterThanOrEqual(10);
   const mobileAuraVariables = await page.locator(".steam-sidebar-link--icon-only").evaluateAll((nodes) => nodes.map((node) => window.getComputedStyle(node).getPropertyValue("--mobile-link-aura-rgb").trim()));
-  expect(new Set(mobileAuraVariables).size).toBe(5);
+  expect(new Set(mobileAuraVariables).size).toBe(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
   await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
@@ -3713,6 +3714,16 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
+  const mobileCurrentlyPlayingType = await page.evaluate(() => {
+    const label = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-label");
+    const title = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-title");
+    return {
+      labelAlign: label instanceof HTMLElement ? window.getComputedStyle(label).textAlign : "",
+      titleSize: title instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(title).fontSize) || 0 : 0
+    };
+  });
+  expect(mobileCurrentlyPlayingType.labelAlign).toBe("center");
+  expect(mobileCurrentlyPlayingType.titleSize).toBeGreaterThanOrEqual(23);
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(expectedTrack?.title || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
   await expect.poll(async () => {
@@ -6027,50 +6038,33 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
 
   await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
-  await page.evaluate(() => {
+  const mobileDropdownBackdropState = await page.evaluate(() => {
+    document.querySelector("#os-stage")?.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+    const iconRow = document.querySelector(".steam-sidebar-list--mobile-icons");
+    const currentPlaying = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const recentDropdown = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]');
     const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
-    if (!(recentDropdown instanceof HTMLElement) || !(topArtistsSection instanceof HTMLElement)) return;
-    const recentRect = recentDropdown.getBoundingClientRect();
-    const topArtistsRect = topArtistsSection.getBoundingClientRect();
-    const overlapOffset = Math.max(0, Math.ceil(topArtistsRect.top - recentRect.bottom + 44));
-    topArtistsSection.style.marginTop = `${-overlapOffset}px`;
-    document.querySelector("#os-stage")?.dispatchEvent(new Event("scroll"));
-    window.dispatchEvent(new Event("resize"));
-  });
-  await page.waitForFunction(() => {
-    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
-    return topArtistsSection instanceof HTMLElement
-      && topArtistsSection.dataset.mobileLastfmOccluded === "true"
-      && window.getComputedStyle(topArtistsSection).visibility === "hidden";
-  });
-  const mobileDropdownOcclusionState = await page.evaluate(() => {
-    const recentSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')?.closest(".lastfm-section--mobile-dropdown");
-    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
-    const topArtistsStyles = topArtistsSection instanceof HTMLElement ? window.getComputedStyle(topArtistsSection) : null;
+    const iconRowStyles = iconRow instanceof HTMLElement ? window.getComputedStyle(iconRow) : null;
+    const currentPlayingStyles = currentPlaying instanceof HTMLElement ? window.getComputedStyle(currentPlaying) : null;
+    const recentDropdownStyles = recentDropdown instanceof HTMLElement ? window.getComputedStyle(recentDropdown) : null;
     return {
-      recentOccluded: recentSection instanceof HTMLElement ? recentSection.dataset.mobileLastfmOccluded || "" : "",
+      iconRowFilter: iconRowStyles?.filter || "",
+      iconRowVisibility: iconRowStyles?.visibility || "",
+      iconRowAriaHidden: iconRow instanceof HTMLElement ? iconRow.getAttribute("aria-hidden") : "",
+      currentPlayingFilter: currentPlayingStyles?.filter || "",
+      dropdownBackdropFilter: recentDropdownStyles?.backdropFilter || recentDropdownStyles?.webkitBackdropFilter || "",
       topArtistsOccluded: topArtistsSection instanceof HTMLElement ? topArtistsSection.dataset.mobileLastfmOccluded || "" : "",
-      topArtistsAriaHidden: topArtistsSection instanceof HTMLElement ? topArtistsSection.getAttribute("aria-hidden") : "",
-      topArtistsPointerEvents: topArtistsStyles?.pointerEvents || ""
+      topArtistsAriaHidden: topArtistsSection instanceof HTMLElement ? topArtistsSection.getAttribute("aria-hidden") : ""
     };
   });
-  expect(mobileDropdownOcclusionState.recentOccluded).toBe("");
-  expect(mobileDropdownOcclusionState.topArtistsOccluded).toBe("true");
-  expect(mobileDropdownOcclusionState.topArtistsAriaHidden).toBe("true");
-  expect(mobileDropdownOcclusionState.topArtistsPointerEvents).toBe("none");
-  await page.evaluate(() => {
-    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
-    if (topArtistsSection instanceof HTMLElement) {
-      topArtistsSection.style.marginTop = "";
-    }
-    document.querySelector("#os-stage")?.dispatchEvent(new Event("scroll"));
-    window.dispatchEvent(new Event("resize"));
-  });
-  await page.waitForFunction(() => {
-    const topArtistsSection = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')?.closest(".lastfm-section--mobile-dropdown");
-    return topArtistsSection instanceof HTMLElement && !topArtistsSection.hasAttribute("data-mobile-lastfm-occluded");
-  });
+  expect(mobileDropdownBackdropState.iconRowFilter).toContain("blur");
+  expect(mobileDropdownBackdropState.currentPlayingFilter).toContain("blur");
+  expect(mobileDropdownBackdropState.dropdownBackdropFilter).toContain("blur");
+  expect(mobileDropdownBackdropState.iconRowVisibility).not.toBe("hidden");
+  expect(mobileDropdownBackdropState.iconRowAriaHidden).toBeNull();
+  expect(mobileDropdownBackdropState.topArtistsOccluded).toBe("");
+  expect(mobileDropdownBackdropState.topArtistsAriaHidden).toBeNull();
   await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
   await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
 

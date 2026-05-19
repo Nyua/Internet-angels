@@ -6729,7 +6729,7 @@
     const compact = Boolean(options?.compact);
     const mobileLinksRevealState = compact ? String(options?.mobileLinksRevealState || "pending") : "";
     const shuffleState = options?.shuffleState || null;
-    const renderSites = compact ? ["soundcloud", "spotify", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
+    const renderSites = compact ? ["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"].map((siteId) => sites.find((site) => site.id === siteId)).filter(Boolean) : sites;
     const rows = renderSites.map((site) => {
       const payload = ensurePayload(site, payloadById.get(site.id));
       const openUrl = sanitizeUrl(payload.profile?.url || site.url);
@@ -6865,9 +6865,6 @@
     let mobileLastFmRevealTimer = 0;
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
-    let mobileLastFmDropdownOcclusionRaf = 0;
-    let mobileLastFmDropdownOcclusionTimer = 0;
-    let mobileLastFmDropdownOccludedElements = /* @__PURE__ */ new Set();
     let desktopUnfoldPlayed = false;
     let desktopUnfoldClearTimer = 0;
     let activeAngelsFooter = null;
@@ -6903,17 +6900,7 @@
     const LASTFM_PANEL_BUILD_STEP_MS = 38;
     const LASTFM_PANEL_BUILD_DURATION_MS = 260;
     const SPOTIFY_EMBED_CONTROLLER_TIMEOUT_MS = 1500;
-    const MOBILE_LASTFM_DROPDOWN_OCCLUDABLE_SELECTOR = [
-      "#social-hub-profile",
-      "#social-hub-profile-tagline",
-      "#social-hub-sidebar .steam-sidebar-list--mobile-icons",
-      "#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal",
-      "#social-hub-showcases .lastfm-section--mobile-dropdown",
-      ".mobile-speaker-toggle",
-      ".site-video-toggle"
-    ].join(", ");
     const lastFmTrackPanelSceneRuntime = new WeakMap();
-    const mobileLastFmDropdownOcclusionState = new WeakMap();
     let mobileLinkSelectionTimer = 0;
     let mobileLinkSelectedKey = "";
     let mobileLinkSelectionPhase = "idle";
@@ -7202,124 +7189,6 @@
         return showcases.querySelector(`[data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="${key}"]`);
       }
       return showcases.querySelector("[data-mobile-lastfm-dropdown]");
-    }
-    function getVisibleElementRect(element) {
-      if (!(element instanceof HTMLElement) || element.hidden || !element.isConnected) return null;
-      const rect = element.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return null;
-      return rect;
-    }
-    function rectsOverlap(firstRect, secondRect) {
-      if (!firstRect || !secondRect) return false;
-      const overlapX = Math.min(firstRect.right, secondRect.right) - Math.max(firstRect.left, secondRect.left);
-      const overlapY = Math.min(firstRect.bottom, secondRect.bottom) - Math.max(firstRect.top, secondRect.top);
-      return overlapX > 0.5 && overlapY > 0.5;
-    }
-    function getOpenMobileLastFmDropdowns() {
-      if (!(showcases instanceof HTMLElement)) return [];
-      return Array.from(showcases.querySelectorAll("[data-mobile-lastfm-dropdown]")).filter((node) => {
-        return node instanceof HTMLDetailsElement && node.open && node.isConnected && getVisibleElementRect(node);
-      });
-    }
-    function setMobileLastFmDropdownOccluded(element, occluded) {
-      if (!(element instanceof HTMLElement)) return;
-      if (occluded) {
-        if (!mobileLastFmDropdownOcclusionState.has(element)) {
-          mobileLastFmDropdownOcclusionState.set(element, {
-            ariaHidden: element.getAttribute("aria-hidden"),
-            inert: Boolean(element.inert)
-          });
-        }
-        element.dataset.mobileLastfmOccluded = "true";
-        element.setAttribute("aria-hidden", "true");
-        element.inert = true;
-        return;
-      }
-      const previousState = mobileLastFmDropdownOcclusionState.get(element);
-      if (previousState) {
-        if (previousState.ariaHidden === null) {
-          element.removeAttribute("aria-hidden");
-        } else {
-          element.setAttribute("aria-hidden", previousState.ariaHidden);
-        }
-        element.inert = previousState.inert;
-        mobileLastFmDropdownOcclusionState.delete(element);
-      } else {
-        element.removeAttribute("aria-hidden");
-        element.inert = false;
-      }
-      delete element.dataset.mobileLastfmOccluded;
-    }
-    function clearMobileLastFmDropdownOcclusion() {
-      if (mobileLastFmDropdownOcclusionRaf) {
-        window.cancelAnimationFrame(mobileLastFmDropdownOcclusionRaf);
-        mobileLastFmDropdownOcclusionRaf = 0;
-      }
-      if (mobileLastFmDropdownOcclusionTimer) {
-        window.clearTimeout(mobileLastFmDropdownOcclusionTimer);
-        mobileLastFmDropdownOcclusionTimer = 0;
-      }
-      mobileLastFmDropdownOccludedElements.forEach((element) => {
-        setMobileLastFmDropdownOccluded(element, false);
-      });
-      mobileLastFmDropdownOccludedElements.clear();
-      if (root2 instanceof HTMLElement) {
-        delete root2.dataset.mobileLastfmDropdownOcclusionActive;
-      }
-    }
-    function refreshMobileLastFmDropdownOcclusion() {
-      mobileLastFmDropdownOcclusionRaf = 0;
-      if (!isCompactMobileLayout()) {
-        clearMobileLastFmDropdownOcclusion();
-        return;
-      }
-      const openDropdowns = getOpenMobileLastFmDropdowns();
-      if (!openDropdowns.length) {
-        clearMobileLastFmDropdownOcclusion();
-        return;
-      }
-      const dropdownRects = openDropdowns.map((dropdown) => getVisibleElementRect(dropdown)).filter(Boolean);
-      const nextOccludedElements = /* @__PURE__ */ new Set();
-      const candidates = Array.from(document.querySelectorAll(MOBILE_LASTFM_DROPDOWN_OCCLUDABLE_SELECTOR));
-      candidates.forEach((candidate) => {
-        if (!(candidate instanceof HTMLElement)) return;
-        if (openDropdowns.some((dropdown) => dropdown === candidate || dropdown.contains(candidate) || candidate.contains(dropdown))) return;
-        const candidateRect = getVisibleElementRect(candidate);
-        if (!candidateRect) return;
-        if (dropdownRects.some((dropdownRect) => rectsOverlap(dropdownRect, candidateRect))) {
-          nextOccludedElements.add(candidate);
-        }
-      });
-      mobileLastFmDropdownOccludedElements.forEach((element) => {
-        if (!nextOccludedElements.has(element)) {
-          setMobileLastFmDropdownOccluded(element, false);
-        }
-      });
-      nextOccludedElements.forEach((element) => {
-        setMobileLastFmDropdownOccluded(element, true);
-      });
-      mobileLastFmDropdownOccludedElements = nextOccludedElements;
-      if (root2 instanceof HTMLElement) {
-        root2.dataset.mobileLastfmDropdownOcclusionActive = nextOccludedElements.size ? "true" : "false";
-      }
-    }
-    function scheduleMobileLastFmDropdownOcclusion(options = {}) {
-      if (!isCompactMobileLayout()) {
-        clearMobileLastFmDropdownOcclusion();
-        return;
-      }
-      if (!mobileLastFmDropdownOcclusionRaf) {
-        mobileLastFmDropdownOcclusionRaf = window.requestAnimationFrame(refreshMobileLastFmDropdownOcclusion);
-      }
-      const followUpMs = Math.max(0, Number(options?.followUpMs) || 0);
-      if (!followUpMs) return;
-      if (mobileLastFmDropdownOcclusionTimer) {
-        window.clearTimeout(mobileLastFmDropdownOcclusionTimer);
-      }
-      mobileLastFmDropdownOcclusionTimer = window.setTimeout(() => {
-        mobileLastFmDropdownOcclusionTimer = 0;
-        scheduleMobileLastFmDropdownOcclusion();
-      }, followUpMs);
     }
     function setMobileLastFmRevealState(nextState) {
       getMobileLastFmRevealTargets().forEach((reveal) => {
@@ -10830,7 +10699,6 @@
       }
       target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
       animateMobileLastFmDropdown(target);
-      scheduleMobileLastFmDropdownOcclusion({ followUpMs: 360 });
     }
     function onRefreshClick() {
       if (typeof onRefreshRequested !== "function") return;
@@ -10855,7 +10723,6 @@
         clearMobileDiscordRevealTimer();
         clearMobileLinksRevealTimer();
         clearMobileLastFmRevealTimer();
-        clearMobileLastFmDropdownOcclusion();
         clearMobileLinkSelectedState();
         clearPendingMobileExternalLaunch();
       }
@@ -10917,7 +10784,6 @@
         syncMobileLinkSelectedState();
         scheduleMobileDiscordReveal();
         scheduleMobileLastFmReveal();
-        scheduleMobileLastFmDropdownOcclusion({ followUpMs: 360 });
       }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);
@@ -10957,13 +10823,8 @@
     const handleMobileSelectionPageHide = () => {
       clearMobileLinkSelectedState();
     };
-    const handleMobileLastFmDropdownOcclusionChange = () => {
-      scheduleMobileLastFmDropdownOcclusion();
-    };
     document.addEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
     window.addEventListener("pagehide", handleMobileSelectionPageHide);
-    window.addEventListener("resize", handleMobileLastFmDropdownOcclusionChange);
-    osStage?.addEventListener("scroll", handleMobileLastFmDropdownOcclusionChange, { passive: true });
     root2?.addEventListener("click", onRootClick);
     root2?.addEventListener("pointerover", onRootPrefetchIntent);
     root2?.addEventListener("focusin", onRootPrefetchIntent);
@@ -11002,13 +10863,10 @@
       clearMobileLastFmRevealTimer();
       clearDesktopUnfoldTimer();
       clearDesktopUnfoldOrdering();
-      clearMobileLastFmDropdownOcclusion();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
-      window.removeEventListener("resize", handleMobileLastFmDropdownOcclusionChange);
-      osStage?.removeEventListener("scroll", handleMobileLastFmDropdownOcclusionChange);
       root2?.removeEventListener("pointerover", onRootPrefetchIntent);
       root2?.removeEventListener("focusin", onRootPrefetchIntent);
       root2?.removeEventListener("toggle", onRootToggle, true);
