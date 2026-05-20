@@ -483,7 +483,7 @@ async function installYouTubePlayerMock(page) {
           const iframe = document.createElement("iframe");
           iframe.title = "Mock YouTube player";
           iframe.src = "about:blank#youtube";
-          iframe.allow = "autoplay; encrypted-media; picture-in-picture";
+          iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share";
           host.append(iframe);
         }
         const player = {
@@ -1260,13 +1260,18 @@ test("josie keeps the Shuffle video background opt-in and low-memory", async ({ 
     const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
     const youtubeFrame = youtubeHost?.querySelector("iframe");
     const youtubeFrameRect = youtubeHost instanceof HTMLElement ? youtubeHost.getBoundingClientRect() : null;
+    const layerStyles = layer instanceof HTMLElement ? window.getComputedStyle(layer) : null;
     const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
     return {
       ariaHidden: layer instanceof HTMLElement ? layer.getAttribute("aria-hidden") : "",
       backgroundKind: layer instanceof HTMLElement ? layer.dataset.shuffleBackgroundKind || "" : "",
+      layerVisibility: layerStyles?.visibility || "",
       youtubeFramePresent: youtubeFrame instanceof HTMLIFrameElement,
       youtubeFrameWidth: youtubeFrameRect?.width || 0,
       youtubeFrameHeight: youtubeFrameRect?.height || 0,
+      youtubeFrameAllow: youtubeFrame instanceof HTMLIFrameElement ? youtubeFrame.getAttribute("allow") || "" : "",
+      youtubeFrameAllowFullscreen: youtubeFrame instanceof HTMLIFrameElement ? youtubeFrame.hasAttribute("allowfullscreen") : false,
+      youtubeFrameReferrerPolicy: youtubeFrame instanceof HTMLIFrameElement ? youtubeFrame.getAttribute("referrerpolicy") || "" : "",
       playerVars: player?.__playerVars || null,
       loadCalls: player?.__loadVideoByIdCalls || [],
       qualityCalls: player?.__playbackQualityCalls || [],
@@ -1275,9 +1280,20 @@ test("josie keeps the Shuffle video background opt-in and low-memory", async ({ 
   });
   expect(memoryState.backgroundKind).toBe("youtube");
   expect(memoryState.ariaHidden).toBe("true");
+  expect(memoryState.layerVisibility).toBe("visible");
   expect(memoryState.youtubeFramePresent).toBe(true);
-  expect(memoryState.youtubeFrameWidth).toBeLessThanOrEqual(1.5);
-  expect(memoryState.youtubeFrameHeight).toBeLessThanOrEqual(1.5);
+  expect(memoryState.youtubeFrameWidth).toBeGreaterThanOrEqual(200);
+  expect(memoryState.youtubeFrameHeight).toBeGreaterThanOrEqual(200);
+  expect(memoryState.youtubeFrameWidth).toBeLessThanOrEqual(260);
+  expect(memoryState.youtubeFrameHeight).toBeLessThanOrEqual(260);
+  expect(memoryState.youtubeFrameAllow).toContain("autoplay");
+  expect(memoryState.youtubeFrameAllow).toContain("encrypted-media");
+  expect(memoryState.youtubeFrameAllow).toContain("fullscreen");
+  expect(memoryState.youtubeFrameAllowFullscreen).toBe(true);
+  expect(memoryState.youtubeFrameReferrerPolicy).toBe("strict-origin-when-cross-origin");
+  expect(memoryState.playerVars?.enablejsapi).toBe(1);
+  expect(memoryState.playerVars?.playsinline).toBe(1);
+  expect(memoryState.playerVars?.origin).toBe("http://127.0.0.1:8788");
   expect(memoryState.playerVars?.vq).toBe("small");
   expect(memoryState.loadCalls[0]?.suggestedQuality).toBe("small");
   expect(memoryState.qualityCalls).toContain("small");
@@ -1995,8 +2011,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(inactiveVideoBackgroundState.active).toBe(false);
   expect(inactiveVideoBackgroundState.ariaHidden).toBe("true");
   if (inactiveVideoBackgroundState.backgroundKind === "youtube") {
-    expect(inactiveVideoBackgroundState.frameWidth).toBeLessThanOrEqual(1.5);
-    expect(inactiveVideoBackgroundState.frameHeight).toBeLessThanOrEqual(1.5);
+    expect(inactiveVideoBackgroundState.frameWidth).toBeGreaterThanOrEqual(200);
+    expect(inactiveVideoBackgroundState.frameHeight).toBeGreaterThanOrEqual(200);
+    expect(inactiveVideoBackgroundState.frameWidth).toBeLessThanOrEqual(260);
+    expect(inactiveVideoBackgroundState.frameHeight).toBeLessThanOrEqual(260);
   } else {
     expect(inactiveVideoBackgroundState.videoSrc).toBe("");
   }
@@ -4076,6 +4094,43 @@ test("josie plays YouTube inline on mobile without opening YouTube", async ({ pa
   await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "false");
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
+  const primedMobilePlayerState = await page.evaluate(() => {
+    const host = document.querySelector("[data-shuffle-youtube-player]");
+    const frame = host?.querySelector("iframe");
+    const rect = host instanceof HTMLElement ? host.getBoundingClientRect() : null;
+    const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
+    return {
+      frameWidth: rect?.width || 0,
+      frameHeight: rect?.height || 0,
+      frameAllow: frame instanceof HTMLIFrameElement ? frame.getAttribute("allow") || "" : "",
+      frameAllowsFullscreen: frame instanceof HTMLIFrameElement ? frame.hasAttribute("allowfullscreen") : false,
+      frameReferrerPolicy: frame instanceof HTMLIFrameElement ? frame.getAttribute("referrerpolicy") || "" : "",
+      playerVars: player?.__playerVars || null
+    };
+  });
+  expect(primedMobilePlayerState.frameWidth).toBeGreaterThanOrEqual(200);
+  expect(primedMobilePlayerState.frameHeight).toBeGreaterThanOrEqual(200);
+  expect(primedMobilePlayerState.frameAllow).toContain("autoplay");
+  expect(primedMobilePlayerState.frameAllow).toContain("fullscreen");
+  expect(primedMobilePlayerState.frameAllowsFullscreen).toBe(true);
+  expect(primedMobilePlayerState.frameReferrerPolicy).toBe("strict-origin-when-cross-origin");
+  expect(primedMobilePlayerState.playerVars?.enablejsapi).toBe(1);
+  expect(primedMobilePlayerState.playerVars?.playsinline).toBe(1);
+  expect(primedMobilePlayerState.playerVars?.origin).toBe("http://127.0.0.1:8788");
+  await page.evaluate(async () => window.__internetAngelShuffleDebug?.advanceTrack?.());
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
+  const postAdvancePlayerState = await page.evaluate(() => {
+    const host = document.querySelector("[data-shuffle-youtube-player]");
+    const frame = host?.querySelector("iframe");
+    const target = host?.querySelector("[data-shuffle-youtube-player-target]");
+    return {
+      framePresent: frame instanceof HTMLIFrameElement,
+      targetContainsFrame: target instanceof HTMLElement ? Boolean(target.querySelector("iframe")) : true
+    };
+  });
+  expect(postAdvancePlayerState.framePresent).toBe(true);
+  expect(postAdvancePlayerState.targetContainsFrame).toBe(true);
 
   await page.locator("[data-site-video-toggle]").click();
   await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });

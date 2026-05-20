@@ -1978,6 +1978,8 @@
     const YOUTUBE_INLINE_ACTIVATION_STORAGE_KEY = "internetAngelYoutubeInlineActivationAt";
     const YOUTUBE_INLINE_ACTIVATION_FRESH_MS = 2 * 60 * 1e3;
     const YOUTUBE_EXTERNAL_FALLBACK_ERROR_CODES = /* @__PURE__ */ new Set([5, 101, 150, 153]);
+    const YOUTUBE_IFRAME_ALLOW = "accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share";
+    const YOUTUBE_PLAYER_TARGET_ID = "shuffle-youtube-player-target";
     const SHUFFLE_YOUTUBE_LOW_MEMORY_QUALITY = "small";
     const SHUFFLE_MEDIA_PRELOAD_MODE = "metadata";
     const stateSubscribers = /* @__PURE__ */ new Set();
@@ -2176,6 +2178,12 @@
     function shouldUseExternalYouTubePlayback(track = currentTrack) {
       return false;
     }
+    function hasMountedYouTubeIframe() {
+      const frame = youtubePlayerHost instanceof HTMLElement
+        ? youtubePlayerHost.querySelector("iframe")
+        : null;
+      return Boolean(frame?.isConnected);
+    }
     function isMobileYouTubeInlineActivationRequired(track = currentTrack) {
       if (!isYouTubeTrack(track)) return false;
       const compactTouchLayout = isCompactMobileLayout()
@@ -2185,7 +2193,11 @@
       return compactTouchLayout && !hasYouTubeInlineActivationUnlocked();
     }
     function shouldUseYouTubePosterLayer(track = currentTrack) {
-      return Boolean(shouldUseExternalYouTubePlayback(track) || (isMobileYouTubeInlineActivationRequired(track) && !youtubeInlinePlaybackPrimedForActivation));
+      return Boolean(shouldUseExternalYouTubePlayback(track)
+        || (isMobileYouTubeInlineActivationRequired(track)
+          && !youtubeInlinePlaybackPrimedForActivation
+          && !youtubePlayerReadyPromise
+          && !hasMountedYouTubeIframe()));
     }
     function markYouTubeExternalFallback(track, reason = "") {
       const videoId = getTrackYouTubeVideoId(track);
@@ -2195,12 +2207,13 @@
       }
       return false;
     }
-    function primeYouTubeInlinePlayerForActivation(track = currentTrack) {
+    async function primeYouTubeInlinePlayerForActivation(track = currentTrack) {
       if (!isMobileYouTubeInlineActivationRequired(track)) return false;
       const videoId = getTrackYouTubeVideoId(track);
-      if (!videoId || youtubePlayerReadyPromise) return false;
+      if (!videoId) return false;
       youtubeInlinePlaybackPrimedForActivation = true;
-      void ensureYouTubePlayer(videoId).then((player) => {
+      try {
+        const player = await ensureYouTubePlayer(videoId);
         if (disposed || currentTrack !== track || hasYouTubeInlineActivationUnlocked()) return;
         const payload = {
           videoId,
@@ -2213,13 +2226,14 @@
         syncYouTubeVolume();
         syncBackgroundVideoPlayback({ force: true });
         syncUi();
-      }).catch(() => {
+        return true;
+      } catch {
         if (disposed || currentTrack !== track || hasYouTubeInlineActivationUnlocked()) return;
         youtubeInlinePlaybackPrimedForActivation = false;
         syncBackgroundVideoPlayback({ force: true });
         syncUi();
-      });
-      return true;
+        return false;
+      }
     }
     function resolveTrackVideoPath(track) {
       if (isYouTubeTrack(track)) return String(track?.youtubeUrl || track?.path || "").trim();
@@ -2338,6 +2352,9 @@
         target.setAttribute("data-shuffle-youtube-player-target", "");
         host.append(target);
       }
+      if (target instanceof HTMLElement) {
+        target.id = YOUTUBE_PLAYER_TARGET_ID;
+      }
       backgroundVideoLayer = layer;
       backgroundVideoEl = null;
       youtubePlayerHost = host;
@@ -2354,6 +2371,7 @@
         target.setAttribute("data-shuffle-youtube-player-target", "");
         host.append(target);
       }
+      target.id = YOUTUBE_PLAYER_TARGET_ID;
       youtubePlayerTarget = target;
       return target;
     }
@@ -2425,25 +2443,89 @@
       } catch {
       }
     }
+    function syncYouTubeIframeAttributes() {
+      const frame = youtubePlayerHost instanceof HTMLElement
+        ? youtubePlayerHost.querySelector("iframe")
+        : null;
+      if (!(frame instanceof HTMLIFrameElement)) return null;
+      frame.setAttribute("allow", YOUTUBE_IFRAME_ALLOW);
+      frame.setAttribute("allowfullscreen", "");
+      frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      frame.setAttribute("loading", "eager");
+      if (!frame.title) {
+        frame.title = "YouTube video player";
+      }
+      return frame;
+    }
+    function waitForYouTubeIframeAttached(timeoutMs = 4_000) {
+      const existingFrame = syncYouTubeIframeAttributes();
+      if (existingFrame?.isConnected) return Promise.resolve(existingFrame);
+      const host = youtubePlayerHost instanceof HTMLElement ? youtubePlayerHost : null;
+      if (!host) return Promise.resolve(null);
+      return new Promise((resolve) => {
+        let settled = false;
+        let observer = null;
+        let timeout = 0;
+        const finish = (frame = null) => {
+          if (settled) return;
+          settled = true;
+          if (observer) observer.disconnect();
+          if (timeout) window.clearTimeout(timeout);
+          resolve(frame);
+        };
+        const check = () => {
+          const frame = syncYouTubeIframeAttributes();
+          if (frame?.isConnected) {
+            finish(frame);
+          }
+        };
+        observer = new MutationObserver(check);
+        observer.observe(host, { childList: true, subtree: true });
+        timeout = window.setTimeout(() => {
+          finish(syncYouTubeIframeAttributes());
+        }, timeoutMs);
+        window.requestAnimationFrame(check);
+      });
+    }
     async function ensureYouTubePlayer(initialVideoId = "") {
+      if (youtubePlayerReady && !hasMountedYouTubeIframe()) {
+        try {
+          youtubePlayer?.destroy?.();
+        } catch {
+        }
+        youtubePlayer = null;
+        youtubePlayerReady = false;
+        youtubePlayerReadyPromise = null;
+        youtubePlayerState = getYouTubeStateConstant("UNSTARTED", -1);
+      }
       if (youtubePlayerReadyPromise) return youtubePlayerReadyPromise;
       youtubePlayerReadyPromise = (async () => {
         const YT = await ensureYouTubeIframeApi();
+        if (youtubePlayer && youtubePlayerReady) {
+          syncYouTubeIframeAttributes();
+          return youtubePlayer;
+        }
         const target = ensureYouTubePlayerMountTarget();
-        if (youtubePlayer && youtubePlayerReady) return youtubePlayer;
         const playerVideoId = getTrackYouTubeVideoId({ youtubeVideoId: initialVideoId }) || getTrackYouTubeVideoId(currentTrack);
         return await new Promise((resolve, reject) => {
           let settled = false;
           const settle = (player) => {
             if (settled) return;
             settled = true;
+            window.clearTimeout(timeout);
             youtubePlayerReady = true;
             syncYouTubeVolume();
             requestLowMemoryYouTubeQuality();
             resolve(player);
           };
+          const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            reject(error);
+          };
           const timeout = window.setTimeout(() => {
-            if (!settled) reject(new Error("YouTube player timed out"));
+            fail(new Error("YouTube player timed out"));
           }, 12_000);
           const playerOptions = {
             width: "100%",
@@ -2463,8 +2545,15 @@
             },
             events: {
               onReady(event) {
-                window.clearTimeout(timeout);
-                settle(event?.target || youtubePlayer);
+                void waitForYouTubeIframeAttached().then((frame) => {
+                  if (!frame?.isConnected) {
+                    fail(new Error("YouTube iframe was not attached"));
+                    return;
+                  }
+                  settle(event?.target || youtubePlayer);
+                }).catch(() => {
+                  fail(new Error("YouTube iframe was not attached"));
+                });
               },
               onStateChange(event) {
                 youtubePlayerState = Number(event?.data);
@@ -2509,7 +2598,11 @@
           if (playerVideoId) {
             playerOptions.videoId = playerVideoId;
           }
-          youtubePlayer = new YT.Player(target, playerOptions);
+          youtubePlayer = new YT.Player(target.id || target, playerOptions);
+          syncYouTubeIframeAttributes();
+          window.requestAnimationFrame(() => {
+            syncYouTubeIframeAttributes();
+          });
         });
       })().catch((error) => {
         youtubePlayerReadyPromise = null;
@@ -2571,6 +2664,9 @@
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
       clearQueuedSegmentAudio();
+      if (isMobileYouTubeInlineActivationRequired(currentTrack) && hasMountedYouTubeIframe()) {
+        youtubeInlinePlaybackPrimedForActivation = true;
+      }
       audioEl.pause();
       audioEl.removeAttribute("src");
       audioEl.load();
@@ -2590,7 +2686,7 @@
       if (isMobileYouTubeInlineActivationRequired(currentTrack) && !allowInlinePrime) {
         stopYouTubePlayback();
         loadState = "ready";
-        primeYouTubeInlinePlayerForActivation(currentTrack);
+        await primeYouTubeInlinePlayerForActivation(currentTrack);
         syncBackgroundVideoPlayback({ force: true });
         syncUi();
         return true;

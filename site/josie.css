@@ -893,6 +893,10 @@ body.site-load-playing .os-ambient-backdrop {
     visibility 0ms linear 260ms;
 }
 
+.shuffle-video-background[data-shuffle-background-kind="youtube"] {
+  visibility: visible;
+}
+
 .shuffle-video-background-video {
   width: 100%;
   height: 100%;
@@ -918,10 +922,10 @@ body.site-load-playing .os-ambient-backdrop {
 .shuffle-video-background[aria-hidden="true"][data-shuffle-background-kind="youtube"] .shuffle-youtube-player-frame {
   top: 0;
   left: 0;
-  width: 1px;
-  height: 1px;
+  width: 240px;
+  height: 240px;
   filter: none;
-  transform: translate3d(-120vw, -120vh, 0);
+  transform: translate3d(calc(-100% - 24px), calc(-100% - 24px), 0);
 }
 
 .shuffle-youtube-player-frame--poster {
