@@ -164,6 +164,13 @@ async function waitForInteractionSfx(page, predicate, timeout = 10_000) {
   return handle.jsonValue();
 }
 
+async function waitForShufflePlayback(page, timeout = 15_000) {
+  await expect.poll(async () => page.evaluate(() => {
+    const state = window.__internetAngelShuffleDebug?.getState?.();
+    return Boolean(state?.playing);
+  }), { timeout }).toBe(true);
+}
+
 async function showLastFmPanelArtActions(page, options = {}) {
   const scope = options.scope ?? page;
   const artShell = scope.locator(".lastfm-track-panel-art--flip").first();
@@ -972,7 +979,7 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
 
   await page.locator(".steam-sidebar-link").first().hover();
   await page.mouse.wheel(0, 180);
@@ -997,38 +1004,11 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   await clearInteractionSfxLog(page);
   await page.locator("[data-mobile-speaker-toggle]").click();
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  const degradedVisualizerState = await page.evaluate(() => {
-    const layer = document.querySelector("#os-shuffle-visualizer-layer");
-    const title = document.querySelector("[data-shuffle-title]");
-    const artist = document.querySelector("[data-shuffle-artist]");
-    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-    const readAlpha = () => {
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    };
-    return {
-      layerMode: layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-mode") : "",
-      wavePortal: document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer") instanceof HTMLElement,
-      waveCanvas: canvas instanceof HTMLCanvasElement,
-      regionAlpha: readAlpha(),
-      title: title?.textContent?.trim() || "",
-      artist: artist?.textContent?.trim() || ""
-    };
-  });
-  expect(degradedVisualizerState.layerMode).toBe("full");
-  expect(degradedVisualizerState.wavePortal).toBe(true);
-  expect(degradedVisualizerState.waveCanvas).toBe(true);
-  expect(degradedVisualizerState.regionAlpha).toBeGreaterThan(0);
-  expect(degradedVisualizerState.title).toBe(expectedTrack?.title || "");
-  expect(degradedVisualizerState.artist).toBe(expectedShuffleDisplayArtist(expectedTrack));
+  await waitForShufflePlayback(page);
+  const shuffleState = await page.evaluate(() => window.__internetAngelShuffleDebug?.getState?.() || null);
+  expect(shuffleState?.title).toBe(expectedTrack?.title || "");
+  expect(shuffleState?.artist).toBe(expectedShuffleDisplayArtist(expectedTrack));
+  await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
 });
 
 test("desktop Josie optimizes rendering only when graphics acceleration is unavailable", async ({ page }) => {
@@ -1046,8 +1026,7 @@ test("desktop Josie optimizes rendering only when graphics acceleration is unava
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "software-renderer");
   await expect(page.locator("body")).toHaveAttribute("data-graphics-acceleration", "software");
   await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "frozen");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "degraded");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-shuffle-device-profile", "software-desktop");
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
 
   await page.locator(".steam-sidebar-link").first().hover();
   const softwareCursorState = await page.evaluate(() => {
@@ -1062,22 +1041,12 @@ test("desktop Josie optimizes rendering only when graphics acceleration is unava
   expect(softwareCursorState.trailDisplay).toBe("none");
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  const softwareVisualizerState = await page.evaluate(() => {
-    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-    const rect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null;
-    const performanceState = window.__internetAngelPerformanceState?.getState?.() || null;
-    return {
-      canvasProfile: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-device-profile") || "" : "",
-      canvasDpr: canvas instanceof HTMLCanvasElement && rect && rect.width > 0 ? canvas.width / rect.width : 0,
-      performanceState
-    };
-  });
-  expect(softwareVisualizerState.canvasProfile).toBe("software-desktop");
-  expect(softwareVisualizerState.canvasDpr).toBeLessThanOrEqual(1.05);
-  expect(softwareVisualizerState.performanceState?.tier).toBe("degraded");
-  expect(softwareVisualizerState.performanceState?.graphicsAcceleration).toBe("software");
-  expect(softwareVisualizerState.performanceState?.graphicsRenderer).toContain("SwiftShader");
+  await waitForShufflePlayback(page);
+  const softwarePerformanceState = await page.evaluate(() => window.__internetAngelPerformanceState?.getState?.() || null);
+  expect(softwarePerformanceState?.tier).toBe("degraded");
+  expect(softwarePerformanceState?.graphicsAcceleration).toBe("software");
+  expect(softwarePerformanceState?.graphicsRenderer).toContain("SwiftShader");
+  await expect(page.locator(".josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
 });
 
 test("desktop Josie ignores legacy frame-budget downgrade requests", async ({ page }) => {
@@ -1315,21 +1284,8 @@ test("desktop Josie no longer background-throttles rendering when the window los
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    });
-  }, { timeout: 5_000 }).toBeGreaterThan(0);
+  await waitForShufflePlayback(page);
+  await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
 
   await page.evaluate(() => {
     window.__setCodexWindowFocus?.(false);
@@ -1337,15 +1293,9 @@ test("desktop Josie no longer background-throttles rendering when the window los
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
-  const backgroundState = await page.evaluate(() => {
-    const performanceState = window.__internetAngelPerformanceState?.getState?.() || null;
-    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
-    return {
-      performanceState,
-      portalHidden: portal instanceof HTMLElement ? portal.hidden : null
-    };
-  });
+  const backgroundState = await page.evaluate(() => ({
+    performanceState: window.__internetAngelPerformanceState?.getState?.() || null
+  }));
   expect(backgroundState.performanceState?.backgroundThrottled).toBe(false);
 
   await page.evaluate(() => {
@@ -1355,21 +1305,12 @@ test("desktop Josie no longer background-throttles rendering when the window los
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
   await expect(page.locator(".os-ambient-backdrop")).toHaveAttribute("data-ambient-motion", "running");
   const resumedState = await page.evaluate(() => ({
-    performanceState: window.__internetAngelPerformanceState?.getState?.() || null,
-    layerMode: (() => {
-      const layer = document.querySelector("#os-shuffle-visualizer-layer");
-      return layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-mode") || "" : "";
-    })(),
-    portalHidden: (() => {
-      const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
-      return portal instanceof HTMLElement ? portal.hidden : null;
-    })()
+    performanceState: window.__internetAngelPerformanceState?.getState?.() || null
   }));
   expect(resumedState.performanceState?.backgroundThrottled).toBe(false);
-  expect(resumedState.layerMode).toBe("full");
 });
 
-test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform layer", async ({ page }) => {
+test("josie renders shuffle playback without the removed visual layer", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.addInitScript(() => {
     Object.defineProperty(window, "devicePixelRatio", {
@@ -1381,77 +1322,10 @@ test("josie keeps the desktop shuffle visualizer as a full-width ascii waveform 
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    });
-  }, { timeout: 5_000 }).toBeGreaterThan(0);
-  const visualizerLayout = await page.evaluate(() => {
-    const layer = document.querySelector("#os-shuffle-visualizer-layer");
-    const surface = document.querySelector("#os-shuffle-visualizer-surface");
-    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
-    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-    const copy = document.querySelector("#os-shuffle-visualizer-copy");
-    const rectOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect() : null;
-    const styleOf = (node) => node instanceof HTMLElement ? window.getComputedStyle(node) : null;
-    const canvasRegionAlpha = () => {
-      if (!(canvas instanceof HTMLCanvasElement)) return null;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return null;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    };
-    return {
-      pointerEvents: styleOf(layer)?.pointerEvents || "",
-      portalOpacity: Number.parseFloat(styleOf(portal)?.opacity || "0"),
-      surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
-      surfaceAsciiOverlay: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-ascii-overlay") || "" : "",
-      canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
-      canvasAsciiOverlay: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-ascii-overlay") || "" : "",
-      canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
-      canvasFilter: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).filter : "",
-      canvasDpr: canvas instanceof HTMLCanvasElement && canvas.getBoundingClientRect().width > 0
-        ? canvas.width / canvas.getBoundingClientRect().width
-        : 0,
-      surfaceRect: rectOf(surface),
-      canvasRect: rectOf(canvas),
-      copyRect: rectOf(copy),
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      regionAlpha: canvasRegionAlpha()
-    };
-  });
-
-  expect(visualizerLayout.pointerEvents).toBe("none");
-  expect(visualizerLayout.portalOpacity).toBeGreaterThanOrEqual(0.55);
-  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
-  expect(visualizerLayout.surfaceAsciiOverlay).toBe("glyph");
-  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
-  expect(visualizerLayout.canvasAsciiOverlay).toBe("glyph");
-  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
-  expect(visualizerLayout.canvasFilter).toBe("none");
-  expect(visualizerLayout.canvasDpr).toBeLessThanOrEqual(1.35);
-  expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
-  expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
-  expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
-  expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
-  expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
-  expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
-  expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
+  await waitForShufflePlayback(page);
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
+  await expect(page.locator(".josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
 });
 
 test("josie exposes a keyboard skip link into the social hub", async ({ page }) => {
@@ -1465,43 +1339,27 @@ test("josie exposes a keyboard skip link into the social hub", async ({ page }) 
   await expect(page).toHaveURL(/#social-hub-root$/);
 });
 
-test("josie keeps the visualizer surface out of expand cursor mode", async ({ page }) => {
+test("josie keeps the removed shuffle visual layer absent from cursor handling", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(() => {
-    const surface = document.getElementById("os-shuffle-visualizer-surface");
-    surface?.dispatchEvent(new PointerEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-      isPrimary: true
-    }));
-  });
-  await emitCustomCursorHover(page, "#os-shuffle-visualizer-surface");
-  const visualizerCursorState = await page.evaluate(() => {
+  await waitForShufflePlayback(page);
+  await emitCustomCursorHover(page, "#social-hub-scale-frame");
+  const cursorState = await page.evaluate(() => {
     const cursor = document.querySelector(".site-pointer");
-    const layer = document.querySelector("#os-shuffle-visualizer-layer");
-    const surface = document.querySelector("#os-shuffle-visualizer-surface");
     return {
       cursorMorph: cursor instanceof HTMLElement ? cursor.dataset.cursorMorph || "" : "",
       cursorInteractive: cursor instanceof HTMLElement ? cursor.classList.contains("is-interactive") : false,
-      bodyFocusMode: document.body.getAttribute("data-visualizer-focus-mode"),
-      layerFocusMode: layer instanceof HTMLElement ? layer.getAttribute("data-visualizer-focus-mode") : null,
-      surfaceFocusMode: surface instanceof HTMLElement ? surface.getAttribute("data-visualizer-focus-mode") : null
+      bodyFocusMode: document.body.getAttribute("data-visualizer-focus-mode")
     };
   });
-  expect(visualizerCursorState.cursorMorph).toBe("orb");
-  expect(visualizerCursorState.cursorInteractive).toBe(false);
-  expect(visualizerCursorState.bodyFocusMode).toBeNull();
-  expect(visualizerCursorState.layerFocusMode).toBeNull();
-  expect(visualizerCursorState.surfaceFocusMode).toBeNull();
+  expect(cursorState.cursorMorph).toBe("orb");
+  expect(cursorState.cursorInteractive).toBe(false);
+  expect(cursorState.bodyFocusMode).toBeNull();
   await expect(page.locator("#social-hub-scale-frame")).toBeVisible();
-  await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveCount(0);
+  await expect(page.locator("#os-shuffle-visualizer-layer, #os-shuffle-visualizer-surface, #os-shuffle-visualizer-angel-link")).toHaveCount(0);
 });
 
 test("josie skips a missing shuffle file and falls through to another available song", async ({ page }) => {
@@ -1572,21 +1430,22 @@ test("josie skips a missing shuffle file and falls through to another available 
   expect(recoveredState.state?.title).toBe("Working Song");
 });
 
-test("josie shifts the visualizer into panel mode while a Last.fm details card is open", async ({ page }) => {
+test("josie keeps shuffle playback alive while a Last.fm details card is open", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await waitForShufflePlayback(page);
   await page.locator(".lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator("body")).toHaveClass(/lastfm-track-panel-open/);
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "panel");
+  await waitForShufflePlayback(page);
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
 
   await page.locator(".lastfm-track-panel-close").click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveAttribute("data-visualizer-mode", "full");
+  await waitForShufflePlayback(page);
 });
 test("josie hands segmented shuffle tracks across the midpoint without resetting visible playback", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
@@ -1636,7 +1495,7 @@ test("josie hands segmented shuffle tracks across the midpoint without resetting
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
 
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await waitForShufflePlayback(page);
   await page.waitForFunction(() => window.__internetAngelShuffleDebug?.getTrack?.()?.segmentIndex === 0, null, { timeout: 15_000 });
 
   const firstSegment = await page.evaluate(() => {
@@ -2043,20 +1902,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && layer instanceof HTMLElement
       && (hasLocalVideo || hasYouTubeFrame);
   });
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    });
-  }, { timeout: 5_000 }).toBeGreaterThan(0);
+  await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
   const videoBackgroundState = await page.evaluate(() => {
     const layer = document.querySelector("#shuffle-video-background");
     const frame = document.querySelector(".social-hub-scale-frame");
@@ -2114,8 +1960,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use music video background");
-  await expect(page.locator("#os-shuffle-visualizer-title")).toHaveText(expectedTrack?.title || "");
-  await expect(page.locator("#os-shuffle-visualizer-artist")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]").first()).toHaveText(expectedTrack?.title || "");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]").first()).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
     const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
@@ -2163,20 +2009,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(desktopCurrentlyPlayingLayout.shellOverflow).toBe("visible");
   expect(desktopCurrentlyPlayingLayout.panelClipPath).not.toContain("round");
   expect(desktopCurrentlyPlayingLayout.shellClipPath).toBe("none");
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    });
-  }, { timeout: 5_000 }).toBeGreaterThan(0);
+  await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
   await page.waitForFunction(() => {
     const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
     if (!(copy instanceof HTMLElement)) return false;
@@ -2191,8 +2024,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && Number.parseFloat(styles.opacity || "0") > 0.85
       && ["none", "blur(0px)"].includes(styles.filter);
   }, null, { timeout: 7000 });
-  const firstVisualizerTrackState = await page.evaluate(async () => {
-    const title = document.querySelector("#os-shuffle-visualizer-title");
+  const firstShuffleTrackState = await page.evaluate(async () => {
     let selectableQueueCount = 0;
     try {
       const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
@@ -2208,29 +2040,28 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       selectableQueueCount = 0;
     }
     return {
-      title: title instanceof HTMLElement ? title.textContent.trim() : "",
+      title: window.__internetAngelShuffleDebug?.getState?.()?.title || "",
       trackId: window.__internetAngelShuffleDebug?.getTrack?.()?.id || "",
       selectableQueueCount
     };
   });
   await page.evaluate(() => window.__internetAngelShuffleDebug?.advanceTrack?.());
-  if (firstVisualizerTrackState.selectableQueueCount > 1) {
+  if (firstShuffleTrackState.selectableQueueCount > 1) {
     await page.waitForFunction((previousTitle) => {
-      const title = document.querySelector("#os-shuffle-visualizer-title");
       const copy = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop'] .steam-sidebar-currently-playing-copy");
-      if (!(title instanceof HTMLElement) || !(copy instanceof HTMLElement)) return false;
-      return title.textContent.trim() !== previousTitle
+      const title = window.__internetAngelShuffleDebug?.getState?.()?.title || "";
+      if (!(copy instanceof HTMLElement)) return false;
+      return title !== previousTitle
         && copy.dataset.shuffleCopyState === "visible"
         && Number.parseFloat(window.getComputedStyle(copy).opacity || "0") > 0.85;
-    }, firstVisualizerTrackState.title);
+    }, firstShuffleTrackState.title);
   } else {
     await page.waitForFunction((baseline) => {
-      const title = document.querySelector("#os-shuffle-visualizer-title");
+      const title = window.__internetAngelShuffleDebug?.getState?.()?.title || "";
       const currentTrackId = window.__internetAngelShuffleDebug?.getTrack?.()?.id || "";
-      return title instanceof HTMLElement
-        && title.textContent.trim() === baseline.title
+      return title === baseline.title
         && currentTrackId === baseline.trackId;
-    }, firstVisualizerTrackState);
+    }, firstShuffleTrackState);
   }
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const firstDesktopMuteState = await page.locator("[data-mobile-speaker-toggle]").getAttribute("data-audio-muted");
@@ -2279,8 +2110,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".discord-presence-panel")).toHaveCount(1);
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
   await expect(page.locator(".steam-showcase--josie-intro")).toHaveCount(0);
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
-  await expect(page.locator("#os-shuffle-visualizer-player")).toHaveCount(1);
+  await expect(page.locator("#os-shuffle-visualizer-layer, #os-shuffle-visualizer-player")).toHaveCount(0);
   await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
   const heroDecorationOverflow = await page.evaluate(() => {
     const profile = document.querySelector(".social-hub-profile");
@@ -2389,74 +2219,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-section-title", { hasText: "Top Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
-  const visualizerLayout = await page.evaluate(() => {
-    const layer = document.querySelector("#os-shuffle-visualizer-layer");
-    const backdrop = document.querySelector("#os-ambient-backdrop");
-    const frame = document.querySelector("#social-hub-scale-frame");
-    const surface = document.querySelector("#os-shuffle-visualizer-surface");
-    const portal = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-bleed-layer");
-    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-    const copy = document.querySelector("#os-shuffle-visualizer-copy");
-    const firstShowcaseTitle = document.querySelector(".social-hub-showcases article h3, .social-hub-showcases article h4");
-    const rectOf = (node) => node instanceof HTMLElement ? node.getBoundingClientRect() : null;
-    const styleOf = (node) => node instanceof HTMLElement ? window.getComputedStyle(node) : null;
-    const canvasRegionAlpha = () => {
-      if (!(canvas instanceof HTMLCanvasElement)) return null;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return null;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    };
-    const initialSurfaceRect = rectOf(surface);
-    const initialCanvasRect = rectOf(canvas);
-    const scrollBaseline = window.scrollY;
-    window.scrollTo(0, Math.min(window.scrollY + 640, Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));
-    const scrolledSurfaceRect = rectOf(surface);
-    const scrolledCanvasRect = rectOf(canvas);
-    window.scrollTo(0, scrollBaseline);
-    return {
-      layerZ: styleOf(layer)?.zIndex || "",
-      frameZ: styleOf(frame)?.zIndex || "",
-      backdropZ: styleOf(backdrop)?.zIndex || "",
-      pointerEvents: styleOf(layer)?.pointerEvents || "",
-      portalOpacity: Number.parseFloat(styleOf(portal)?.opacity || "0"),
-      surfaceVisualStyle: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-visual-style") || "" : "",
-      canvasVisualStyle: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-visual-style") || "" : "",
-      canvasImageRendering: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).imageRendering : "",
-      canvasFilter: canvas instanceof HTMLCanvasElement ? window.getComputedStyle(canvas).filter : "",
-      surfaceRect: initialSurfaceRect,
-      canvasRect: initialCanvasRect,
-      copyRect: rectOf(copy),
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      firstShowcaseTitle: firstShowcaseTitle instanceof HTMLElement ? firstShowcaseTitle.textContent.trim() : "",
-      regionAlpha: canvasRegionAlpha(),
-      scrolledSurfaceTop: scrolledSurfaceRect?.top ?? null,
-      scrolledCanvasTop: scrolledCanvasRect?.top ?? null
-    };
-  });
-  expect(visualizerLayout.pointerEvents).toBe("none");
-  expect(visualizerLayout.portalOpacity).toBeGreaterThanOrEqual(0.55);
-  expect(visualizerLayout.surfaceVisualStyle).toBe("ascii");
-  expect(visualizerLayout.canvasVisualStyle).toBe("ascii");
-  expect(["pixelated", "crisp-edges"]).toContain(visualizerLayout.canvasImageRendering);
-  expect(visualizerLayout.canvasFilter).toBe("none");
-  expect(Number.parseInt(visualizerLayout.layerZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.backdropZ, 10));
-  expect(Number.parseInt(visualizerLayout.frameZ, 10)).toBeGreaterThan(Number.parseInt(visualizerLayout.layerZ, 10));
-  expect(Math.round(visualizerLayout.surfaceRect.width)).toBe(visualizerLayout.viewportWidth);
-  expect(visualizerLayout.surfaceRect.height).toBeGreaterThanOrEqual(224);
-  expect(Math.abs(visualizerLayout.surfaceRect.bottom - visualizerLayout.viewportHeight)).toBeLessThanOrEqual(1);
-  expect(Math.round(visualizerLayout.canvasRect.width)).toBe(visualizerLayout.viewportWidth);
-  expect(Math.abs(visualizerLayout.scrolledSurfaceTop - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(1);
-  expect(Math.abs(visualizerLayout.scrolledCanvasTop - visualizerLayout.canvasRect.top)).toBeLessThanOrEqual(1);
-  expect(Math.abs(visualizerLayout.copyRect.left - visualizerLayout.surfaceRect.left)).toBeLessThanOrEqual(24);
-  expect(Math.abs(visualizerLayout.copyRect.top - visualizerLayout.surfaceRect.top)).toBeLessThanOrEqual(24);
-  expect(visualizerLayout.firstShowcaseTitle).toBe("Recent Activity");
-  expect(visualizerLayout.regionAlpha).toBeGreaterThan(0);
+  await expect(page.locator("#os-shuffle-visualizer-surface, #os-shuffle-visualizer-copy, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
+  await expect(page.locator(".social-hub-showcases article h3, .social-hub-showcases article h4").first()).toHaveText("Recent Activity");
   const topArtistImageUrls = await page.locator(".lastfm-media-grid--artists .lastfm-media-image").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""));
   expect(topArtistImageUrls.some((url) => url && !url.includes("2a96cbd8b46e442fc41c2b86b821562f"))).toBe(true);
   const imageLoadingHints = await page.evaluate(() => {
@@ -3729,7 +3493,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(new Set(mobileAuraVariables).size).toBe(6);
   await expect(page.locator(".discord-presence-card--foundlifeless")).toBeVisible();
   await expect(page.locator(".cinna-mobile-gif--canvas")).toBeVisible();
-  await expect(page.locator("#os-shuffle-visualizer-layer")).toBeVisible();
+  await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
   await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
   await page.locator("[data-mobile-speaker-toggle]").click();
@@ -3751,46 +3515,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   expect(mobileCurrentlyPlayingType.titleSize).toBeGreaterThanOrEqual(23);
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(expectedTrack?.title || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-      if (!(canvas instanceof HTMLCanvasElement)) return 0;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!(ctx instanceof CanvasRenderingContext2D)) return 0;
-      const sampleArea = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let alpha = 0;
-      for (let index = 3; index < sampleArea.length; index += 4) {
-        alpha = Math.max(alpha, sampleArea[index]);
-      }
-      return alpha;
-    });
-  }, { timeout: 5_000 }).toBeGreaterThan(0);
-  const mobileVisualizerProfile = await page.evaluate(() => {
-    const layer = document.querySelector("#os-shuffle-visualizer-layer");
-    const surface = document.querySelector("#os-shuffle-visualizer-surface");
-    const canvas = document.querySelector("#os-shuffle-visualizer-layer .josie-audio-player-wave");
-    const surfaceRect = surface instanceof HTMLElement ? surface.getBoundingClientRect() : null;
-    const canvasRect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null;
-    return {
-      layerProfile: layer instanceof HTMLElement ? layer.getAttribute("data-shuffle-device-profile") || "" : "",
-      surfaceProfile: surface instanceof HTMLElement ? surface.getAttribute("data-shuffle-device-profile") || "" : "",
-      canvasProfile: canvas instanceof HTMLCanvasElement ? canvas.getAttribute("data-shuffle-device-profile") || "" : "",
-      surfaceWidth: surfaceRect?.width || 0,
-      surfaceHeight: surfaceRect?.height || 0,
-      canvasWidth: canvasRect?.width || 0,
-      canvasHeight: canvasRect?.height || 0,
-      viewportWidth: window.innerWidth,
-      canvasDpr: canvas instanceof HTMLCanvasElement && canvasRect && canvasRect.width > 0 ? canvas.width / canvasRect.width : 0
-    };
-  });
-  expect(mobileVisualizerProfile.layerProfile).toBe("touch-mobile");
-  expect(mobileVisualizerProfile.surfaceProfile).toBe("touch-mobile");
-  expect(mobileVisualizerProfile.canvasProfile).toBe("touch-mobile");
-  expect(Math.round(mobileVisualizerProfile.surfaceWidth)).toBe(mobileVisualizerProfile.viewportWidth);
-  expect(Math.round(mobileVisualizerProfile.canvasWidth)).toBe(mobileVisualizerProfile.viewportWidth);
-  expect(mobileVisualizerProfile.surfaceHeight).toBeGreaterThanOrEqual(208);
-  expect(mobileVisualizerProfile.canvasHeight).toBeGreaterThanOrEqual(208);
-  expect(mobileVisualizerProfile.canvasDpr).toBeLessThanOrEqual(1.35);
+  await expect(page.locator("#os-shuffle-visualizer-surface, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");
     const track = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-progress-track");
@@ -4510,19 +4235,9 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(() => {
-    const surface = document.getElementById("os-shuffle-visualizer-surface");
-    surface?.dispatchEvent(new PointerEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-      isPrimary: true
-    }));
-  });
+  await waitForShufflePlayback(page);
   await expect.poll(async () => page.evaluate(() => document.body.getAttribute("data-visualizer-focus-mode"))).toBeNull();
-  await expect(page.locator("#os-shuffle-visualizer-angel-link")).toHaveCount(0);
+  await expect(page.locator("#os-shuffle-visualizer-surface, #os-shuffle-visualizer-angel-link")).toHaveCount(0);
 
   const sourceRow = page.locator(".lastfm-recent-button").first();
   const trackSourceArtSelector = ".lastfm-recent-button [data-lastfm-art-source]";
@@ -4720,9 +4435,9 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   const artShell = await showLastFmPanelArtActions(page);
   await waitForInteractionSfx(page, { soundId: "flip_soft", source: "lastfmPanelArtFlipBack", ownerMode: "top", page: "josie" });
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
-  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => Boolean(window.__internetAngelShuffleDebug?.getState?.()?.playing))).toBe(false);
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } }));
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
+  await waitForShufflePlayback(page, 10_000);
   const trackCta = artShell.locator(".lastfm-track-panel-cta", { hasText: "Open Track on Last.fm" });
   const artistCta = artShell.locator(".lastfm-track-panel-cta", { hasText: "Open Artist on Last.fm" });
   const spotifyCta = artShell.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" });
@@ -5834,7 +5549,7 @@ test("josie keeps track details on the inline spotify layout when spotify has no
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
   await page.locator("[data-mobile-speaker-toggle]").click();
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 15_000 });
+  await waitForShufflePlayback(page);
 
   await page.locator(".lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
@@ -5862,9 +5577,9 @@ test("josie keeps track details on the inline spotify layout when spotify has no
   const noPreviewArtShell = await showLastFmPanelArtActions(page);
   await expect(noPreviewArtShell.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" })).toBeVisible();
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_started", { data: { isPaused: false } }));
-  await expect(page.locator("[data-shuffle-player].is-playing")).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => Boolean(window.__internetAngelShuffleDebug?.getState?.()?.playing))).toBe(false);
   await page.evaluate(() => window.__emitSpotifyIframeEvent?.(0, "playback_update", { data: { isPaused: true } }));
-  await expect(page.locator("[data-shuffle-player].is-playing").first()).toBeVisible({ timeout: 10_000 });
+  await waitForShufflePlayback(page, 10_000);
   await noPreviewArtShell.locator(".lastfm-track-panel-cta", { hasText: "Open in Spotify" }).click();
   await expect(page.locator(".external-link-confirm.is-open")).toHaveCount(0);
   const windowOpenCalls = await drainWindowOpenCalls(page);

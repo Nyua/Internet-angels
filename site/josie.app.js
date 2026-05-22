@@ -1967,7 +1967,7 @@
     let barLevelValues = new Float32Array(0);
     let barPeakValues = new Float32Array(0);
     let rafId = 0;
-    let lastVisualizerFrameMs = 0;
+    let lastShuffleFrameMs = 0;
     let loadState = "loading";
     let playbackUnlocked = !document.body?.classList.contains("site-load-playing") && !Boolean(window.__josieHandoffPending);
     let siteLoadWaitPromise = null;
@@ -1976,9 +1976,9 @@
     let initialTrackQueuePromise = null;
     let trackLoadAutoplayIntent = true;
     let brokenTrackRecoveryKey = "";
-    let visualizerCopyEnterRafId = 0;
-    let visualizerCopyTrackKey = "";
-    let visualizerCopyState = "visible";
+    let shuffleCopyEnterRafId = 0;
+    let shuffleCopyTrackKey = "";
+    let shuffleCopyState = "visible";
     let reactiveBeat = 0;
     let reactiveFlash = 0;
     let reactiveBass = 0;
@@ -2000,11 +2000,6 @@
       bassFlash: 0,
       sampled: false
     };
-    let visualizerLayerHost = null;
-    let appliedVisualizerMode = "";
-    let appliedVisualizerDeviceProfile = "";
-    let appliedVisualizerModePlayerRoot = null;
-    let appliedVisualizerModeWaveSurface = null;
     let lastUiState = null;
     let performanceDegraded = isDesktopPerformanceDegraded();
     let pendingSegmentSeekTime = null;
@@ -3118,19 +3113,19 @@
     function getAsciiAlphaFillStyle(alpha) {
       return getAsciiAlphaFillStyleFromKey(getAsciiAlphaKey(alpha));
     }
-    function usesTouchMobileVisualizerProfile() {
+    function usesTouchMobileShuffleProfile() {
       return isCompactMobileLayout() && hasCompactMobileInput();
     }
-    function usesSoftwareGraphicsVisualizerProfile() {
-      return performanceDegraded && !usesTouchMobileVisualizerProfile();
+    function usesSoftwareGraphicsShuffleProfile() {
+      return performanceDegraded && !usesTouchMobileShuffleProfile();
     }
-    function getShuffleVisualizerDeviceProfile() {
-      if (usesSoftwareGraphicsVisualizerProfile()) return "software-desktop";
-      return usesTouchMobileVisualizerProfile() ? "touch-mobile" : "default";
+    function getShuffleDeviceProfile() {
+      if (usesSoftwareGraphicsShuffleProfile()) return "software-desktop";
+      return usesTouchMobileShuffleProfile() ? "touch-mobile" : "default";
     }
-    function getShuffleVisualizerMaxCanvasDpr() {
-      if (usesSoftwareGraphicsVisualizerProfile()) return SHUFFLE_SOFTWARE_MAX_CANVAS_DPR;
-      return usesTouchMobileVisualizerProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
+    function getShuffleMaxCanvasDpr() {
+      if (usesSoftwareGraphicsShuffleProfile()) return SHUFFLE_SOFTWARE_MAX_CANVAS_DPR;
+      return usesTouchMobileShuffleProfile() ? SHUFFLE_TOUCH_MOBILE_MAX_CANVAS_DPR : SHUFFLE_MAX_CANVAS_DPR;
     }
     function drawSoftwareAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
@@ -3239,11 +3234,11 @@
     }
     function drawAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples = false) {
       if (!(waveCtx instanceof CanvasRenderingContext2D)) return;
-      if (usesSoftwareGraphicsVisualizerProfile()) {
+      if (usesSoftwareGraphicsShuffleProfile()) {
         drawSoftwareAsciiOverlay(originX, originY, width, height, reuseCurrentFrameSamples);
         return;
       }
-      const touchMobileProfile = usesTouchMobileVisualizerProfile();
+      const touchMobileProfile = usesTouchMobileShuffleProfile();
       const asciiCellWidth = clamp2(
         Math.round(width / (touchMobileProfile ? 172 : 208)),
         SHUFFLE_ASCII_MIN_CELL_PX,
@@ -3654,39 +3649,8 @@
       }
       return cachedReactiveTargets;
     }
-    function syncVisualizerPerformanceMode() {
-      const mode = document.body?.classList.contains("lastfm-track-panel-open")
-        ? "panel"
-        : performanceDegraded ? "degraded" : "full";
-      const deviceProfile = getShuffleVisualizerDeviceProfile();
-      const layerHost = visualizerLayerHost instanceof HTMLElement && visualizerLayerHost.isConnected
-        ? visualizerLayerHost
-        : document.getElementById("os-shuffle-visualizer-layer");
-      visualizerLayerHost = layerHost instanceof HTMLElement ? layerHost : null;
-      if (
-        mode === appliedVisualizerMode
-        && deviceProfile === appliedVisualizerDeviceProfile
-        && playerRoot === appliedVisualizerModePlayerRoot
-        && waveSurface === appliedVisualizerModeWaveSurface
-      ) {
-        return;
-      }
-      if (layerHost instanceof HTMLElement) {
-        layerHost.setAttribute("data-visualizer-mode", mode);
-        layerHost.setAttribute("data-shuffle-device-profile", deviceProfile);
-      }
-      if (playerRoot instanceof HTMLElement) {
-        playerRoot.setAttribute("data-visualizer-mode", mode);
-        playerRoot.setAttribute("data-shuffle-device-profile", deviceProfile);
-      }
-      if (waveSurface instanceof HTMLElement) {
-        waveSurface.setAttribute("data-visualizer-mode", mode);
-        waveSurface.setAttribute("data-shuffle-device-profile", deviceProfile);
-      }
-      appliedVisualizerMode = mode;
-      appliedVisualizerDeviceProfile = deviceProfile;
-      appliedVisualizerModePlayerRoot = playerRoot;
-      appliedVisualizerModeWaveSurface = waveSurface;
+    function syncShufflePerformanceMode() {
+      return;
     }
     function resolveShuffleTheme(track) {
       const themeKey = firstNonEmpty(
@@ -3803,7 +3767,7 @@
         playing: Boolean(currentTrack) && !externalPlaybackOnly && !inlineActivationRequired && !isActiveMediaPaused(),
         blocked: loadState === "blocked",
         hasTrack: Boolean(currentTrack),
-        copyState: visualizerCopyState,
+        copyState: shuffleCopyState,
         videoMode: Boolean(backgroundVideoEnabled && videoAvailable),
         videoAvailable,
         externalPlaybackOnly,
@@ -3822,15 +3786,15 @@
         theme: resolveShuffleTheme(currentTrack || displayCopy)
       };
     }
-    function clearVisualizerCopyTimers() {
-      if (visualizerCopyEnterRafId) {
-        window.cancelAnimationFrame(visualizerCopyEnterRafId);
-        visualizerCopyEnterRafId = 0;
+    function clearShuffleCopyTimers() {
+      if (shuffleCopyEnterRafId) {
+        window.cancelAnimationFrame(shuffleCopyEnterRafId);
+        shuffleCopyEnterRafId = 0;
       }
     }
-    function applyVisualizerCopyState() {
+    function applyShuffleCopyState() {
       if (!(copyRootEl instanceof HTMLElement)) return;
-      copyRootEl.setAttribute("data-shuffle-copy-state", visualizerCopyState);
+      copyRootEl.setAttribute("data-shuffle-copy-state", shuffleCopyState);
     }
     function syncShuffleCopyLink(element, url, label) {
       if (!(element instanceof HTMLAnchorElement)) return;
@@ -3846,47 +3810,47 @@
       element.rel = "noopener noreferrer";
       element.setAttribute("aria-label", label || "Open current track link");
     }
-    function setVisualizerCopyState(nextState) {
+    function setShuffleCopyState(nextState) {
       const resolvedState = nextState === "hidden" ? "hidden" : "visible";
-      if (visualizerCopyState === resolvedState) {
-        applyVisualizerCopyState();
+      if (shuffleCopyState === resolvedState) {
+        applyShuffleCopyState();
         return;
       }
-      visualizerCopyState = resolvedState;
-      applyVisualizerCopyState();
+      shuffleCopyState = resolvedState;
+      applyShuffleCopyState();
       notifyStateSubscribers();
     }
-    function getVisualizerCopyTrackKey(track) {
+    function getShuffleCopyTrackKey(track) {
       if (!track || typeof track !== "object") return "";
       return firstNonEmpty(track.queueId, track.id, `${track.title || ""}|${track.artist || ""}`);
     }
-    function restartVisualizerCopyCycle() {
-      clearVisualizerCopyTimers();
+    function restartShuffleCopyCycle() {
+      clearShuffleCopyTimers();
       if (!(copyRootEl instanceof HTMLElement)) {
-        visualizerCopyState = "visible";
+        shuffleCopyState = "visible";
         return;
       }
-      setVisualizerCopyState("hidden");
+      setShuffleCopyState("hidden");
       void copyRootEl.getBoundingClientRect();
-      visualizerCopyEnterRafId = window.requestAnimationFrame(() => {
-        visualizerCopyEnterRafId = 0;
-        setVisualizerCopyState("visible");
+      shuffleCopyEnterRafId = window.requestAnimationFrame(() => {
+        shuffleCopyEnterRafId = 0;
+        setShuffleCopyState("visible");
       });
     }
-    function syncVisualizerCopyCycle() {
-      const nextTrackKey = getVisualizerCopyTrackKey(currentTrack);
+    function syncShuffleCopyCycle() {
+      const nextTrackKey = getShuffleCopyTrackKey(currentTrack);
       if (!nextTrackKey) {
-        visualizerCopyTrackKey = "";
-        clearVisualizerCopyTimers();
-        setVisualizerCopyState("visible");
+        shuffleCopyTrackKey = "";
+        clearShuffleCopyTimers();
+        setShuffleCopyState("visible");
         return;
       }
-      if (nextTrackKey === visualizerCopyTrackKey) {
-        applyVisualizerCopyState();
+      if (nextTrackKey === shuffleCopyTrackKey) {
+        applyShuffleCopyState();
         return;
       }
-      visualizerCopyTrackKey = nextTrackKey;
-      restartVisualizerCopyCycle();
+      shuffleCopyTrackKey = nextTrackKey;
+      restartShuffleCopyCycle();
     }
     function syncAudioOutputGain() {
       syncYouTubeVolume();
@@ -4064,7 +4028,7 @@
       return reactivePulseMetrics;
     }
     function syncUi() {
-      syncVisualizerPerformanceMode();
+      syncShufflePerformanceMode();
       const state = buildPublicState();
       const previousState = lastUiState;
       if (titleEl instanceof HTMLElement) {
@@ -4079,7 +4043,7 @@
         }
         syncShuffleCopyLink(artistEl, state.artistUrl, `Open ${state.artist} on YouTube`);
       }
-      syncVisualizerCopyCycle();
+      syncShuffleCopyCycle();
       applyShuffleTheme(currentTrack);
       syncBackgroundVideoPlayback();
       if (progressFillEl instanceof HTMLElement) {
@@ -4176,29 +4140,7 @@
       return;
     }
     function ensureWavePortal() {
-      const layerHost = document.getElementById("os-shuffle-visualizer-layer");
-      if (!(layerHost instanceof HTMLDivElement)) return null;
-      layerHost.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
-      if (!(wavePortal instanceof HTMLDivElement) || wavePortal.parentElement !== layerHost) {
-        wavePortal = document.createElement("div");
-        wavePortal.className = "josie-audio-player-bleed-layer";
-        wavePortal.setAttribute("aria-hidden", "true");
-        wavePortal.hidden = true;
-        layerHost.insertBefore(wavePortal, layerHost.firstChild);
-      }
-      if (!(waveCanvas instanceof HTMLCanvasElement)) {
-        waveCanvas = document.createElement("canvas");
-        waveCanvas.className = "josie-audio-player-wave";
-        waveCanvas.setAttribute("aria-hidden", "true");
-        waveCanvas.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
-        waveCanvas.setAttribute("data-shuffle-ascii-overlay", "glyph");
-        wavePortal.appendChild(waveCanvas);
-      }
-      waveCanvas.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
-      if (!(waveCtx instanceof CanvasRenderingContext2D)) {
-        waveCtx = getCanvas2DContext(waveCanvas);
-      }
-      return wavePortal;
+      return null;
     }
     function invalidateWaveLayout() {
       cachedWaveLayout = null;
@@ -4261,7 +4203,7 @@
       }
       const cssWidth = Math.max(1, layout.canvasWidth);
       const cssHeight = Math.max(1, layout.canvasHeight);
-      const maxCanvasDpr = getShuffleVisualizerMaxCanvasDpr();
+      const maxCanvasDpr = getShuffleMaxCanvasDpr();
       const dpr = Math.min(maxCanvasDpr, Math.max(1, window.devicePixelRatio || 1));
       const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
       const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
@@ -4343,53 +4285,17 @@
     }
     function renderLoop(nowMs) {
       if (disposed) return;
-      maybeAdvanceSegmentTrack(nowMs);
-      const backgroundThrottled = isInternetAngelBackgroundThrottled();
-      const shouldRenderDesktopWave = Boolean(
-        playerRoot
-        && playbackUnlocked
-        && !compactPlayerMode
-        && !document.hidden
-        && !backgroundThrottled
-      );
-      const activeFrameIntervalMs = performanceDegraded ? SHUFFLE_DEGRADED_FRAME_INTERVAL_MS : SHUFFLE_ACTIVE_FRAME_INTERVAL_MS;
-      const frameIntervalMs = shouldRenderDesktopWave && !isActiveMediaPaused() ? activeFrameIntervalMs : SHUFFLE_IDLE_FRAME_INTERVAL_MS;
-      if (nowMs - lastVisualizerFrameMs < frameIntervalMs) {
+      if (nowMs - lastShuffleFrameMs < SHUFFLE_IDLE_FRAME_INTERVAL_MS) {
         rafId = window.requestAnimationFrame(renderLoop);
         return;
       }
-      lastVisualizerFrameMs = nowMs;
-      const pulseMetrics = shouldRenderDesktopWave
-        ? measureReactivePulse()
-        : { beat: 0, flash: 0, bass: 0, bassFlash: 0, sampled: false };
-      syncReactiveVisuals(pulseMetrics.beat, pulseMetrics.flash, pulseMetrics.bass, pulseMetrics.bassFlash);
-      if (shouldRenderDesktopWave) {
-        drawTrace(pulseMetrics.sampled);
-      } else {
-        hideWavePortal();
-      }
+      lastShuffleFrameMs = nowMs;
+      maybeAdvanceSegmentTrack(nowMs);
       rafId = window.requestAnimationFrame(renderLoop);
     }
     function onPerformanceTierChange() {
       performanceDegraded = isDesktopPerformanceDegraded();
-      barLevelValues = new Float32Array(0);
-      barPeakValues = new Float32Array(0);
-      traceValues = new Float32Array(0);
-      traceBodyValues = new Float32Array(0);
-      traceDetailValues = new Float32Array(0);
-      traceSmoothingValues = new Float32Array(0);
-      traceDisplayValues = new Float32Array(0);
-      traceDetailDisplayValues = new Float32Array(0);
-      traceSampleIndexLookup = new Uint16Array(0);
-      traceSampleLookupSourceLength = 0;
-      traceSampleLookupPointCount = 0;
-      syncReactiveVisuals(0, 0);
-      syncVisualizerPerformanceMode();
-      if (playerRoot && playbackUnlocked && !compactPlayerMode && !document.hidden && !isInternetAngelBackgroundThrottled()) {
-        ensureWaveCanvasSize();
-      } else {
-        hideWavePortal();
-      }
+      syncShufflePerformanceMode();
       syncUi();
     }
     async function attemptPlay() {
@@ -4423,7 +4329,6 @@
         return;
       }
       if (!audioEl.src) return;
-      await ensureAnalysisGraph(true);
       try {
         await audioEl.play();
         loadState = currentTrack ? "ready" : loadState;
@@ -4523,7 +4428,6 @@
       audioEl.load();
       seekToTrackSegment(track, Number.isFinite(options.seekTime) ? Number(options.seekTime) : null);
       syncBackgroundVideoPlayback({ force: true });
-      void ensureAnalysisGraph(false);
       syncUi();
       if (trackLoadAutoplayIntent) {
         await attemptPlay();
@@ -4574,11 +4478,11 @@
       copyRootEl = root2.querySelector("[data-shuffle-copy]");
       progressFillEl = root2.querySelector("[data-shuffle-progress-fill]");
       timeRemainingEl = root2.querySelector("[data-shuffle-time]");
-      applyVisualizerCopyState();
+      applyShuffleCopyState();
       if (waveSurface instanceof HTMLElement) {
         waveSurface.setAttribute("data-shuffle-visual-style", SHUFFLE_VISUAL_STYLE);
         waveSurface.setAttribute("data-shuffle-ascii-overlay", "glyph");
-        waveSurface.setAttribute("data-shuffle-device-profile", getShuffleVisualizerDeviceProfile());
+        waveSurface.setAttribute("data-shuffle-device-profile", getShuffleDeviceProfile());
         waveSurface.addEventListener("pointerdown", async (event) => {
           if (!(event instanceof PointerEvent) || event.button !== 0) return;
           if (!currentTrack) {
@@ -4604,7 +4508,6 @@
       if ("ResizeObserver" in window && playerRoot) {
         resizeObserver = new ResizeObserver(() => {
           invalidateWaveLayout();
-          ensureWaveCanvasSize();
         });
         resizeObserver.observe(playerRoot);
         if (waveSurface instanceof HTMLElement) {
@@ -4613,21 +4516,11 @@
       }
       viewportGeometryListener = () => {
         invalidateWaveLayout();
-        if (playbackUnlocked && !compactPlayerMode) {
-          ensureWaveCanvasSize();
-          return;
-        }
-        hideWavePortal();
       };
       window.addEventListener("resize", viewportGeometryListener, { passive: true });
       window.visualViewport?.addEventListener("resize", viewportGeometryListener, { passive: true });
       window.visualViewport?.addEventListener("scroll", viewportGeometryListener, { passive: true });
-      syncVisualizerPerformanceMode();
-      if (playbackUnlocked && !compactPlayerMode) {
-        ensureWaveCanvasSize();
-      } else {
-        hideWavePortal();
-      }
+      syncShufflePerformanceMode();
       syncUi();
     }
     function unbindRoot() {
@@ -4651,7 +4544,7 @@
       cachedReactiveTargets.length = 0;
       hideWavePortal();
       invalidateWaveLayout();
-      syncVisualizerPerformanceMode();
+      syncShufflePerformanceMode();
       barLevelValues = new Float32Array(0);
       barPeakValues = new Float32Array(0);
       titleEl = null;
@@ -4801,7 +4694,7 @@
     function dispose() {
       if (disposed) return;
       disposed = true;
-      clearVisualizerCopyTimers();
+      clearShuffleCopyTimers();
       if (rafId) {
         window.cancelAnimationFrame(rafId);
         rafId = 0;
@@ -4905,7 +4798,7 @@
         : Number(payload || Date.now());
       return activateYouTubeInlinePlayback(Number.isFinite(activatedAt) ? activatedAt : Date.now());
     };
-    syncVisualizerPerformanceMode();
+    syncShufflePerformanceMode();
     rafId = window.requestAnimationFrame(renderLoop);
     void ensureManifest().then((tracks) => {
       if (disposed || !tracks.length || currentTrack) return;
@@ -4971,7 +4864,7 @@
       isMuted,
       getState: buildPublicState,
       seekToDisplayTime,
-      syncVisualizerMode: syncVisualizerPerformanceMode,
+      syncShuffleMode: syncShufflePerformanceMode,
       subscribe,
       pauseForExternalAudio,
       resumeAfterExternalAudio
@@ -5605,7 +5498,7 @@
     const surfaceClassName = firstNonEmpty(options.surfaceClassName, "josie-audio-player-wave-shell");
     return `
     <div class="${escapeHtml(playerClassName)}" data-shuffle-player>
-        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="${escapeHtml(SHUFFLE_VISUAL_STYLE)}" data-shuffle-ascii-overlay="glyph" aria-label="Audio visualizer">
+        <div class="${escapeHtml(surfaceClassName)}" data-shuffle-surface data-shuffle-visual-style="${escapeHtml(SHUFFLE_VISUAL_STYLE)}" data-shuffle-ascii-overlay="glyph" aria-label="Audio player">
           <div class="josie-audio-player-overlay">
           <div class="josie-audio-player-copy" data-shuffle-copy data-shuffle-copy-state="visible">
             ${renderShuffleCopyLink("josie-audio-player-title", "data-shuffle-title", "Loading Shuffle...", "")}
@@ -7064,8 +6957,6 @@
     const siteLayoutButton = siteLayoutToggle instanceof HTMLButtonElement ? siteLayoutToggle : null;
     const audioControlShell = siteAudioControl instanceof HTMLElement ? siteAudioControl : null;
     const shuffleVolumeSlider = siteVolumeSlider instanceof HTMLInputElement ? siteVolumeSlider : null;
-    const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
-    const desktopShuffleVisualizerPlayer = document.getElementById("os-shuffle-visualizer-player");
     const interactionSfxController = interactionSfx && typeof interactionSfx.play === "function" ? interactionSfx : null;
     const interactionSfxCleanup = interactionSfxController?.bindDelegatedRoot?.(document);
     function primeInteractionSfx(source) {
@@ -10348,7 +10239,7 @@
     }
     function setTrackPanelOpenState(isOpen) {
       document.body?.classList.toggle("lastfm-track-panel-open", isOpen);
-      shufflePlayerController.syncVisualizerMode?.();
+      shufflePlayerController.syncShuffleMode?.();
     }
     function ensureLastFmTrackDetailsOverlay() {
       if (lastFmTrackPanelRoot instanceof HTMLElement) return lastFmTrackPanelRoot;
@@ -10981,13 +10872,8 @@
         showcases.hidden = false;
         showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
-      if (desktopShuffleVisualizerLayer instanceof HTMLElement) {
-        desktopShuffleVisualizerLayer.hidden = false;
-        desktopShuffleVisualizerLayer.setAttribute("data-mobile-visualizer", compactMobile ? "true" : "false");
-      }
-      const shuffleRoot = compactMobile
-        ? (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null)
-        : (syncMobileAudioDock(false), desktopShuffleVisualizerPlayer instanceof HTMLElement ? desktopShuffleVisualizerPlayer : null);
+      syncMobileAudioDock(false);
+      const shuffleRoot = null;
       shufflePlayerController?.attach(shuffleRoot);
       const shuffleState = shufflePlayerController.getState();
       sidebarCurrentlyPlayingScrubCleanup?.();

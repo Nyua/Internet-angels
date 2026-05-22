@@ -16,7 +16,6 @@
       :root {
         --slice-profile-picture: url("/assets/site-load-slices/site-load-profile-picture.gif");
         --slice-profile-links: url("/assets/site-load-slices/site-load-profile-links.gif");
-        --slice-titlebar: url("/assets/site-load-slices/site-load-titlebar.gif");
         --slice-recent-activity: url("/assets/site-load-slices/site-load-recent-activity.gif");
         --slice-lastfm-showcase: url("/assets/site-load-slices/site-load-lastfm-showcase.gif");
       }
@@ -103,7 +102,6 @@
       body.site-load-playing :is(
         .steam-hero-shell,
         #social-hub-sidebar .steam-sidebar-panel:first-child,
-        #os-shuffle-visualizer-copy,
         .steam-showcase--steam-activity,
         .steam-showcase--lastfm-minimal
       ) {
@@ -251,26 +249,6 @@
             preload="metadata"
           ></video>
         </div>
-        <div id="os-shuffle-visualizer-layer" class="os-shuffle-visualizer-layer" aria-hidden="true">
-          <div
-            id="os-shuffle-visualizer-player"
-            class="os-shuffle-visualizer-player josie-audio-player"
-            data-shuffle-player
-            data-shuffle-mode="desktop-stage"
-          >
-            <div
-              id="os-shuffle-visualizer-surface"
-              class="os-shuffle-visualizer-surface"
-              data-shuffle-surface
-              aria-label="Audio visualizer"
-            >
-              <div id="os-shuffle-visualizer-copy" class="os-shuffle-visualizer-copy" data-shuffle-copy data-shuffle-copy-state="visible">
-                <a id="os-shuffle-visualizer-title" class="josie-audio-player-title" data-shuffle-title data-shuffle-link target="_blank" rel="noopener noreferrer">Loading Shuffle...</a>
-                <a id="os-shuffle-visualizer-artist" class="josie-audio-player-artist" data-shuffle-artist data-shuffle-link target="_blank" rel="noopener noreferrer">Unknown Artist</a>
-              </div>
-            </div>
-          </div>
-        </div>
         <div id="social-hub-scale-frame" class="social-hub-scale-frame">
           <div id="social-hub-root" class="social-hub" aria-label="Josie social hub" tabindex="-1">
             <div id="social-hub-content" class="social-hub-content">
@@ -369,12 +347,16 @@
           const viewportWidth = window.innerWidth || Number.POSITIVE_INFINITY;
           return viewportWidth <= compactMobileBreakpointPx;
         }
+        function isMobileLayoutModeActive() {
+          return document.documentElement?.getAttribute("data-site-layout-mode") === "mobile"
+            || document.body?.getAttribute("data-site-layout-mode") === "mobile";
+        }
         let rafId = 0;
         function applyHubScale() {
           const root = document.querySelector("#social-hub-root");
           const frame = document.querySelector("#social-hub-scale-frame");
           if (!(root instanceof HTMLElement) || !(frame instanceof HTMLElement)) return;
-          if (isCompactMobileViewport()) {
+          if (isCompactMobileViewport() || isMobileLayoutModeActive()) {
             root.style.removeProperty("zoom");
             root.style.removeProperty("will-change");
             root.style.removeProperty("width");
@@ -420,6 +402,13 @@
         window.addEventListener("orientationchange", scheduleDesktopScale, { passive: true });
         window.addEventListener("load", scheduleDesktopScale, { once: true });
         document.addEventListener("DOMContentLoaded", scheduleDesktopScale, { once: true });
+        if (typeof MutationObserver === "function") {
+          const layoutModeObserver = new MutationObserver(scheduleDesktopScale);
+          layoutModeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-site-layout-mode"] });
+          if (document.body instanceof HTMLElement) {
+            layoutModeObserver.observe(document.body, { attributes: true, attributeFilter: ["data-site-layout-mode"] });
+          }
+        }
         let bootPollCount = 0;
         const bootPoll = window.setInterval(() => {
           scheduleDesktopScale();
@@ -473,7 +462,6 @@
           "profilePicture",
           "profileLinks",
           "loadingIcon",
-          "titlebar",
           "recentActivity",
           "lastfmShowcase"
         ];
@@ -481,7 +469,6 @@
           profilePicture: "/assets/site-load-slices/site-load-profile-picture.gif",
           profileLinks: "/assets/site-load-slices/site-load-profile-links.gif",
           loadingIcon: loadingIconDefaultPath,
-          titlebar: "/assets/site-load-slices/site-load-titlebar.gif",
           recentActivity: "/assets/site-load-slices/site-load-recent-activity.gif",
           lastfmShowcase: "/assets/site-load-slices/site-load-lastfm-showcase.gif"
         };
@@ -489,7 +476,6 @@
           profilePicture: "#social-hub-profile .steam-hero-avatar-wrap",
           profileLinks: "#social-hub-sidebar .steam-sidebar-panel:first-child",
           loadingIcon: "#social-hub-sidebar .steam-sidebar-panel:first-child",
-          titlebar: "#os-shuffle-visualizer-copy",
           recentActivity: ".steam-showcase--steam-activity",
           lastfmShowcase: ".steam-showcase--lastfm-minimal"
         };
