@@ -702,7 +702,7 @@ test("root times the meow gif with the handoff wipe without moving the gate text
   await page.locator("#introStartButton").click();
   const meowGif = page.locator("#introClickGif");
   await expect(meowGif).toBeVisible();
-  await expect(meowGif).toHaveAttribute("src", /\/assets\/something\.gif\?play=\d+/);
+  await expect(meowGif).toHaveAttribute("src", /\/assets\/something\.gif(?:\?play=|\?v=[0-9a-f]{10}&play=)\d+/);
 
   const meowGifPlacement = await page.evaluate(() => {
     const message = document.querySelector(".intro-start-card-message");
@@ -1941,19 +1941,26 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   const initialAudioControlState = await audioControl.evaluate((node) => {
     const rect = node.getBoundingClientRect();
     const videoToggle = node.querySelector("[data-site-video-toggle]");
+    const layoutToggle = node.querySelector("[data-site-layout-toggle]");
     return {
       width: rect.width,
       videoToggleVisible: videoToggle instanceof HTMLElement
         && !videoToggle.hidden
         && window.getComputedStyle(videoToggle).display !== "none",
+      layoutToggleVisible: layoutToggle instanceof HTMLElement
+        && !layoutToggle.hidden
+        && window.getComputedStyle(layoutToggle).display !== "none",
       formerVideoButtonPoint: {
         x: rect.left + 63,
         y: rect.top + rect.height / 2
       }
     };
   });
-  const restingAudioControlWidthLimit = initialAudioControlState.videoToggleVisible ? 90 : 50;
+  const restingAudioControlWidthLimit = initialAudioControlState.layoutToggleVisible ? 132 : initialAudioControlState.videoToggleVisible ? 90 : 50;
   expect(initialAudioControlState.width).toBeLessThanOrEqual(restingAudioControlWidthLimit);
+  await expect(page.locator("[data-site-layout-toggle]")).toBeVisible();
+  await expect(page.locator("[data-site-layout-toggle]")).toHaveAttribute("data-layout-mode", "desktop");
+  await expect(page.locator("[data-site-layout-toggle]")).toHaveAttribute("title", "Use mobile layout");
   if (!initialAudioControlState.videoToggleVisible) {
     await page.mouse.move(
       initialAudioControlState.formerVideoButtonPoint.x,

@@ -16,6 +16,7 @@
   var siteVolumeSlider = document.querySelector("[data-site-volume-slider]");
   var mobileSpeakerToggle = document.querySelector("[data-mobile-speaker-toggle]");
   var siteVideoToggle = document.querySelector("[data-site-video-toggle]");
+  var siteLayoutToggle = document.querySelector("[data-site-layout-toggle]");
   var interactionSfx = window.__internetAngelInteractionSfx || null;
   var CUSTOM_CURSOR_INTERACTIVE_SELECTOR = [
     "a[href]",
@@ -191,9 +192,53 @@
   var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
   var SOCIAL_HUB_BOOT_RETRY_DELAYS_MS = [2e3, 4e3, 8e3, 15e3, 3e4, 45e3, 6e4];
   var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
+  var SITE_LAYOUT_MODE_STORAGE_KEY = "internetAngelSiteLayoutMode";
   var DISCORD_PROFILE_HANDLE = "foundlifeless";
   var PROFILE_LINK_SITE_IDS = /* @__PURE__ */ new Set(["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"]);
   var compactMobileLayoutQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`) : null;
+  function normalizeSiteLayoutMode(value) {
+    const mode = String(value || "").trim().toLowerCase();
+    return mode === "mobile" || mode === "desktop" ? mode : "";
+  }
+  function readSiteLayoutModeOverride() {
+    try {
+      return normalizeSiteLayoutMode(window.localStorage?.getItem(SITE_LAYOUT_MODE_STORAGE_KEY));
+    } catch {
+      return "";
+    }
+  }
+  var siteLayoutModeOverride = readSiteLayoutModeOverride();
+  function persistSiteLayoutModeOverride(mode) {
+    siteLayoutModeOverride = normalizeSiteLayoutMode(mode);
+    try {
+      if (siteLayoutModeOverride) {
+        window.localStorage?.setItem(SITE_LAYOUT_MODE_STORAGE_KEY, siteLayoutModeOverride);
+      } else {
+        window.localStorage?.removeItem(SITE_LAYOUT_MODE_STORAGE_KEY);
+      }
+    } catch {
+    }
+    applySiteLayoutModeAttributes();
+  }
+  function isViewportCompactMobileLayout() {
+    if (typeof window === "undefined") return false;
+    return Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
+  }
+  function isActualMobileLayoutDevice() {
+    return isViewportCompactMobileLayout() && hasCompactMobileInput();
+  }
+  function getEffectiveSiteLayoutMode() {
+    if (isActualMobileLayoutDevice()) return "mobile";
+    return siteLayoutModeOverride || (isViewportCompactMobileLayout() ? "mobile" : "desktop");
+  }
+  function applySiteLayoutModeAttributes() {
+    const effectiveMode = getEffectiveSiteLayoutMode();
+    const overrideMode = isActualMobileLayoutDevice() ? "mobile-disabled" : siteLayoutModeOverride || "auto";
+    document.documentElement?.setAttribute("data-site-layout-mode", effectiveMode);
+    document.documentElement?.setAttribute("data-site-layout-override", overrideMode);
+    document.body?.setAttribute("data-site-layout-mode", effectiveMode);
+    document.body?.setAttribute("data-site-layout-override", overrideMode);
+  }
   function hasCompactMobileInput() {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return Boolean(
@@ -201,9 +246,7 @@
     );
   }
   function isCompactMobileLayout() {
-    if (typeof window === "undefined") return false;
-    const isNarrowViewport = Boolean(window.matchMedia?.(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`)?.matches || window.innerWidth <= COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX);
-    return isNarrowViewport;
+    return getEffectiveSiteLayoutMode() === "mobile";
   }
   function shouldFetchSitePayload(siteId) {
     const normalizedSiteId = String(siteId || "").trim().toLowerCase();
@@ -1735,12 +1778,20 @@
   var DEFAULT_HERO_BIO = "˚₊‧꒰ა ♡ ໒꒱ ‧₊˚";
   var JOSIE_TOP_SHOWCASE_TEXT = "I'm just here, lol.";
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
+  var SHUFFLE_MANIFEST_BUILD_VERSION = "";
   var SHUFFLE_RECENCY_WEIGHT_STEP = 0.08;
   var SHUFFLE_ANALYSER_FFT_SIZE = 256;
   var SHUFFLE_SCRUB_PREVIEW_INTERVAL_MS = 34;
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
   var SHUFFLE_SCRUB_PREVIEW_GAIN = 0.84;
   var YOUTUBE_VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+  function buildShuffleManifestUrl() {
+    const version = String(SHUFFLE_MANIFEST_BUILD_VERSION || "").trim();
+    if (!version) {
+      return `${SHUFFLE_MANIFEST_URL}?shuffle=${Date.now()}`;
+    }
+    return `${SHUFFLE_MANIFEST_URL}?v=${encodeURIComponent(version)}`;
+  }
   function extractYouTubeVideoId(value) {
     const source = String(value || "").trim();
     if (!source) return "";
@@ -4493,7 +4544,7 @@
     async function ensureManifest() {
       if (manifestPromise) return manifestPromise;
       manifestPromise = (async () => {
-        const manifestUrl = `${SHUFFLE_MANIFEST_URL}?shuffle=${Date.now()}`;
+        const manifestUrl = buildShuffleManifestUrl();
         const response = await fetch(manifestUrl, { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`Manifest fetch failed (${response.status})`);
@@ -6961,6 +7012,7 @@
     let mobileLastFmRevealTimer = 0;
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
+    let mobileLastFmPanelPrefetchTimer = 0;
     let desktopUnfoldPlayed = false;
     let desktopUnfoldClearTimer = 0;
     let activeAngelsFooter = null;
@@ -6973,6 +7025,7 @@
     const ANGELS_FOOTER_LUNGE_MS = 720;
     const ANGELS_FOOTER_COLLISION_HOLD_MS = 180;
     const LASTFM_PANEL_CLIENT_CACHE_LIMIT = 36;
+    const MOBILE_LASTFM_PANEL_PREFETCH_LIMIT = 4;
     const LASTFM_PANEL_SCENE_TRANSITION_MS = 320;
     const LASTFM_PANEL_SCENE_SETTLE_MS = 220;
     const LASTFM_PANEL_SCENE_LOADING_INTRO_MS = 960;
@@ -7008,6 +7061,7 @@
     const profileCopyStateTimers = new WeakMap();
     const mobileSpeakerButton = mobileSpeakerToggle instanceof HTMLButtonElement ? mobileSpeakerToggle : null;
     const siteVideoButton = siteVideoToggle instanceof HTMLButtonElement ? siteVideoToggle : null;
+    const siteLayoutButton = siteLayoutToggle instanceof HTMLButtonElement ? siteLayoutToggle : null;
     const audioControlShell = siteAudioControl instanceof HTMLElement ? siteAudioControl : null;
     const shuffleVolumeSlider = siteVolumeSlider instanceof HTMLInputElement ? siteVolumeSlider : null;
     const desktopShuffleVisualizerLayer = document.getElementById("os-shuffle-visualizer-layer");
@@ -7669,12 +7723,34 @@
       if (!enabled || !(profileTagline instanceof HTMLElement)) return;
       cinnaMobileGifController = createCinnaMobileGifController(profileTagline);
     }
+    function syncSiteLayoutToggle(enabled) {
+      const effectiveMode = getEffectiveSiteLayoutMode();
+      const nextMode = effectiveMode === "mobile" ? "desktop" : "mobile";
+      const disabledOnMobile = isActualMobileLayoutDevice();
+      const label = disabledOnMobile ? "Layout toggle unavailable on mobile" : nextMode === "mobile" ? "Use mobile layout" : "Use desktop layout";
+      if (siteLayoutButton instanceof HTMLButtonElement) {
+        siteLayoutButton.hidden = !enabled;
+        siteLayoutButton.disabled = disabledOnMobile;
+        siteLayoutButton.dataset.layoutMode = effectiveMode;
+        siteLayoutButton.dataset.layoutOverride = disabledOnMobile ? "mobile-disabled" : siteLayoutModeOverride || "auto";
+        siteLayoutButton.dataset.mobileDisabled = String(disabledOnMobile);
+        siteLayoutButton.setAttribute("aria-pressed", String(effectiveMode === "mobile"));
+        siteLayoutButton.setAttribute("aria-disabled", String(disabledOnMobile));
+        siteLayoutButton.setAttribute("aria-label", label);
+        siteLayoutButton.setAttribute("title", label);
+      }
+      if (audioControlShell instanceof HTMLElement) {
+        audioControlShell.dataset.layoutMode = effectiveMode;
+        audioControlShell.dataset.layoutOverride = disabledOnMobile ? "mobile-disabled" : siteLayoutModeOverride || "auto";
+      }
+    }
     function syncMobileSpeakerToggle(enabled) {
       if (!(mobileSpeakerButton instanceof HTMLButtonElement)) return;
       mobileSpeakerButton.hidden = !enabled;
       if (siteVideoButton instanceof HTMLButtonElement) {
         siteVideoButton.hidden = !enabled;
       }
+      syncSiteLayoutToggle(enabled);
       if (audioControlShell instanceof HTMLElement) {
         audioControlShell.hidden = !enabled;
       }
@@ -8038,6 +8114,20 @@
       }
       await shufflePlayerController.toggleVideoBackground?.();
       syncMobileSpeakerToggle(true);
+    }
+    function onSiteLayoutToggleClick(event) {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) return;
+      event.preventDefault();
+      if (event.currentTarget.disabled || isActualMobileLayoutDevice()) {
+        syncLayoutMode();
+        return;
+      }
+      primeInteractionSfx("siteLayoutToggle");
+      playInteractionSfx("toggle_soft", "siteLayoutToggle");
+      persistSiteLayoutModeOverride(isCompactMobileLayout() ? "desktop" : "mobile");
+      syncSiteLayoutToggle(true);
+      syncLayoutMode();
+      siteCursorController?.refresh?.();
     }
     function onShuffleVolumeInput(event) {
       const slider = event.currentTarget;
@@ -10549,6 +10639,40 @@
       if (lastFmTrackDetailsCache.has(cacheKey) || lastFmTrackDetailsInflight.has(cacheKey)) return;
       fetchLastFmPanelDetails(definition, normalizedQuery, cacheKey).catch(() => {});
     }
+    function clearMobileLastFmPanelPrefetchTimer() {
+      if (!mobileLastFmPanelPrefetchTimer) return;
+      window.clearTimeout(mobileLastFmPanelPrefetchTimer);
+      mobileLastFmPanelPrefetchTimer = 0;
+    }
+    function prefetchLastFmPanelDetailsFromRoot(rootNode, limit = MOBILE_LASTFM_PANEL_PREFETCH_LIMIT) {
+      if (!(rootNode instanceof Element)) return;
+      const triggers = rootNode.querySelectorAll(".lastfm-recent-button[data-lastfm-track-title], .lastfm-media-button[data-lastfm-album-title]");
+      const seenKeys = new Set();
+      let count = 0;
+      for (const trigger of triggers) {
+        const intent = readLastFmPanelIntent(trigger);
+        if (!intent) continue;
+        const definition = getLastFmPanelDefinition(intent.panelType);
+        if (!definition) continue;
+        const normalizedQuery = definition.normalizeQuery(intent.query);
+        if (!definition.hasRequiredQuery(normalizedQuery)) continue;
+        const cacheKey = definition.buildCacheKey(normalizedQuery);
+        if (!cacheKey || seenKeys.has(cacheKey)) continue;
+        seenKeys.add(cacheKey);
+        prefetchLastFmPanelDetails(intent.panelType, normalizedQuery);
+        count += 1;
+        if (count >= limit) break;
+      }
+    }
+    function scheduleMobileLastFmPanelPrefetch(dropdown) {
+      if (!(dropdown instanceof HTMLDetailsElement) || !dropdown.open || !isCompactMobileLayout()) return;
+      clearMobileLastFmPanelPrefetchTimer();
+      mobileLastFmPanelPrefetchTimer = window.setTimeout(() => {
+        mobileLastFmPanelPrefetchTimer = 0;
+        if (disposed || !dropdown.isConnected || !dropdown.open || !isCompactMobileLayout()) return;
+        prefetchLastFmPanelDetailsFromRoot(dropdown);
+      }, 80);
+    }
     async function showLastFmPanel(panelType, query, trigger = null) {
       const definition = getLastFmPanelDefinition(panelType);
       if (!definition) return;
@@ -10795,6 +10919,7 @@
       }
       target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
       animateMobileLastFmDropdown(target);
+      scheduleMobileLastFmPanelPrefetch(target);
     }
     function onRefreshClick() {
       if (typeof onRefreshRequested !== "function") return;
@@ -10812,6 +10937,7 @@
         clearAngelsFooterLungeState();
       }
       const compactMobile = isCompactMobileLayout();
+      applySiteLayoutModeAttributes();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
       root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
@@ -10844,6 +10970,7 @@
             mobileRecentDropdownOpen: mobileLastFmDropdownOpen,
             mobileTopArtistsDropdownOpen
           });
+          scheduleMobileLastFmPanelPrefetch(showcases.querySelector("[data-mobile-lastfm-dropdown][open]"));
         } else {
           showcases.innerHTML = "";
           showcases.hidden = true;
@@ -10904,6 +11031,9 @@
     if (siteVideoButton instanceof HTMLButtonElement) {
       siteVideoButton.addEventListener("click", onSiteVideoToggleClick);
     }
+    if (siteLayoutButton instanceof HTMLButtonElement) {
+      siteLayoutButton.addEventListener("click", onSiteLayoutToggleClick);
+    }
     shuffleUiUnsubscribe = shufflePlayerController.subscribe((state) => {
       syncMobileSpeakerToggle(true);
       syncSidebarCurrentlyPlaying(state);
@@ -10922,6 +11052,7 @@
     document.addEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
     window.addEventListener("pagehide", handleMobileSelectionPageHide);
     root2?.addEventListener("click", onRootClick);
+    root2?.addEventListener("pointerdown", onRootPrefetchIntent);
     root2?.addEventListener("pointerover", onRootPrefetchIntent);
     root2?.addEventListener("focusin", onRootPrefetchIntent);
     root2?.addEventListener("toggle", onRootToggle, true);
@@ -10934,6 +11065,7 @@
       hideExternalPrompt("silent");
       mobileSpeakerButton?.removeEventListener("click", onMobileSpeakerToggleClick);
       siteVideoButton?.removeEventListener("click", onSiteVideoToggleClick);
+      siteLayoutButton?.removeEventListener("click", onSiteLayoutToggleClick);
       shuffleVolumeSlider?.removeEventListener("input", onShuffleVolumeInput);
       shuffleUiUnsubscribe?.();
       shuffleUiUnsubscribe = null;
@@ -10945,6 +11077,9 @@
       }
       if (siteVideoButton instanceof HTMLButtonElement) {
         siteVideoButton.hidden = true;
+      }
+      if (siteLayoutButton instanceof HTMLButtonElement) {
+        siteLayoutButton.hidden = true;
       }
       if (audioControlShell instanceof HTMLElement) {
         audioControlShell.hidden = true;
@@ -10959,10 +11094,12 @@
       clearMobileLastFmRevealTimer();
       clearDesktopUnfoldTimer();
       clearDesktopUnfoldOrdering();
+      clearMobileLastFmPanelPrefetchTimer();
       clearMobileLinkSelectedState();
       clearPendingMobileExternalLaunch();
       document.removeEventListener("visibilitychange", handleMobileSelectionVisibilityChange);
       window.removeEventListener("pagehide", handleMobileSelectionPageHide);
+      root2?.removeEventListener("pointerdown", onRootPrefetchIntent);
       root2?.removeEventListener("pointerover", onRootPrefetchIntent);
       root2?.removeEventListener("focusin", onRootPrefetchIntent);
       root2?.removeEventListener("toggle", onRootToggle, true);
@@ -14355,14 +14492,17 @@
     socialHubInitialized = false;
   }
   function syncLayoutMode() {
+    applySiteLayoutModeAttributes();
     if (!socialHubInitialized || !socialHubState || !socialHubRenderer) return;
     socialHubState.startAutoRefresh();
     scheduleSocialHubRender(socialHubState.snapshot(Date.now()));
     profileDecorationScrollGuard?.refresh?.();
+    siteCursorController?.refresh?.();
   }
   async function bootstrap() {
     if (!(root instanceof HTMLElement)) return;
     applyPermanentNightTheme();
+    applySiteLayoutModeAttributes();
     startDocumentTitleTypewriter("Josie");
     setReadyState();
     profileDecorationScrollGuard = createSteamProfileDecorationScrollGuard();

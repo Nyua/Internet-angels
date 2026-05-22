@@ -210,6 +210,28 @@
           <img src="/assets/star.svg" alt="" decoding="async" />
         </span>
       </button>
+      <button
+        type="button"
+        class="site-layout-toggle"
+        data-site-layout-toggle
+        data-layout-mode="desktop"
+        hidden
+        aria-label="Use mobile layout"
+        title="Use mobile layout"
+      >
+        <span class="site-layout-toggle-icon site-layout-toggle-icon--desktop" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <rect x="4" y="5.5" width="16" height="10.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.65"/>
+            <path d="M9 19h6M12 16v3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.65"/>
+          </svg>
+        </span>
+        <span class="site-layout-toggle-icon site-layout-toggle-icon--mobile" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <rect x="8" y="3.5" width="8" height="17" rx="2.15" fill="none" stroke="currentColor" stroke-width="1.65"/>
+            <path d="M11.1 17.6h1.8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.65"/>
+          </svg>
+        </span>
+      </button>
       <label class="site-audio-volume" aria-label="Music volume">
         <input class="site-audio-volume-slider" data-site-volume-slider type="range" min="0" max="100" step="1" value="100" aria-label="Music volume" />
       </label>

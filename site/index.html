@@ -442,7 +442,13 @@
         introClickGif.hidden = false;
         introClickGif.src = "";
         window.requestAnimationFrame(() => {
-          introClickGif.src = `${gifSource}?play=${Date.now()}`;
+          try {
+            const gifUrl = new URL(gifSource, window.location.href);
+            gifUrl.searchParams.set("play", String(Date.now()));
+            introClickGif.src = `${gifUrl.pathname}${gifUrl.search}${gifUrl.hash}`;
+          } catch {
+            introClickGif.src = `${gifSource}${gifSource.includes("?") ? "&" : "?"}play=${Date.now()}`;
+          }
           document.body.classList.add("is-intro-gif-playing");
         });
         introClickGifPlaybackTimer = window.setTimeout(stopIntroClickGifPlayback, introClickGifRuntimeMs);

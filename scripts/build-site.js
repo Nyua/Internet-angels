@@ -42,6 +42,9 @@ const avatarExtensions = /* @__PURE__ */ new Set([
 const headersFile = `/*.html
   Cache-Control: no-cache, max-age=0, must-revalidate
 
+/assets/shuffle-manifest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -138,7 +141,7 @@ function rewriteHtmlAssetVersions() {
   const htmlFiles = fs.readdirSync(distDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === ".html")
     .map((entry) => path.join(distDir, entry.name));
-  const assetPattern = /(["'])(\/[^"'?#]+\.(?:css|js))(?:\?v=[^"'#]*)?\1/g;
+  const assetPattern = /(["'])(\/[^"'?#]+\.(?:css|js|gif|png|jpe?g|webp|svg))(?:\?v=[^"'#]*)?\1/g;
   for (const htmlPath of htmlFiles) {
     const original = fs.readFileSync(htmlPath, "utf8");
     const rewritten = original.replace(assetPattern, (match, quote, assetPath) => {
@@ -163,6 +166,17 @@ function rewriteHtmlAssetVersions() {
   }
 }
 
+function injectClientBuildVersions(source, versions = {}) {
+  let output = String(source || "");
+  if (versions.shuffleManifest) {
+    output = output.replace(
+      /var SHUFFLE_MANIFEST_BUILD_VERSION = ".*?";/,
+      `var SHUFFLE_MANIFEST_BUILD_VERSION = "${versions.shuffleManifest}";`
+    );
+  }
+  return output;
+}
+
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
 fs.cpSync(siteDir, distDir, {
@@ -177,15 +191,18 @@ fs.cpSync(siteDir, distDir, {
   }
 });
 
-const appSource = fs.readFileSync(appSourcePath, "utf8");
-fs.writeFileSync(clientOutputPath, appSource, "utf8");
-if (fs.existsSync(appOutputPath)) {
-  fs.rmSync(appOutputPath, { force: true });
-}
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
 await writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
+const appSource = fs.readFileSync(appSourcePath, "utf8");
+const appClientSource = injectClientBuildVersions(appSource, {
+  shuffleManifest: hashFileVersion(shuffleManifestPath)
+});
+fs.writeFileSync(clientOutputPath, appClientSource, "utf8");
+if (fs.existsSync(appOutputPath)) {
+  fs.rmSync(appOutputPath, { force: true });
+}
 rewriteHtmlAssetVersions();
 if (fs.existsSync(josieHtmlPath)) {
   fs.mkdirSync(path.dirname(josieDirectoryIndexPath), { recursive: true });
