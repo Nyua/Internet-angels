@@ -1,0 +1,69 @@
+{
+  "profileUrl": "https://steamcommunity.com/id/foundlifeless/",
+  "stale": true,
+  "fetchedAt": "2026-03-25T00:00:00.000Z",
+  "sourceStatus": "PARTIAL",
+  "profile": {
+    "name": "Josie",
+    "handle": "steamcommunity.com/id/foundlifeless",
+    "url": "https://steamcommunity.com/id/foundlifeless/",
+    "bio": "The Internet Angel",
+    "avatarUrl": "https://avatars.fastly.steamstatic.com/7f56a0dcc6eb91eb84174f52c44cf91aa6d051b5.jpg",
+    "borderImageUrl": "",
+    "statusText": "Currently Online",
+    "levelBadgeLabel": "Level 22"
+  },
+  "stats": [
+    {
+      "label": "Level",
+      "value": "22"
+    },
+    {
+      "label": "Status",
+      "value": "Currently Online"
+    },
+    {
+      "label": "2W Hours",
+      "value": "84.2h"
+    },
+    {
+      "label": "Recent Games",
+      "value": "3"
+    }
+  ],
+  "items": [
+    {
+      "id": "steam-snapshot-3065800",
+      "title": "Marathon",
+      "meta": "77 hrs on record | last played on Mar 18",
+      "url": "https://steamcommunity.com/app/3065800",
+      "appId": "3065800",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3065800/4a77146f41c57cb6d41c984ce27b54c41847678d/capsule_184x69.jpg?t=1773437772",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3065800/4a77146f41c57cb6d41c984ce27b54c41847678d/capsule_184x69.jpg?t=1773437772",
+      "hoursOnRecord": "77",
+      "lastPlayed": "last played on Mar 18"
+    },
+    {
+      "id": "steam-snapshot-3764200",
+      "title": "Resident Evil Requiem",
+      "meta": "2.8 hrs on record | last played on Mar 16",
+      "url": "https://steamcommunity.com/app/3764200",
+      "appId": "3764200",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3764200/64f506b9b6210df6055136e7017f2082957e5b22/capsule_184x69.jpg?t=1772587704",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3764200/64f506b9b6210df6055136e7017f2082957e5b22/capsule_184x69.jpg?t=1772587704",
+      "hoursOnRecord": "2.8",
+      "lastPlayed": "last played on Mar 16"
+    },
+    {
+      "id": "steam-snapshot-1229490",
+      "title": "ULTRAKILL",
+      "meta": "15.7 hrs on record | last played on Mar 16",
+      "url": "https://steamcommunity.com/app/1229490",
+      "appId": "1229490",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1229490/capsule_184x69.jpg?t=1771983912",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1229490/capsule_184x69.jpg?t=1771983912",
+      "hoursOnRecord": "15.7",
+      "lastPlayed": "last played on Mar 16"
+    }
+  ]
+}

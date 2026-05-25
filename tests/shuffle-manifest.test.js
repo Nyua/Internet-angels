@@ -78,3 +78,22 @@ test("shuffle YouTube parser accepts common YouTube URL shapes", () => {
   assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/embed/r-6lO_UN3NY"), "r-6lO_UN3NY");
   assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/shorts/r-6lO_UN3NY"), "r-6lO_UN3NY");
 });
+
+test("project shuffle manifest is generated from site/Shuffle/youtube-links.txt", async () => {
+  const siteDir = path.resolve(import.meta.dirname, "..", "site");
+  const linksPath = path.join(siteDir, "Shuffle", "youtube-links.txt");
+  const expectedVideoIds = fs.readFileSync(linksPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => shuffleManifestTest.extractYouTubeVideoId(line))
+    .filter(Boolean);
+
+  const manifest = await buildShuffleManifest({
+    siteDir,
+    metadataLookup: null
+  });
+
+  assert.deepEqual(
+    manifest.tracks.map((track) => track.youtubeVideoId),
+    expectedVideoIds.slice().reverse()
+  );
+});

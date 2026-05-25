@@ -610,6 +610,201 @@ function expectedShuffleDisplayArtist(track) {
   return artist === "Youtube" ? "YouTube" : artist;
 }
 
+async function emulateCoarseMobileInput(page) {
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      const media = String(query || "");
+      if (media === "(pointer: coarse)" || media === "(hover: none)") {
+        return {
+          matches: true,
+          media,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {
+            return false;
+          }
+        };
+      }
+      return originalMatchMedia(query);
+    };
+  });
+}
+
+async function mockCompactLastFmSocialApis(page) {
+  const nowIso = new Date().toISOString();
+  const recentUts = String(Math.floor(Date.now() / 1000) - 3600);
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless"
+          },
+          discord_status: "online",
+          activities: []
+        }
+      })
+    });
+  });
+  await page.route("**/api/steam-recent-activity", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        profile: {
+          name: "FoundLifeless",
+          handle: "steamcommunity.com/id/foundlifeless",
+          url: "https://steamcommunity.com/id/foundlifeless/",
+          statusText: "Online"
+        },
+        stats: [
+          { label: "2W Hours", value: "12.3 hours" },
+          { label: "Recent Games", value: "1" }
+        ],
+        items: [
+          {
+            id: "shield-game",
+            title: "Shield Game",
+            url: "https://store.steampowered.com/app/123456/Shield_Game/",
+            artworkUrl: "",
+            hoursOnRecord: "12.3",
+            lastPlayed: "Played today"
+          }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        recenttracks: {
+          track: [
+            {
+              name: "Shield Song",
+              artist: { name: "Shield Artist" },
+              album: { "#text": "Shield Album" },
+              image: [],
+              url: "https://www.last.fm/music/Shield+Artist/_/Shield+Song",
+              date: { uts: recentUts }
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "Shield Artist",
+              playcount: "99",
+              image: [],
+              url: "https://www.last.fm/music/Shield+Artist"
+            }
+          ]
+        },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "12345", artist_count: "321" },
+        lovedtracks: { "@attr": { total: "77" } },
+        nowPlaying: null,
+        discovery: null
+      })
+    });
+  });
+}
+
+async function openRecentTracksDropdownWithShuffleBehind(page, options = {}) {
+  await stubWindowOpen(page);
+  await mockCompactLastFmSocialApis(page);
+  if (options.mobileViewport) {
+    await page.setViewportSize(options.mobileViewport);
+    await emulateCoarseMobileInput(page);
+  }
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  if (options.useDesktopMobileToggle) {
+    await page.locator("[data-site-layout-toggle]").click();
+    await expect(page.locator("body")).toHaveAttribute("data-site-layout-mode", "mobile");
+  }
+  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await page.waitForFunction(() => {
+    const reveal = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+    return reveal instanceof HTMLElement && reveal.dataset.mobileLastfmReveal === "visible";
+  });
+  const recentSummary = page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+  await recentSummary.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => {
+    const node = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+    if (!(node instanceof HTMLElement)) return false;
+    const styles = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return styles.display !== "none"
+      && styles.visibility !== "hidden"
+      && Number(styles.opacity) > 0
+      && rect.width > 0
+      && rect.height > 0;
+  });
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction(() => {
+    const title = document.querySelector("[data-sidebar-shuffle-title]");
+    const artist = document.querySelector("[data-sidebar-shuffle-artist]");
+    return (title instanceof HTMLAnchorElement && title.href) || (artist instanceof HTMLAnchorElement && artist.href);
+  });
+  await recentSummary.click({ force: true });
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
+}
+
+async function readMobileLastFmShuffleShield(page) {
+  return page.evaluate(() => {
+    const dropdown = document.querySelector('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]');
+    const recentButton = document.querySelector("#social-hub-showcases .lastfm-recent-button");
+    const pointSource = recentButton || dropdown;
+    const shuffleLink = document.querySelector("[data-sidebar-shuffle-title][href], [data-sidebar-shuffle-artist][href]");
+    if (!(pointSource instanceof HTMLElement) || !(shuffleLink instanceof HTMLElement)) {
+      return null;
+    }
+    const rect = pointSource.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + Math.min(rect.height / 2, 38);
+    const hitTarget = document.elementFromPoint(clientX, clientY);
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      clientY,
+      view: window
+    });
+    const dispatchResult = shuffleLink.dispatchEvent(click);
+    return {
+      bodyMode: document.body?.dataset?.siteLayoutMode || "",
+      bodyDropdownOpen: document.body?.dataset?.mobileLastfmDropdownOpen || "",
+      rootDropdownOpen: document.querySelector("#social-hub-root")?.getAttribute("data-mobile-lastfm-dropdown-open") || "",
+      dropdownOpen: dropdown instanceof HTMLDetailsElement ? dropdown.open : false,
+      shufflePointerEvents: window.getComputedStyle(shuffleLink).pointerEvents,
+      hitInsideLastFm: Boolean(hitTarget?.closest?.("#social-hub-showcases .lastfm-mobile-dropdown, #social-hub-showcases .lastfm-recent-button")),
+      hitShuffleLink: Boolean(hitTarget?.closest?.("[data-shuffle-link]")),
+      dispatchResult,
+      defaultPrevented: click.defaultPrevented,
+      openedWindows: Array.isArray(window.__windowOpenCalls) ? window.__windowOpenCalls.length : 0
+    };
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await setDesktopPerformanceOverride(page, "full");
   await installShuffleAudioMock(page);
@@ -1201,12 +1396,17 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   });
   expect(priorityImagePreloads).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({
-        href: "http://127.0.0.1:8788/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg",
-        fetchpriority: "high"
-      })
+      expect.objectContaining({ fetchpriority: "high" })
     ])
   );
+  expect(priorityImagePreloads.some((preload) => {
+    try {
+      return new URL(preload.href).pathname === "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg"
+        && preload.fetchpriority === "high";
+    } catch {
+      return false;
+    }
+  })).toBe(true);
   expect(priorityImagePreloads.some((preload) => preload.href.includes("a_c86b11a49bb8057ce9c974a6f7ad658a"))).toBe(false);
   releaseAvatarManifest();
 });
@@ -1346,7 +1546,24 @@ test("josie keeps the removed shuffle visual layer absent from cursor handling",
 
   await page.locator("[data-mobile-speaker-toggle]").click();
   await waitForShufflePlayback(page);
-  await emitCustomCursorHover(page, "#social-hub-scale-frame");
+  await page.evaluate(() => {
+    const target = document.querySelector("#social-hub-scale-frame");
+    if (!(target instanceof HTMLElement)) return;
+    const rect = target.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: rect.left + 8,
+      clientY: rect.top + 8,
+      pointerType: "mouse",
+      view: window
+    };
+    const PointerLikeEvent = typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
+    target.dispatchEvent(new PointerLikeEvent("pointerover", init));
+    target.dispatchEvent(new PointerLikeEvent("pointermove", init));
+    window.dispatchEvent(new PointerLikeEvent("pointermove", init));
+  });
   const cursorState = await page.evaluate(() => {
     const cursor = document.querySelector(".site-pointer");
     return {
@@ -1678,6 +1895,96 @@ test("josie retries Last.fm and Steam boot APIs after first-load failures", asyn
   await expect.poll(() => steamRequests, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
   await expect(page.locator(".lastfm-recent-title").first()).toHaveText("Retry Song", { timeout: 5_000 });
   await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Retry Game", { timeout: 5_000 });
+});
+
+test("josie paints cached Steam recent activity before the cold live refresh returns", async ({ page }) => {
+  const nowIso = new Date().toISOString();
+  let steamRequests = 0;
+  let releaseSteamRefresh;
+  const steamRefreshGate = new Promise((resolve) => {
+    releaseSteamRefresh = resolve;
+  });
+
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless"
+          },
+          discord_status: "online",
+          activities: []
+        }
+      })
+    });
+  });
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        recenttracks: { track: [] },
+        topartists: { artist: [] },
+        topalbums: { album: [] },
+        toptracks: { track: [] },
+        user: { playcount: "0", artist_count: "0" },
+        lovedtracks: { "@attr": { total: "0" } },
+        nowPlaying: null,
+        discovery: null
+      })
+    });
+  });
+  await page.route("**/api/steam-recent-activity", async (route) => {
+    steamRequests += 1;
+    await steamRefreshGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        profile: {
+          name: "FoundLifeless",
+          handle: "steamcommunity.com/id/foundlifeless",
+          url: "https://steamcommunity.com/id/foundlifeless/",
+          statusText: "Online"
+        },
+        stats: [
+          { label: "2W Hours", value: "1.0 hours" },
+          { label: "Recent Games", value: "1" }
+        ],
+        items: [
+          {
+            id: "live-refresh-game",
+            title: "Live Refresh Game",
+            url: "https://store.steampowered.com/app/999999/Live_Refresh_Game/",
+            artworkUrl: "",
+            hoursOnRecord: "1.0",
+            lastPlayed: "Played just now"
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect.poll(() => steamRequests, { timeout: 5_000 }).toBe(1);
+  await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Marathon");
+  await expect(page.locator(".steam-activity-game-title", { hasText: "Recent activity pending" })).toHaveCount(0);
+
+  releaseSteamRefresh();
+  await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Live Refresh Game", { timeout: 5_000 });
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
@@ -5881,6 +6188,45 @@ test("josie shows a Last.fm-only compact mobile showcase and opens track details
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect.poll(() => apiRequests.some((url) => url.includes("/api/lastfm-track-details")), { timeout: 10_000 }).toBe(true);
+});
+
+test("josie blocks real mobile Last.fm dropdown taps from shuffle links behind it", async ({ page }) => {
+  await openRecentTracksDropdownWithShuffleBehind(page, {
+    mobileViewport: { width: 393, height: 852 }
+  });
+
+  const shield = await readMobileLastFmShuffleShield(page);
+  expect(shield).not.toBeNull();
+  expect(shield.bodyMode).toBe("mobile");
+  expect(shield.bodyDropdownOpen).toBe("true");
+  expect(shield.rootDropdownOpen).toBe("true");
+  expect(shield.dropdownOpen).toBe(true);
+  expect(shield.shufflePointerEvents).toBe("none");
+  expect(shield.hitInsideLastFm).toBe(true);
+  expect(shield.hitShuffleLink).toBe(false);
+  expect(shield.dispatchResult).toBe(false);
+  expect(shield.defaultPrevented).toBe(true);
+  expect(shield.openedWindows).toBe(0);
+});
+
+test("josie blocks desktop mobile-mode Last.fm dropdown taps from shuffle links behind it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openRecentTracksDropdownWithShuffleBehind(page, {
+    useDesktopMobileToggle: true
+  });
+
+  const shield = await readMobileLastFmShuffleShield(page);
+  expect(shield).not.toBeNull();
+  expect(shield.bodyMode).toBe("mobile");
+  expect(shield.bodyDropdownOpen).toBe("true");
+  expect(shield.rootDropdownOpen).toBe("true");
+  expect(shield.dropdownOpen).toBe(true);
+  expect(shield.shufflePointerEvents).toBe("none");
+  expect(shield.hitInsideLastFm).toBe(true);
+  expect(shield.hitShuffleLink).toBe(false);
+  expect(shield.dispatchResult).toBe(false);
+  expect(shield.defaultPrevented).toBe(true);
+  expect(shield.openedWindows).toBe(0);
 });
 
 test("josie settles mobile top artist details without stale loading UI", async ({ page }) => {

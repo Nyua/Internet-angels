@@ -12,6 +12,7 @@ const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
+const steamRecentActivitySnapshotPath = path.join(siteDir, "assets", "steam-recent-activity-snapshot.json");
 const josieHtmlPath = path.join(distDir, "josie.html");
 const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
 const maxPagesAssetBytes = 25 * 1024 * 1024;
@@ -136,6 +137,17 @@ function hashFileVersion(filePath) {
   return crypto.createHash("sha256").update(content).digest("hex").slice(0, 10);
 }
 
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Invalid JSON at ${filePath}: ${error.message}`);
+  }
+}
+
 function rewriteHtmlAssetVersions() {
   const assetVersionCache = new Map();
   const htmlFiles = fs.readdirSync(distDir, { withFileTypes: true })
@@ -174,6 +186,12 @@ function injectClientBuildVersions(source, versions = {}) {
       `var SHUFFLE_MANIFEST_BUILD_VERSION = "${versions.shuffleManifest}";`
     );
   }
+  if (versions.steamRecentActivitySnapshot) {
+    output = output.replace(
+      /var STEAM_RECENT_ACTIVITY_SNAPSHOT = null;/,
+      `var STEAM_RECENT_ACTIVITY_SNAPSHOT = ${JSON.stringify(versions.steamRecentActivitySnapshot)};`
+    );
+  }
   return output;
 }
 
@@ -197,7 +215,8 @@ fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null,
 await writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
 const appSource = fs.readFileSync(appSourcePath, "utf8");
 const appClientSource = injectClientBuildVersions(appSource, {
-  shuffleManifest: hashFileVersion(shuffleManifestPath)
+  shuffleManifest: hashFileVersion(shuffleManifestPath),
+  steamRecentActivitySnapshot: readJsonFile(steamRecentActivitySnapshotPath)
 });
 fs.writeFileSync(clientOutputPath, appClientSource, "utf8");
 if (fs.existsSync(appOutputPath)) {

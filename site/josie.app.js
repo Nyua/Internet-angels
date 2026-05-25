@@ -193,6 +193,7 @@
   var SOCIAL_HUB_BOOT_RETRY_DELAYS_MS = [2e3, 4e3, 8e3, 15e3, 3e4, 45e3, 6e4];
   var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
   var SITE_LAYOUT_MODE_STORAGE_KEY = "internetAngelSiteLayoutMode";
+  var STEAM_RECENT_ACTIVITY_SNAPSHOT = null;
   var DISCORD_PROFILE_HANDLE = "foundlifeless";
   var PROFILE_LINK_SITE_IDS = /* @__PURE__ */ new Set(["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"]);
   var compactMobileLayoutQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width: ${COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX}px)`) : null;
@@ -312,6 +313,64 @@
   };
   var HERO_DESCRIPTION_TEXT = "The Internet Angel";
   var BASE_SEED_AT = Date.parse("2026-02-24T00:00:00.000Z");
+  function pickSteamSnapshotValue(...values) {
+    for (const value of values) {
+      const candidate = String(value ?? "").trim();
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+  function normalizeSteamSnapshotItem(item, index) {
+    if (!item || typeof item !== "object") return null;
+    const title = pickSteamSnapshotValue(item.title, item.name);
+    const url = pickSteamSnapshotValue(item.url);
+    if (!title && !url) return null;
+    const id = pickSteamSnapshotValue(item.id, item.appId ? `steam-snapshot-${item.appId}` : `steam-snapshot-${index + 1}`);
+    return {
+      id,
+      title: title || "Cached Steam activity",
+      meta: pickSteamSnapshotValue(item.meta),
+      url,
+      appId: pickSteamSnapshotValue(item.appId),
+      imageUrl: pickSteamSnapshotValue(item.imageUrl, item.artworkUrl),
+      artworkUrl: pickSteamSnapshotValue(item.artworkUrl, item.imageUrl),
+      hoursOnRecord: pickSteamSnapshotValue(item.hoursOnRecord),
+      lastPlayed: pickSteamSnapshotValue(item.lastPlayed)
+    };
+  }
+  function buildSteamCachedSnapshotSeed() {
+    const snapshot = STEAM_RECENT_ACTIVITY_SNAPSHOT && typeof STEAM_RECENT_ACTIVITY_SNAPSHOT === "object" ? STEAM_RECENT_ACTIVITY_SNAPSHOT : null;
+    if (!snapshot) return null;
+    const items = (Array.isArray(snapshot.items) ? snapshot.items : [])
+      .map((item, index) => normalizeSteamSnapshotItem(item, index))
+      .filter(Boolean);
+    if (!items.length) return null;
+    const profile = snapshot.profile && typeof snapshot.profile === "object" ? snapshot.profile : {};
+    return {
+      siteId: "steam",
+      profile: {
+        name: pickSteamSnapshotValue(profile.name, "FoundLifeless"),
+        handle: pickSteamSnapshotValue(profile.handle, "steamcommunity.com/id/foundlifeless"),
+        url: pickSteamSnapshotValue(profile.url, snapshot.profileUrl, "https://steamcommunity.com/id/foundlifeless/"),
+        avatarUrl: pickSteamSnapshotValue(profile.avatarUrl),
+        borderImageUrl: pickSteamSnapshotValue(profile.borderImageUrl),
+        borderVideoUrl: pickSteamSnapshotValue(profile.borderVideoUrl),
+        statusText: pickSteamSnapshotValue(profile.statusText, "Cached"),
+        levelBadgeLabel: pickSteamSnapshotValue(profile.levelBadgeLabel, "Level --"),
+        bio: pickSteamSnapshotValue(profile.bio, "\u02DA\u208A\u2027\uA4B0\u10D0 \u2661 \u0ED2\uA4B1 \u2027\u208A\u02DA")
+      },
+      stats: Array.isArray(snapshot.stats) && snapshot.stats.length ? snapshot.stats : [
+        { label: "Recent Games", value: String(items.length) },
+        { label: "Source", value: "Cached" }
+      ],
+      items,
+      embeds: {},
+      updatedAt: BASE_SEED_AT,
+      freshnessStatus: "CACHED",
+      sourceStatus: "PARTIAL",
+      cachedSnapshot: true
+    };
+  }
   function buildTwitterSeed() {
     return {
       siteId: "twitter",
@@ -338,6 +397,8 @@
     };
   }
   function buildSteamSeed() {
+    const cachedSnapshotSeed = buildSteamCachedSnapshotSeed();
+    if (cachedSnapshotSeed) return cachedSnapshotSeed;
     return {
       siteId: "steam",
       profile: {
@@ -6906,6 +6967,7 @@
     let mobileLastFmDropdownOpen = false;
     let mobileTopArtistsDropdownOpen = false;
     let mobileLastFmPanelPrefetchTimer = 0;
+    let mobileLastFmPointerGuardUntil = 0;
     let desktopUnfoldPlayed = false;
     let desktopUnfoldClearTimer = 0;
     let activeAngelsFooter = null;
@@ -7251,6 +7313,94 @@
         mobileLastFmRevealPlayed = true;
         setMobileLastFmRevealState("visible");
       }, 220);
+    }
+    function syncMobileLastFmDropdownBlockingState(forceOpen = null) {
+      const dropdownOpen = forceOpen === null
+        ? isCompactMobileLayout() && Boolean(
+          getMobileLastFmDropdown("recent-tracks")?.open ||
+          getMobileLastFmDropdown("top-artists")?.open
+        )
+        : Boolean(forceOpen);
+      if (document.body instanceof HTMLElement) {
+        document.body.classList.toggle("mobile-lastfm-dropdown-open", dropdownOpen);
+        document.body.dataset.mobileLastfmDropdownOpen = String(dropdownOpen);
+      }
+      if (root2 instanceof HTMLElement) {
+        root2.dataset.mobileLastfmDropdownOpen = String(dropdownOpen);
+      }
+    }
+    function resolveEventElementTarget(target) {
+      if (target instanceof Element) return target;
+      if (target instanceof Node && target.parentElement instanceof Element) return target.parentElement;
+      return null;
+    }
+    function getMobileLastFmPointerRegions() {
+      if (!isCompactMobileLayout() || !(showcases instanceof HTMLElement)) return [];
+      const selectors = [
+        ".lastfm-section--mobile-dropdown",
+        ".lastfm-mobile-dropdown",
+        ".lastfm-mobile-dropdown-summary",
+        ".lastfm-mobile-dropdown-panel",
+        ".lastfm-recent-button",
+        ".lastfm-media-button"
+      ];
+      const nodes = selectors.flatMap((selector) => Array.from(showcases.querySelectorAll(selector)));
+      if (showcases.classList.contains("social-hub-showcases--mobile-lastfm")) {
+        nodes.push(showcases);
+      }
+      return nodes
+        .filter((node) => node instanceof HTMLElement && node.isConnected && !node.hidden)
+        .map((node) => node.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+    }
+    function isPointInsideMobileLastFmUi(clientX, clientY) {
+      if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+      return getMobileLastFmPointerRegions().some((rect) => (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ));
+    }
+    function isInsideMobileLastFmUi(target) {
+      const elementTarget = resolveEventElementTarget(target);
+      return Boolean(elementTarget?.closest?.("#social-hub-showcases .lastfm-section--mobile-dropdown, #social-hub-showcases .lastfm-mobile-dropdown, #social-hub-showcases .lastfm-recent-button, #social-hub-showcases .lastfm-media-button"));
+    }
+    function isMobileLastFmShieldedTarget(target) {
+      const elementTarget = resolveEventElementTarget(target);
+      return Boolean(elementTarget?.closest?.(
+        "[data-shuffle-link], #social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal, #social-hub-sidebar .steam-sidebar-list--mobile-icons, .site-audio-control"
+      ));
+    }
+    function blockMobileLastFmClickThrough(event) {
+      if (!(event instanceof Event)) return false;
+      if (isInsideMobileLastFmUi(event.target)) return false;
+      if (!isMobileLastFmShieldedTarget(event.target)) return false;
+      if (typeof event.preventDefault === "function" && event.cancelable) {
+        event.preventDefault();
+      }
+      if (typeof event.stopImmediatePropagation === "function") {
+        event.stopImmediatePropagation();
+      } else if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+      return true;
+    }
+    function onMobileLastFmDocumentPointerGuard(event) {
+      if (disposed || !isCompactMobileLayout()) return;
+      const clientX = Number(event?.clientX);
+      const clientY = Number(event?.clientY);
+      if (!isPointInsideMobileLastFmUi(clientX, clientY)) return;
+      mobileLastFmPointerGuardUntil = Date.now() + 700;
+      blockMobileLastFmClickThrough(event);
+    }
+    function onMobileLastFmDocumentClickGuard(event) {
+      if (disposed || !isCompactMobileLayout()) return;
+      const clientX = Number(event?.clientX);
+      const clientY = Number(event?.clientY);
+      const guardActive = Date.now() <= mobileLastFmPointerGuardUntil;
+      if (!guardActive && !isPointInsideMobileLastFmUi(clientX, clientY)) return;
+      blockMobileLastFmClickThrough(event);
     }
     function clearDesktopUnfoldOrdering() {
       if (!(root2 instanceof HTMLElement)) return;
@@ -10809,6 +10959,7 @@
         mobileTopArtistsDropdownOpen = target.open;
       }
       target.dataset.mobileLastfmDropdownOpen = target.open ? "true" : "false";
+      syncMobileLastFmDropdownBlockingState();
       animateMobileLastFmDropdown(target);
       scheduleMobileLastFmPanelPrefetch(target);
     }
@@ -10872,6 +11023,7 @@
         showcases.hidden = false;
         showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
+      syncMobileLastFmDropdownBlockingState(compactMobile && Boolean(mobileLastFmDropdownOpen || mobileTopArtistsDropdownOpen));
       syncMobileAudioDock(false);
       const shuffleRoot = null;
       shufflePlayerController?.attach(shuffleRoot);
@@ -10942,6 +11094,8 @@
     root2?.addEventListener("pointerover", onRootPrefetchIntent);
     root2?.addEventListener("focusin", onRootPrefetchIntent);
     root2?.addEventListener("toggle", onRootToggle, true);
+    document.addEventListener("pointerdown", onMobileLastFmDocumentPointerGuard, true);
+    document.addEventListener("click", onMobileLastFmDocumentClickGuard, true);
     refreshButton?.addEventListener("click", onRefreshClick);
     function dispose() {
       if (disposed) return;
@@ -10989,6 +11143,9 @@
       root2?.removeEventListener("pointerover", onRootPrefetchIntent);
       root2?.removeEventListener("focusin", onRootPrefetchIntent);
       root2?.removeEventListener("toggle", onRootToggle, true);
+      document.removeEventListener("pointerdown", onMobileLastFmDocumentPointerGuard, true);
+      document.removeEventListener("click", onMobileLastFmDocumentClickGuard, true);
+      syncMobileLastFmDropdownBlockingState(false);
       hideLastFmTrackDetails("silent");
       lastFmTrackPanelRoot?.remove();
       lastFmTrackPanelRoot = null;
