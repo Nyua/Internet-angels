@@ -578,13 +578,13 @@ async function installYouTubePlayerMock(page) {
   });
 }
 
-async function readFirstSelectableShuffleTrack(page) {
+async function readSelectableShuffleTracks(page) {
   return page.evaluate(async () => {
     try {
       const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
-      if (!response.ok) return null;
+      if (!response.ok) return [];
       const data = await response.json();
-      const track = (Array.isArray(data?.tracks) ? data.tracks : [])
+      return (Array.isArray(data?.tracks) ? data.tracks : [])
         .filter((entry) => Number(entry?.segmentIndex || 0) === 0)
         .sort((a, b) => {
           const addedAtA = Date.parse(String(a?.addedAt || ""));
@@ -593,21 +593,33 @@ async function readFirstSelectableShuffleTrack(page) {
           const safeAddedAtB = Number.isFinite(addedAtB) ? addedAtB : 0;
           if (safeAddedAtB !== safeAddedAtA) return safeAddedAtB - safeAddedAtA;
           return (Number(a?.sortOrder) || 0) - (Number(b?.sortOrder) || 0);
-        })[0];
-      if (!track) return null;
-      return {
-        title: String(track.displayTitle || track.title || "").trim(),
-        artist: String(track.displayArtist || track.artist || "").trim()
-      };
+        })
+        .map((track) => ({
+          title: String(track.displayTitle || track.title || "").trim(),
+          artist: String(track.displayArtist || track.artist || "").trim()
+        }));
     } catch {
-      return null;
+      return [];
     }
   });
+}
+
+async function readFirstSelectableShuffleTrack(page) {
+  const tracks = await readSelectableShuffleTracks(page);
+  return tracks[0] || null;
 }
 
 function expectedShuffleDisplayArtist(track) {
   const artist = String(track?.artist || "").trim();
   return artist === "Youtube" ? "YouTube" : artist;
+}
+
+function expectShuffleStateMatchesSelectableTrack(state, tracks) {
+  expect(tracks.length).toBeGreaterThan(0);
+  expect(tracks.some((track) => {
+    return state?.title === track.title
+      && state?.artist === expectedShuffleDisplayArtist(track);
+  })).toBe(true);
 }
 
 async function emulateCoarseMobileInput(page) {
@@ -1169,7 +1181,7 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   await setDesktopPerformanceOverride(page, "degraded");
   await page.goto("/josie.html");
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
-  const expectedTrack = await readFirstSelectableShuffleTrack(page);
+  const selectableShuffleTracks = await readSelectableShuffleTracks(page);
 
   await expect(page.locator("body")).toHaveAttribute("data-performance-tier", "full");
   await expect(page.locator("body")).toHaveAttribute("data-performance-reason", "disabled");
@@ -1201,8 +1213,7 @@ test("desktop Josie ignores the deprecated degraded performance override and kee
   await waitForInteractionSfx(page, { soundId: "toggle_soft", source: "mobileSpeakerToggle", ownerMode: "top", page: "josie" });
   await waitForShufflePlayback(page);
   const shuffleState = await page.evaluate(() => window.__internetAngelShuffleDebug?.getState?.() || null);
-  expect(shuffleState?.title).toBe(expectedTrack?.title || "");
-  expect(shuffleState?.artist).toBe(expectedShuffleDisplayArtist(expectedTrack));
+  expectShuffleStateMatchesSelectableTrack(shuffleState, selectableShuffleTracks);
   await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
 });
 
@@ -2038,7 +2049,7 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
-  const expectedTrack = await readFirstSelectableShuffleTrack(page);
+  const selectableShuffleTracks = await readSelectableShuffleTracks(page);
   await expect.poll(() => page.title(), { timeout: 2_000 }).toMatch(JOSIE_TITLE_PATTERN);
   await expect.poll(() => page.evaluate(() => String(window.__internetAngelTitleTypewriterFrame || "")), { timeout: 2_000 }).toMatch(JOSIE_TITLE_PATTERN);
   const stageScrollbarState = await page.locator(".os-stage").evaluate((node) => {
@@ -2209,6 +2220,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
       && layer instanceof HTMLElement
       && (hasLocalVideo || hasYouTubeFrame);
   });
+  const currentShuffleState = await page.evaluate(() => window.__internetAngelShuffleDebug?.getState?.() || null);
+  expectShuffleStateMatchesSelectableTrack(currentShuffleState, selectableShuffleTracks);
   await expect(page.locator("#os-shuffle-visualizer-layer, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
   const videoBackgroundState = await page.evaluate(() => {
     const layer = document.querySelector("#shuffle-video-background");
@@ -2216,17 +2229,34 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     const showcases = document.querySelector("#social-hub-showcases");
     const showcase = document.querySelector("#social-hub-showcases > .steam-showcase");
     const video = document.querySelector("[data-shuffle-background-video]");
+    const videoBleed = document.querySelector("[data-shuffle-background-video-bleed]");
     const youtubeHost = document.querySelector("[data-shuffle-youtube-player]");
+    const youtubeBleed = document.querySelector("[data-shuffle-youtube-bleed]");
     const youtubeFrame = youtubeHost?.querySelector("iframe");
+    const layerRect = layer instanceof HTMLElement ? layer.getBoundingClientRect() : null;
+    const youtubeHostRect = youtubeHost instanceof HTMLElement ? youtubeHost.getBoundingClientRect() : null;
     const grain = layer instanceof HTMLElement ? window.getComputedStyle(layer, "::after") : null;
     const frameStyles = frame instanceof HTMLElement ? window.getComputedStyle(frame) : null;
     const showcaseStyles = showcase instanceof HTMLElement ? window.getComputedStyle(showcase) : null;
     const showcasesStyles = showcases instanceof HTMLElement ? window.getComputedStyle(showcases) : null;
+    const videoStyles = video instanceof HTMLVideoElement ? window.getComputedStyle(video) : null;
+    const videoBleedStyles = videoBleed instanceof HTMLVideoElement ? window.getComputedStyle(videoBleed) : null;
+    const youtubeBleedStyles = youtubeBleed instanceof HTMLElement ? window.getComputedStyle(youtubeBleed) : null;
     return {
       backgroundKind: layer instanceof HTMLElement ? layer.dataset.shuffleBackgroundKind || "" : "",
       videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : "",
       videoPreload: video instanceof HTMLVideoElement ? video.preload : "",
+      videoObjectFit: videoStyles?.objectFit || "",
+      videoBleedSrc: videoBleed instanceof HTMLVideoElement ? videoBleed.currentSrc || videoBleed.src : "",
+      videoBleedObjectFit: videoBleedStyles?.objectFit || "",
+      videoBleedFilter: videoBleedStyles?.filter || "",
       youtubeFrameSrc: youtubeFrame instanceof HTMLIFrameElement ? youtubeFrame.src : "",
+      youtubeFrameWidth: youtubeHostRect?.width || 0,
+      youtubeFrameHeight: youtubeHostRect?.height || 0,
+      layerWidth: layerRect?.width || 0,
+      layerHeight: layerRect?.height || 0,
+      youtubeBleedBackground: youtubeBleedStyles?.backgroundImage || "",
+      youtubeBleedFilter: youtubeBleedStyles?.filter || "",
       grainImage: grain?.backgroundImage || "",
       grainSize: grain?.backgroundSize || "",
       frameBackdrop: frameStyles?.backdropFilter || frameStyles?.webkitBackdropFilter || "",
@@ -2238,6 +2268,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   if (videoBackgroundState.backgroundKind === "youtube") {
     expect(videoBackgroundState.youtubeFrameSrc).toContain("youtube");
+    expect(videoBackgroundState.youtubeFrameWidth).toBeLessThanOrEqual(videoBackgroundState.layerWidth);
+    expect(videoBackgroundState.youtubeFrameHeight).toBeLessThanOrEqual(videoBackgroundState.layerHeight);
+    expect(videoBackgroundState.youtubeBleedBackground).toContain("ytimg.com");
+    expect(videoBackgroundState.youtubeBleedFilter).toContain("blur");
     const youtubeMemoryState = await page.evaluate(() => {
       const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
       return player ? {
@@ -2255,7 +2289,11 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
     expect(youtubeMemoryState?.loadCalls?.[0]?.suggestedQuality).toBe("small");
   } else {
     expect(videoBackgroundState.videoSrc).toContain("/Shuffle/");
+    expect(videoBackgroundState.videoBleedSrc).toBe(videoBackgroundState.videoSrc);
     expect(videoBackgroundState.videoPreload).toBe("metadata");
+    expect(videoBackgroundState.videoObjectFit).toBe("contain");
+    expect(videoBackgroundState.videoBleedObjectFit).toBe("cover");
+    expect(videoBackgroundState.videoBleedFilter).toContain("blur");
   }
   expect(videoBackgroundState.grainImage).toContain("svg");
   expect(videoBackgroundState.grainSize).not.toBe("auto");
@@ -2267,8 +2305,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("title", "Use music video background");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]").first()).toHaveText(expectedTrack?.title || "");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]").first()).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]").first()).toHaveText(currentShuffleState?.title || "");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]").first()).toHaveText(currentShuffleState?.artist || "");
   await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']")).toHaveCount(1);
   const desktopCurrentlyPlayingLayout = await page.evaluate(() => {
     const panel = document.querySelector("#social-hub-sidebar [data-sidebar-shuffle-panel][data-sidebar-shuffle-mode='desktop']");
@@ -3754,7 +3792,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", {
     timeout: 30_000
   });
-  const expectedTrack = await readFirstSelectableShuffleTrack(page);
+  const selectableShuffleTracks = await readSelectableShuffleTracks(page);
 
   await expect(page.locator("[data-mobile-speaker-toggle]")).toBeVisible();
   await expect(page.locator(".josie-mobile-audio-player")).toHaveCount(0);
@@ -3810,6 +3848,8 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
+  const mobileShuffleState = await page.evaluate(() => window.__internetAngelShuffleDebug?.getState?.() || null);
+  expectShuffleStateMatchesSelectableTrack(mobileShuffleState, selectableShuffleTracks);
   const mobileCurrentlyPlayingType = await page.evaluate(() => {
     const label = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-label");
     const title = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-title");
@@ -3820,8 +3860,8 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   expect(mobileCurrentlyPlayingType.labelAlign).toBe("center");
   expect(mobileCurrentlyPlayingType.titleSize).toBeGreaterThanOrEqual(23);
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(expectedTrack?.title || "");
-  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(expectedShuffleDisplayArtist(expectedTrack));
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-title]")).toHaveText(mobileShuffleState?.title || "");
+  await expect(page.locator("#social-hub-sidebar [data-sidebar-shuffle-artist]")).toHaveText(mobileShuffleState?.artist || "");
   await expect(page.locator("#os-shuffle-visualizer-surface, .josie-audio-player-wave, .josie-audio-player-bleed-layer")).toHaveCount(0);
   await page.waitForFunction(() => {
     const panel = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal");

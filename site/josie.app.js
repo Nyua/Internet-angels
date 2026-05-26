@@ -1840,7 +1840,6 @@
   var JOSIE_TOP_SHOWCASE_TEXT = "I'm just here, lol.";
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
   var SHUFFLE_MANIFEST_BUILD_VERSION = "";
-  var SHUFFLE_RECENCY_WEIGHT_STEP = 0.08;
   var SHUFFLE_ANALYSER_FFT_SIZE = 256;
   var SHUFFLE_SCRUB_PREVIEW_INTERVAL_MS = 34;
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
@@ -1954,29 +1953,38 @@
   function getSelectableShuffleTracks(tracks) {
     return (Array.isArray(tracks) ? tracks : []).filter((track) => (track?.segmentIndex || 0) === 0);
   }
-  function findPreferredInitialShuffleTrack(tracks) {
-    const safeTracks = sortShuffleTracksByRecency(getSelectableShuffleTracks(tracks));
-    return safeTracks[0] || null;
+  function readShuffleRandomUint32() {
+    try {
+      const cryptoSource = globalThis.crypto || window.crypto;
+      if (cryptoSource?.getRandomValues) {
+        const values = new Uint32Array(1);
+        cryptoSource.getRandomValues(values);
+        return values[0] >>> 0;
+      }
+    } catch {
+    }
+    return Math.floor(Math.random() * 2 ** 32) >>> 0;
   }
-  function pickWeightedShuffleTrack(tracks, excludeQueueId = "") {
+  function getShuffleRandomIndex(length) {
+    const safeLength = Math.max(0, Math.floor(Number(length) || 0));
+    if (!safeLength) return -1;
+    const uint32Range = 2 ** 32;
+    const maxUnbiasedValue = uint32Range - uint32Range % safeLength;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const value = readShuffleRandomUint32();
+      if (value < maxUnbiasedValue) {
+        return value % safeLength;
+      }
+    }
+    return Math.floor(Math.random() * safeLength);
+  }
+  function pickRandomShuffleTrack(tracks, excludeQueueId = "") {
     const safeTracks = sortShuffleTracksByRecency(getSelectableShuffleTracks(tracks));
     const candidates = safeTracks.filter((track) => !excludeQueueId || track.queueId !== excludeQueueId);
     const pool = candidates.length ? candidates : safeTracks;
     if (!pool.length) return null;
-    let totalWeight = 0;
-    const weighted = pool.map((track, index) => {
-      const weight = 1 + Math.max(0, pool.length - index - 1) * SHUFFLE_RECENCY_WEIGHT_STEP;
-      totalWeight += weight;
-      return { track, weight };
-    });
-    let target = Math.random() * totalWeight;
-    for (const entry of weighted) {
-      target -= entry.weight;
-      if (target <= 0) {
-        return entry.track;
-      }
-    }
-    return weighted[weighted.length - 1]?.track || pool[0];
+    const index = getShuffleRandomIndex(pool.length);
+    return pool[index] || pool[0];
   }
   function createReversedAudioBuffer(audioContext, buffer) {
     const reversed = audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
@@ -2068,6 +2076,7 @@
     let backgroundVideoEnabled = false;
     let backgroundVideoLayer = null;
     let backgroundVideoEl = null;
+    let backgroundVideoBleedEl = null;
     let backgroundVideoTrackKey = "";
     let youtubeApiPromise = null;
     let youtubePlayer = null;
@@ -2427,9 +2436,25 @@
       });
       return youtubeApiPromise;
     }
-    function ensureYouTubePlayerLayer() {
+    function ensureYouTubeBlurFill(layer, track = currentTrack) {
+      if (!(layer instanceof HTMLElement)) return null;
+      let bleed = layer.querySelector("[data-shuffle-youtube-bleed]");
+      if (!(bleed instanceof HTMLElement)) {
+        bleed = document.createElement("div");
+        bleed.className = "shuffle-youtube-player-bleed";
+        bleed.setAttribute("data-shuffle-youtube-bleed", "");
+        layer.prepend(bleed);
+      } else if (bleed.parentElement === layer && bleed !== layer.firstElementChild) {
+        layer.prepend(bleed);
+      }
+      const posterUrl = getTrackYouTubePosterUrl(track);
+      bleed.style.backgroundImage = posterUrl ? `url("${posterUrl.replace(/"/g, "%22")}")` : "";
+      return bleed;
+    }
+    function ensureYouTubePlayerLayer(track = currentTrack) {
       if (backgroundVideoLayer?.isConnected && youtubePlayerHost?.isConnected && backgroundVideoLayer.dataset.shuffleBackgroundKind === "youtube") {
         backgroundVideoLayer.hidden = false;
+        ensureYouTubeBlurFill(backgroundVideoLayer, track);
         return youtubePlayerHost;
       }
       let layer = document.querySelector("#shuffle-video-background");
@@ -2446,10 +2471,13 @@
       let host = layer.querySelector("[data-shuffle-youtube-player]");
       if (!(host instanceof HTMLElement)) {
         layer.innerHTML = "";
+        ensureYouTubeBlurFill(layer, track);
         host = document.createElement("div");
         host.className = "shuffle-youtube-player-frame";
         host.setAttribute("data-shuffle-youtube-player", "");
         layer.append(host);
+      } else {
+        ensureYouTubeBlurFill(layer, track);
       }
       let target = host.querySelector("[data-shuffle-youtube-player-target]");
       const frame = host.querySelector("iframe");
@@ -2464,6 +2492,7 @@
       }
       backgroundVideoLayer = layer;
       backgroundVideoEl = null;
+      backgroundVideoBleedEl = null;
       youtubePlayerHost = host;
       youtubePlayerTarget = target instanceof HTMLElement ? target : null;
       return host;
@@ -2497,15 +2526,19 @@
       let host = layer.querySelector("[data-shuffle-youtube-poster]");
       if (!(host instanceof HTMLElement)) {
         layer.innerHTML = "";
+        ensureYouTubeBlurFill(layer, track);
         host = document.createElement("div");
         host.className = "shuffle-youtube-player-frame shuffle-youtube-player-frame--poster";
         host.setAttribute("data-shuffle-youtube-poster", "");
         layer.append(host);
+      } else {
+        ensureYouTubeBlurFill(layer, track);
       }
       const posterUrl = getTrackYouTubePosterUrl(track);
       host.style.backgroundImage = posterUrl ? `url("${posterUrl.replace(/"/g, "%22")}")` : "";
       backgroundVideoLayer = layer;
       backgroundVideoEl = null;
+      backgroundVideoBleedEl = null;
       youtubePlayerHost = null;
       youtubePlayerTarget = null;
       return host;
@@ -2762,6 +2795,14 @@
       } catch {
       }
     }
+    function syncNativeBackgroundVideoDefaults(video) {
+      if (!(video instanceof HTMLVideoElement)) return;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
+      video.setAttribute("preload", SHUFFLE_MEDIA_PRELOAD_MODE);
+      video.loop = false;
+    }
     async function loadYouTubeTrack(track, options = {}) {
       const videoId = getTrackYouTubeVideoId(track);
       if (!videoId) return recoverFromBrokenTrack(track, { autoplay: options.autoplay !== false });
@@ -2838,28 +2879,32 @@
         const host = osStage instanceof HTMLElement ? osStage : document.body;
         host?.prepend?.(layer);
       }
-      if (layer.dataset.shuffleBackgroundKind === "youtube") {
+      if (layer.dataset.shuffleBackgroundKind !== "video") {
         layer.innerHTML = "";
       }
       layer.dataset.shuffleBackgroundKind = "video";
+      let bleedVideo = layer.querySelector("[data-shuffle-background-video-bleed]");
+      if (!(bleedVideo instanceof HTMLVideoElement)) {
+        bleedVideo = document.createElement("video");
+        bleedVideo.className = "shuffle-video-background-video shuffle-video-background-video--bleed";
+        bleedVideo.setAttribute("data-shuffle-background-video-bleed", "");
+        bleedVideo.setAttribute("aria-hidden", "true");
+        layer.prepend(bleedVideo);
+      } else if (bleedVideo.parentElement === layer && bleedVideo !== layer.firstElementChild) {
+        layer.prepend(bleedVideo);
+      }
       let video = layer.querySelector("[data-shuffle-background-video]");
       if (!(video instanceof HTMLVideoElement)) {
         video = document.createElement("video");
         video.className = "shuffle-video-background-video";
         video.setAttribute("data-shuffle-background-video", "");
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
-        video.setAttribute("preload", SHUFFLE_MEDIA_PRELOAD_MODE);
         layer.append(video);
       }
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = SHUFFLE_MEDIA_PRELOAD_MODE;
-      video.setAttribute("preload", SHUFFLE_MEDIA_PRELOAD_MODE);
-      video.loop = false;
+      syncNativeBackgroundVideoDefaults(bleedVideo);
+      syncNativeBackgroundVideoDefaults(video);
       backgroundVideoLayer = layer;
       backgroundVideoEl = video;
+      backgroundVideoBleedEl = bleedVideo;
       return video;
     }
     function setBackgroundVideoActive(active) {
@@ -2877,9 +2922,11 @@
       if (!(backgroundVideoEl instanceof HTMLVideoElement) || !currentTrack) return;
       const mediaDuration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
       const sourceTime = clamp(audioEl.currentTime || 0, 0, mediaDuration > 0 ? mediaDuration : Number.POSITIVE_INFINITY);
-      if (force || Math.abs((backgroundVideoEl.currentTime || 0) - sourceTime) > 0.35) {
+      const videos = [backgroundVideoEl, backgroundVideoBleedEl].filter((video) => video instanceof HTMLVideoElement);
+      for (const video of videos) {
+        if (!(force || Math.abs((video.currentTime || 0) - sourceTime) > 0.35)) continue;
         try {
-          backgroundVideoEl.currentTime = sourceTime;
+          video.currentTime = sourceTime;
         } catch {
         }
       }
@@ -2906,10 +2953,13 @@
       const shouldShowVideo = backgroundVideoEnabled && Boolean(videoUrl);
       if (!shouldShowVideo) {
         setBackgroundVideoActive(false);
-        if (backgroundVideoEl instanceof HTMLVideoElement && (backgroundVideoEl.src || backgroundVideoTrackKey)) {
-          backgroundVideoEl.pause();
-          backgroundVideoEl.removeAttribute("src");
-          backgroundVideoEl.load?.();
+        const videos = [backgroundVideoEl, backgroundVideoBleedEl].filter((entry) => entry instanceof HTMLVideoElement);
+        if (videos.length && (backgroundVideoTrackKey || videos.some((entry) => entry.src))) {
+          for (const entry of videos) {
+            entry.pause();
+            entry.removeAttribute("src");
+            entry.load?.();
+          }
         }
         backgroundVideoTrackKey = "";
         return;
@@ -2919,20 +2969,27 @@
       const nextKey = `${getTrackMediaKey(currentTrack)}|${videoUrl}`;
       if (force || backgroundVideoTrackKey !== nextKey || video.src !== videoUrl) {
         backgroundVideoTrackKey = nextKey;
-        video.src = videoUrl;
-        video.load?.();
+        const videos = [video, backgroundVideoBleedEl].filter((entry) => entry instanceof HTMLVideoElement);
+        for (const entry of videos) {
+          entry.src = videoUrl;
+          entry.load?.();
+        }
       }
       setBackgroundVideoActive(true);
       syncBackgroundVideoTime(force);
       if (!audioEl.paused && playbackUnlocked) {
-        if (!video.paused && !force) return;
-        const playPromise = video.play?.();
-        if (playPromise && typeof playPromise.catch === "function") {
-          playPromise.catch(() => {
-          });
+        const videos = [video, backgroundVideoBleedEl].filter((entry) => entry instanceof HTMLVideoElement);
+        if (videos.every((entry) => !entry.paused) && !force) return;
+        for (const entry of videos) {
+          const playPromise = entry.play?.();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+            });
+          }
         }
       } else {
         video.pause();
+        backgroundVideoBleedEl?.pause?.();
       }
     }
     function setVideoBackgroundMode(active) {
@@ -4181,11 +4238,6 @@
       initialTrackQueuePromise = (async () => {
         await waitForSiteLoadCompletion();
         if (disposed || currentTrack || !waveformTracks.length) return;
-        const preferredTrack = findPreferredInitialShuffleTrack(waveformTracks);
-        if (preferredTrack) {
-          await chooseAndLoadTrack(preferredTrack, { autoplay: true });
-          return;
-        }
         await chooseNextTrack({ autoplay: true, excludeCurrent: false });
       })();
       try {
@@ -4454,7 +4506,7 @@
       if (!window.__josieHandoffPending || disposed || currentTrack) return false;
       await ensureManifest();
       if (disposed || currentTrack || !waveformTracks.length) return false;
-      const preferredTrack = findPreferredInitialShuffleTrack(waveformTracks) || pickWeightedShuffleTrack(waveformTracks, "");
+      const preferredTrack = pickRandomShuffleTrack(waveformTracks, "");
       if (!isYouTubeTrack(preferredTrack)) {
         postYouTubeInlineActivationReady("non-youtube");
         return false;
@@ -4496,7 +4548,7 @@
       return true;
     }
     async function chooseNextTrack(options = {}) {
-      const nextTrack = pickWeightedShuffleTrack(waveformTracks, options.excludeCurrent === false ? "" : currentTrack?.queueId || "");
+      const nextTrack = pickRandomShuffleTrack(waveformTracks, options.excludeCurrent === false ? "" : currentTrack?.queueId || "");
       if (!nextTrack) return false;
       return await chooseAndLoadTrack(nextTrack, options);
     }
