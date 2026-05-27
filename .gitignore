@@ -22,6 +22,7 @@ site/Shuffle/*.m4v
 site/Shuffle/*.mov
 site/Shuffle/*.mp3
 site/Shuffle/*.mp4
+!site/Shuffle/How to Pretend - Lucy Bedroque.mp4
 site/Shuffle/*.ogg
 site/Shuffle/*.opus
 site/Shuffle/*.wav

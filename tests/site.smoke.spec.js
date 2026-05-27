@@ -584,7 +584,14 @@ async function readSelectableShuffleTracks(page) {
       const response = await fetch("/assets/shuffle-manifest.json", { cache: "no-store" });
       if (!response.ok) return [];
       const data = await response.json();
-      return (Array.isArray(data?.tracks) ? data.tracks : [])
+      const actualMobile = Boolean(
+        window.matchMedia?.("(pointer: coarse)")?.matches
+          || window.matchMedia?.("(hover: none)")?.matches
+      );
+      const manifestTracks = actualMobile && data?.mobileFallbackTrack
+        ? [data.mobileFallbackTrack]
+        : Array.isArray(data?.tracks) ? data.tracks : [];
+      return manifestTracks
         .filter((entry) => Number(entry?.segmentIndex || 0) === 0)
         .sort((a, b) => {
           const addedAtA = Date.parse(String(a?.addedAt || ""));
@@ -4217,7 +4224,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   ]));
 });
 
-test("josie plays YouTube inline on mobile without opening YouTube", async ({ page }) => {
+test("josie uses the local shuffle video on actual mobile hardware", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "userAgent", {
@@ -4290,58 +4297,36 @@ test("josie plays YouTube inline on mobile without opening YouTube", async ({ pa
     timeout: 30_000
   });
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-external", "false", { timeout: 10_000 });
-  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "true");
-  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });
-  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
-  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
-  await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "false");
-  await expect(page.locator("body")).not.toHaveClass(/shuffle-video-background-active/);
-  const primedMobilePlayerState = await page.evaluate(() => {
-    const host = document.querySelector("[data-shuffle-youtube-player]");
-    const frame = host?.querySelector("iframe");
-    const rect = host instanceof HTMLElement ? host.getBoundingClientRect() : null;
-    const player = Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers[0] : null;
-    return {
-      frameWidth: rect?.width || 0,
-      frameHeight: rect?.height || 0,
-      frameAllow: frame instanceof HTMLIFrameElement ? frame.getAttribute("allow") || "" : "",
-      frameAllowsFullscreen: frame instanceof HTMLIFrameElement ? frame.hasAttribute("allowfullscreen") : false,
-      frameReferrerPolicy: frame instanceof HTMLIFrameElement ? frame.getAttribute("referrerpolicy") || "" : "",
-      playerVars: player?.__playerVars || null
-    };
-  });
-  expect(primedMobilePlayerState.frameWidth).toBeGreaterThanOrEqual(200);
-  expect(primedMobilePlayerState.frameHeight).toBeGreaterThanOrEqual(200);
-  expect(primedMobilePlayerState.frameAllow).toContain("autoplay");
-  expect(primedMobilePlayerState.frameAllow).toContain("fullscreen");
-  expect(primedMobilePlayerState.frameAllowsFullscreen).toBe(true);
-  expect(primedMobilePlayerState.frameReferrerPolicy).toBe("strict-origin-when-cross-origin");
-  expect(primedMobilePlayerState.playerVars?.enablejsapi).toBe(1);
-  expect(primedMobilePlayerState.playerVars?.playsinline).toBe(1);
-  expect(primedMobilePlayerState.playerVars?.origin).toBe("http://127.0.0.1:8788");
-  await page.evaluate(async () => window.__internetAngelShuffleDebug?.advanceTrack?.());
-  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
-  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
-  const postAdvancePlayerState = await page.evaluate(() => {
-    const host = document.querySelector("[data-shuffle-youtube-player]");
-    const frame = host?.querySelector("iframe");
-    const target = host?.querySelector("[data-shuffle-youtube-player-target]");
-    return {
-      framePresent: frame instanceof HTMLIFrameElement,
-      targetContainsFrame: target instanceof HTMLElement ? Boolean(target.querySelector("iframe")) : true
-    };
-  });
-  expect(postAdvancePlayerState.framePresent).toBe(true);
-  expect(postAdvancePlayerState.targetContainsFrame).toBe(true);
-
-  await page.locator("[data-site-video-toggle]").click();
-  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube", { timeout: 10_000 });
-  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
-  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false");
-  await expect(page.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-playing", "true");
+  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "video", { timeout: 10_000 });
+  await expect(page.locator("[data-shuffle-background-video]")).toHaveCount(1);
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
   await expect(page.locator("body")).toHaveClass(/shuffle-video-background-active/);
+  const localMobilePlayerState = await page.evaluate(() => {
+    const video = document.querySelector("[data-shuffle-background-video]");
+    const track = window.__internetAngelShuffleDebug?.getTrack?.() || null;
+    return {
+      videoSrc: video instanceof HTMLVideoElement ? video.currentSrc || video.src : "",
+      videoMuted: video instanceof HTMLVideoElement ? video.muted : null,
+      videoPlaysInline: video instanceof HTMLVideoElement ? video.playsInline : null,
+      youtubePlayerCount: Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers.length : 0,
+      track
+    };
+  });
+  expect(localMobilePlayerState.videoSrc).toContain("/Shuffle/How%20to%20Pretend%20-%20Lucy%20Bedroque.mp4");
+  expect(localMobilePlayerState.videoMuted).toBe(true);
+  expect(localMobilePlayerState.videoPlaysInline).toBe(true);
+  expect(localMobilePlayerState.youtubePlayerCount).toBe(0);
+  expect(localMobilePlayerState.track?.mediaType).toBe("video");
+  expect(localMobilePlayerState.track?.mobileOnly).toBe(true);
+  expect(localMobilePlayerState.track?.title).toBe("How to Pretend");
+  expect(localMobilePlayerState.track?.artist).toBe("Lucy Bedroque");
+  await page.evaluate(async () => window.__internetAngelShuffleDebug?.advanceTrack?.());
+  await expect(page.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
+  await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
+  await expect(page.locator("[data-shuffle-background-video]")).toHaveAttribute("src", /How%20to%20Pretend%20-%20Lucy%20Bedroque\.mp4/);
   const externalLaunches = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
   expect(externalLaunches.some((entry) => /youtube\.com\/watch\?v=/.test(entry.url || ""))).toBe(false);
 });

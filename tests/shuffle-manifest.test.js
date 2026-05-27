@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { buildShuffleManifest, __test as shuffleManifestTest } from "../scripts/shuffle-manifest.js";
+import {
+  MOBILE_LOCAL_SHUFFLE_VIDEO_FILE,
+  buildShuffleManifest,
+  __test as shuffleManifestTest
+} from "../scripts/shuffle-manifest.js";
 
 test("buildShuffleManifest creates YouTube tracks from the editable Shuffle link list", async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "internet-angel-shuffle-"));
@@ -69,6 +73,29 @@ test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => 
   });
   assert.equal(enrichedFallback.title, "Never Gonna Give You Up");
   assert.equal(enrichedFallback.artist, "Rick Astley");
+});
+
+test("buildShuffleManifest exposes the committed mobile local video fallback", async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "internet-angel-shuffle-"));
+  const siteDir = path.join(tempRoot, "site");
+  const shuffleDir = path.join(siteDir, "Shuffle");
+  fs.mkdirSync(shuffleDir, { recursive: true });
+  fs.writeFileSync(path.join(shuffleDir, "youtube-links.txt"), [
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  ].join("\n"));
+  fs.writeFileSync(path.join(shuffleDir, MOBILE_LOCAL_SHUFFLE_VIDEO_FILE), "mobile fallback video");
+
+  const manifest = await buildShuffleManifest({
+    siteDir,
+    metadataLookup: null
+  });
+
+  assert.equal(manifest.tracks.length, 1);
+  assert.equal(manifest.mobileFallbackTrack.mediaType, "video");
+  assert.equal(manifest.mobileFallbackTrack.mobileOnly, true);
+  assert.equal(manifest.mobileFallbackTrack.path, "/Shuffle/How%20to%20Pretend%20-%20Lucy%20Bedroque.mp4");
+  assert.equal(manifest.mobileFallbackTrack.title, "How to Pretend");
+  assert.equal(manifest.mobileFallbackTrack.artist, "Lucy Bedroque");
 });
 
 test("shuffle metadata is normalized as UTF-8 clean text", () => {

@@ -1920,6 +1920,17 @@
     }
     return fetchedTracks;
   }
+  function getEmbeddedMobileFallbackTrack() {
+    const fallbackTrack = SHUFFLE_MANIFEST_FALLBACK?.mobileFallbackTrack;
+    return fallbackTrack && typeof fallbackTrack === "object" ? fallbackTrack : null;
+  }
+  function selectShuffleManifestMobileFallbackTrack(manifest) {
+    const fetchedTrack = manifest?.mobileFallbackTrack;
+    if (fetchedTrack && typeof fetchedTrack === "object") {
+      return fetchedTrack;
+    }
+    return getEmbeddedMobileFallbackTrack();
+  }
   function purgeLegacyShuffleStorageArea(storageArea) {
     if (!storageArea) return 0;
     let removedCount = 0;
@@ -2043,7 +2054,8 @@
       segmentOffset: Number.isFinite(segmentOffsetValue) ? Math.max(0, segmentOffsetValue) : 0,
       groupDuration: Number.isFinite(groupDurationValue) && groupDurationValue > 0 ? groupDurationValue : 0,
       duration: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 0,
-      sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : index
+      sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : index,
+      mobileOnly: Boolean(source.mobileOnly)
     };
   }
   function sortShuffleTracksByRecency(tracks) {
@@ -2318,6 +2330,16 @@
     }
     function isYouTubeTrack(track) {
       return Boolean(track && (String(track.mediaType || "").toLowerCase() === "youtube" || getTrackYouTubeVideoId(track)));
+    }
+    function isMobileLocalShuffleVideoTrack(track) {
+      return Boolean(track
+        && track.mobileOnly
+        && String(track.mediaType || "").toLowerCase() === "video"
+        && !getTrackYouTubeVideoId(track)
+        && resolveTrackVideoPath(track));
+    }
+    function shouldUseMobileLocalShuffleVideo(track = currentTrack) {
+      return isActualMobileLayoutDevice() && isMobileLocalShuffleVideoTrack(track);
     }
     function getTrackYouTubeWatchUrl(track) {
       const videoId = getTrackYouTubeVideoId(track);
@@ -4647,6 +4669,9 @@
       segmentAdvanceCooldownUntilMs = 0;
       currentTrack = track;
       youtubeInlinePlaybackPrimedForActivation = false;
+      if (shouldUseMobileLocalShuffleVideo(track)) {
+        backgroundVideoEnabled = true;
+      }
       primeQueuedSegmentAudio(track);
       loadState = "loading";
       barLevelValues = new Float32Array(0);
@@ -4683,12 +4708,24 @@
           throw new Error(`Manifest fetch failed (${response.status})`);
         }
         const data = await response.json();
-        const tracks = selectShuffleManifestTracks(data).map(normalizeShuffleTrackEntry).filter(Boolean);
+        const mobileFallbackTrack = isActualMobileLayoutDevice()
+          ? normalizeShuffleTrackEntry(selectShuffleManifestMobileFallbackTrack(data), 0)
+          : null;
+        const tracks = mobileFallbackTrack
+          ? [mobileFallbackTrack]
+          : selectShuffleManifestTracks(data).map(normalizeShuffleTrackEntry).filter(Boolean);
         waveformTracks = sortShuffleTracksByRecency(tracks);
         refreshWaveformTrackLookup();
         return waveformTracks;
       })().catch(() => {
-        waveformTracks = sortShuffleTracksByRecency(getEmbeddedShuffleManifestTracks().map(normalizeShuffleTrackEntry).filter(Boolean));
+        const mobileFallbackTrack = isActualMobileLayoutDevice()
+          ? normalizeShuffleTrackEntry(getEmbeddedMobileFallbackTrack(), 0)
+          : null;
+        waveformTracks = sortShuffleTracksByRecency(
+          mobileFallbackTrack
+            ? [mobileFallbackTrack]
+            : getEmbeddedShuffleManifestTracks().map(normalizeShuffleTrackEntry).filter(Boolean)
+        );
         refreshWaveformTrackLookup();
         loadState = waveformTracks.length ? "loading" : "error";
         syncUi();
@@ -5078,7 +5115,8 @@
         videoPath: currentTrack.videoPath,
         youtubeVideoId: currentTrack.youtubeVideoId,
         youtubeUrl: currentTrack.youtubeUrl,
-        youtubeChannelUrl: currentTrack.youtubeChannelUrl
+        youtubeChannelUrl: currentTrack.youtubeChannelUrl,
+        mobileOnly: Boolean(currentTrack.mobileOnly)
       } : null,
       isPlaying,
       ensureStarted,

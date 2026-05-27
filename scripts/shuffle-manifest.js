@@ -10,6 +10,8 @@ const UNICODE_FORMAT_CONTROL_PATTERN = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]
 const ASCII_CONTROL_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 const LONE_SURROGATE_PATTERN = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
 
+export const MOBILE_LOCAL_SHUFFLE_VIDEO_FILE = "How to Pretend - Lucy Bedroque.mp4";
+
 function slugify(value) {
   return String(value || "")
     .normalize("NFKD")
@@ -153,6 +155,56 @@ function applyYouTubeMetadata(track, metadata) {
   };
 }
 
+function encodeShuffleAssetPath(fileName) {
+  const normalizedName = path.basename(String(fileName || "").trim());
+  return normalizedName ? `/Shuffle/${encodeURIComponent(normalizedName)}` : "";
+}
+
+function parseLocalVideoFileMetadata(fileName) {
+  const baseName = cleanMetadataValue(path.basename(String(fileName || ""), path.extname(String(fileName || ""))));
+  const separatorMatch = baseName.match(/^(.*?)\s+-\s+(.*?)$/);
+  if (!separatorMatch) {
+    return {
+      title: baseName || "Mobile Shuffle Video",
+      artist: "Unknown Artist"
+    };
+  }
+  return {
+    title: cleanMetadataValue(separatorMatch[1]) || baseName,
+    artist: cleanMetadataValue(separatorMatch[2]) || "Unknown Artist"
+  };
+}
+
+function buildMobileLocalShuffleTrack(siteDir, fileName = MOBILE_LOCAL_SHUFFLE_VIDEO_FILE) {
+  const safeFileName = path.basename(String(fileName || "").trim());
+  if (!safeFileName) return null;
+  const mediaPath = path.join(siteDir, "Shuffle", safeFileName);
+  if (!fs.existsSync(mediaPath) || !fs.statSync(mediaPath).isFile()) return null;
+  const sourcePath = encodeShuffleAssetPath(safeFileName);
+  const metadata = parseLocalVideoFileMetadata(safeFileName);
+  const id = slugify(`mobile-local-${metadata.title}-${metadata.artist}`) || "mobile-local-shuffle-video";
+  return {
+    id,
+    groupId: id,
+    queueId: id,
+    mediaType: "video",
+    path: sourcePath,
+    videoPath: sourcePath,
+    title: metadata.title,
+    displayTitle: metadata.title,
+    artist: metadata.artist,
+    displayArtist: metadata.artist,
+    addedAt: new Date(Date.UTC(2026, 0, 1, 0, 1, 0)).toISOString(),
+    sortOrder: 0,
+    duration: DEFAULT_TRACK_DURATION_SECONDS,
+    segmentIndex: 0,
+    segmentCount: 1,
+    segmentStart: 0,
+    segmentOffset: 0,
+    mobileOnly: true
+  };
+}
+
 function parseTrackLine(line, index) {
   const trimmed = String(line || "").trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
@@ -242,7 +294,12 @@ export async function buildShuffleManifest({
     return 0;
   });
 
-  return { tracks: orderedTracks };
+  const mobileFallbackTrack = buildMobileLocalShuffleTrack(siteDir);
+
+  return {
+    tracks: orderedTracks,
+    ...(mobileFallbackTrack ? { mobileFallbackTrack } : {})
+  };
 }
 
 export async function writeShuffleManifest({
@@ -262,5 +319,6 @@ export const __test = {
   cleanMetadataValue,
   fetchYouTubeOEmbedMetadata,
   applyYouTubeMetadata,
-  parseTrackLine
+  parseTrackLine,
+  buildMobileLocalShuffleTrack
 };

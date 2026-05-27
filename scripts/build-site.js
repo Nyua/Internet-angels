@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { writeShuffleManifest } from "./shuffle-manifest.js";
+import { MOBILE_LOCAL_SHUFFLE_VIDEO_FILE, writeShuffleManifest } from "./shuffle-manifest.js";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 const siteDir = path.join(rootDir, "site");
@@ -31,6 +31,9 @@ const deployMediaExtensions = /* @__PURE__ */ new Set([
   ".mov",
   ".mp4",
   ".webm"
+]);
+const deployShuffleMediaAllowlist = /* @__PURE__ */ new Set([
+  `Shuffle/${MOBILE_LOCAL_SHUFFLE_VIDEO_FILE}`
 ]);
 const avatarExtensions = /* @__PURE__ */ new Set([
   ".avif",
@@ -97,6 +100,9 @@ function collectOversizedFiles(rootPath, currentPath = rootPath, oversized = [])
 
 function shouldExcludeDeployPath(relativePath, sourcePath) {
   const extension = path.extname(relativePath).toLowerCase();
+  if (deployShuffleMediaAllowlist.has(relativePath)) {
+    return false;
+  }
   if (relativePath.startsWith("Shuffle/") && deployMediaExtensions.has(extension)) {
     return true;
   }
