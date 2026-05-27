@@ -2354,8 +2354,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   });
   if (videoBackgroundState.backgroundKind === "youtube") {
     expect(videoBackgroundState.youtubeFrameSrc).toContain("youtube");
-    expect(videoBackgroundState.youtubeFrameWidth).toBeLessThanOrEqual(videoBackgroundState.layerWidth);
-    expect(videoBackgroundState.youtubeFrameHeight).toBeLessThanOrEqual(videoBackgroundState.layerHeight);
+    expect(videoBackgroundState.youtubeFrameWidth).toBeGreaterThanOrEqual(videoBackgroundState.layerWidth);
+    expect(videoBackgroundState.youtubeFrameHeight).toBeGreaterThanOrEqual(videoBackgroundState.layerHeight);
     expect(videoBackgroundState.youtubeBleedBackground).toContain("ytimg.com");
     expect(videoBackgroundState.youtubeBleedFilter).toContain("blur");
     const youtubeMemoryState = await page.evaluate(() => {
