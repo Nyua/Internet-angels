@@ -3927,6 +3927,7 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#os-shuffle-visualizer-layer")).toHaveCount(0);
   await expect(page.locator(".cinna-mobile-gif[hidden]")).toBeHidden();
   await expect(page.locator(".cinna-mobile-gif:visible")).toHaveCount(1);
+  await expect(page.locator(".discord-presence-card--foundlifeless .discord-presence-mobile-ornament")).toHaveCount(0);
   await page.locator("[data-mobile-speaker-toggle]").click();
   await page.waitForFunction(() => {
     const button = document.querySelector("[data-mobile-speaker-toggle]");
@@ -3934,6 +3935,30 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   });
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal")).toBeVisible();
   await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-label")).toHaveText("Currently playing");
+  await expect(page.locator("#social-hub-sidebar .steam-sidebar-currently-playing-ornament")).toBeVisible();
+  const timelineOrnamentPlacement = await page.evaluate(() => {
+    const playButton = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal [data-sidebar-shuffle-play-toggle]");
+    const ornament = document.querySelector("#social-hub-sidebar .steam-sidebar-currently-playing-panel--minimal .steam-sidebar-currently-playing-ornament");
+    const ornamentHeart = ornament?.querySelector(".steam-hero-bio-heart");
+    const discordHeart = document.querySelector(".discord-presence-card--foundlifeless .steam-hero-bio-heart");
+    if (!(playButton instanceof HTMLElement) || !(ornament instanceof HTMLElement)) {
+      return null;
+    }
+    const playRect = playButton.getBoundingClientRect();
+    const ornamentRect = ornament.getBoundingClientRect();
+    return {
+      hasOrnamentHeart: ornamentHeart instanceof HTMLElement,
+      hasDiscordHeart: discordHeart instanceof HTMLElement,
+      centerDelta: Math.abs((ornamentRect.left + ornamentRect.width / 2) - (playRect.left + playRect.width / 2)),
+      verticalGap: ornamentRect.top - playRect.bottom
+    };
+  });
+  expect(timelineOrnamentPlacement).not.toBeNull();
+  expect(timelineOrnamentPlacement.hasOrnamentHeart).toBe(true);
+  expect(timelineOrnamentPlacement.hasDiscordHeart).toBe(false);
+  expect(timelineOrnamentPlacement.centerDelta).toBeLessThanOrEqual(4);
+  expect(timelineOrnamentPlacement.verticalGap).toBeGreaterThanOrEqual(-2);
+  expect(timelineOrnamentPlacement.verticalGap).toBeLessThanOrEqual(8);
   const mobileShuffleState = await page.evaluate(() => window.__internetAngelShuffleDebug?.getState?.() || null);
   expectShuffleStateMatchesSelectableTrack(mobileShuffleState, selectableShuffleTracks);
   const mobileCurrentlyPlayingType = await page.evaluate(() => {
@@ -4099,9 +4124,21 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   await expect(page.locator("#social-link-effect-layer")).toHaveCount(0);
   const selectedMobileLinkCount = await page.locator(".steam-sidebar-link--icon-only.is-mobile-selected").count();
   expect(selectedMobileLinkCount).toBe(1);
-  await page.waitForTimeout(80);
+  await page.waitForFunction(() => {
+    const node = document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected");
+    if (!(node instanceof HTMLElement)) {
+      return false;
+    }
+    const styles = window.getComputedStyle(node);
+    const before = window.getComputedStyle(node, "::before");
+    const after = window.getComputedStyle(node, "::after");
+    return styles.getPropertyValue("--mobile-link-aura-rgb").trim() === "255, 148, 84"
+      && Number.parseFloat(before.opacity) > 0.3
+      && Number.parseFloat(after.opacity) > 0.2
+      && after.animationName.includes("mobileSidebarSoundcloudPlume");
+  }, null, { timeout: 2_000 });
   const selectedAuraState = await page.evaluate(() => {
-    const node = document.querySelector(".steam-sidebar-link--icon-only");
+    const node = document.querySelector(".steam-sidebar-link--icon-only.is-mobile-selected");
     if (!(node instanceof HTMLElement)) {
       return null;
     }

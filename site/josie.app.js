@@ -5335,11 +5335,6 @@
     const model = buildDiscordPresenceCardModel(payload);
     const compact = Boolean(options?.compact);
     const mobileRevealState = compact ? String(options?.mobileRevealState || "pending") : "";
-    const mobileOrnamentMarkup = compact ? `
-                    <div class="discord-presence-mobile-ornament steam-hero-ornament steam-hero-ornament--compact-mobile" aria-hidden="true">
-                      ${renderHeroOrnamentMarkup()}
-                    </div>
-    ` : "";
     const mobileCinnaMarkup = compact ? renderCinnaMobileGifMarkup() : "";
     const presenceCardMarkup = `
             <article class="discord-presence-card discord-presence-card--foundlifeless" data-spotify-active="${model.showAlbumArt ? "true" : "false"}">
@@ -5361,7 +5356,6 @@
                       ${model.customStatusEmojiUrl ? `<img class="discord-presence-custom-emoji" src="${escapeHtml(model.customStatusEmojiUrl)}" alt="${escapeHtml(model.customStatusEmojiAlt || "")}" loading="lazy" decoding="async" />` : ""}
                       <p class="discord-presence-headline">${escapeHtml(model.headline)}</p>
                     </div>
-                    ${mobileOrnamentMarkup}
                   </div>
                   ${model.showAlbumArt ? `<div class="discord-presence-album-art-wrap"><img class="discord-presence-album-art" src="${escapeHtml(model.albumArtUrl)}" alt="" loading="lazy" decoding="async" /></div>` : ""}
                 </div>
@@ -5766,6 +5760,11 @@
     const playButtonLabel = state?.externalPlaybackOnly ? "Open track on YouTube" : state?.inlineActivationRequired ? "Tap meow to start video" : playbackState === "playing" ? "Pause" : "Play";
     const titleUrl = sanitizeUrl(state?.titleUrl);
     const artistUrl = sanitizeUrl(state?.artistUrl);
+    const timelineOrnamentMarkup = compact ? `
+            <span class="steam-sidebar-currently-playing-ornament" aria-hidden="true">
+              ${renderHeroOrnamentMarkup()}
+            </span>
+    ` : "";
     return `
       <section class="steam-sidebar-currently-playing-panel${compact ? " steam-sidebar-currently-playing-panel--minimal" : " steam-sidebar-currently-playing-panel--desktop"}${playbackState === "playing" ? " is-playing" : ""}${playbackState === "blocked" ? " is-blocked" : ""}" data-sidebar-shuffle-panel data-sidebar-shuffle-mode="${escapeHtml(panelMode)}" data-sidebar-shuffle-state="${escapeHtml(playbackState)}" data-shuffle-copy-state="${escapeHtml(copyState)}" data-sidebar-shuffle-reveal="${escapeHtml(revealState)}"${compact ? ` data-mobile-currently-playing-reveal="${escapeHtml(mobileRevealState)}"` : ""} aria-hidden="${compact ? "false" : revealState === "visible" ? "false" : "true"}">
         ${compact ? '<p class="steam-sidebar-currently-playing-label">Currently playing</p>' : ""}
@@ -5788,18 +5787,21 @@
               <path d="M8 6.4v11.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2.4"></path>
             </svg>
           </button>
-          <button class="steam-sidebar-currently-playing-control steam-sidebar-currently-playing-control--play" type="button" data-sidebar-shuffle-play-toggle aria-label="${escapeHtml(playButtonLabel)}"${canControl ? "" : " disabled"}>
-            <span class="steam-sidebar-currently-playing-control-icon steam-sidebar-currently-playing-control-icon--play" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M8.25 5.8 18.5 12 8.25 18.2Z" fill="currentColor"></path>
-              </svg>
-            </span>
-            <span class="steam-sidebar-currently-playing-control-icon steam-sidebar-currently-playing-control-icon--pause" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M7.2 5.8h3.15v12.4H7.2Zm6.45 0h3.15v12.4h-3.15Z" fill="currentColor"></path>
-              </svg>
-            </span>
-          </button>
+          <span class="steam-sidebar-currently-playing-play-stack">
+            <button class="steam-sidebar-currently-playing-control steam-sidebar-currently-playing-control--play" type="button" data-sidebar-shuffle-play-toggle aria-label="${escapeHtml(playButtonLabel)}"${canControl ? "" : " disabled"}>
+              <span class="steam-sidebar-currently-playing-control-icon steam-sidebar-currently-playing-control-icon--play" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M8.25 5.8 18.5 12 8.25 18.2Z" fill="currentColor"></path>
+                </svg>
+              </span>
+              <span class="steam-sidebar-currently-playing-control-icon steam-sidebar-currently-playing-control-icon--pause" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M7.2 5.8h3.15v12.4H7.2Zm6.45 0h3.15v12.4h-3.15Z" fill="currentColor"></path>
+                </svg>
+              </span>
+            </button>
+            ${timelineOrnamentMarkup}
+          </span>
           <button class="steam-sidebar-currently-playing-control steam-sidebar-currently-playing-control--skip" type="button" data-sidebar-shuffle-skip-forward aria-label="Skip forward"${canControl ? "" : " disabled"}>
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M5 5.8v12.4l8.4-6.2L5 5.8Z" fill="currentColor"></path>
