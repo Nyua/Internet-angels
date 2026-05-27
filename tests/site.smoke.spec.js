@@ -1658,6 +1658,92 @@ test("josie skips a missing shuffle file and falls through to another available 
   expect(recoveredState.state?.title).toBe("Working Song");
 });
 
+test("josie drops stale local shuffle videos and keeps the current YouTube manifest", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 4, day: 27, hour: 12 });
+  await installYouTubePlayerMock(page);
+  const staleMediaRequests = [];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("internetAngelShuffleQueue", JSON.stringify({
+      path: "/Shuffle/Thailand - Malcolm Todd.mp4"
+    }));
+    window.sessionStorage.setItem("internetAngelShuffleCurrentTrack", "/Shuffle/The%20Troubles%20-%20glaive%20and%20kurtains.mp4");
+  });
+
+  await page.route(/\/assets\/shuffle-manifest\.json(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tracks: [
+          {
+            id: "thailand-malcolm-todd",
+            groupId: "thailand-malcolm-todd",
+            mediaType: "video",
+            videoPath: "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4",
+            path: "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4",
+            title: "Thailand",
+            displayTitle: "Thailand",
+            artist: "Malcolm Todd",
+            displayArtist: "Malcolm Todd",
+            addedAt: "2026-05-02T03:27:49.404Z",
+            segmentIndex: 0,
+            segmentCount: 1,
+            segmentStart: 0,
+            segmentOffset: 0
+          },
+          {
+            id: "the-troubles-glaive-and-kurtains",
+            groupId: "the-troubles-glaive-and-kurtains",
+            mediaType: "video",
+            videoPath: "/Shuffle/The%20Troubles%20-%20glaive%20and%20kurtains.mp4",
+            path: "/Shuffle/The%20Troubles%20-%20glaive%20and%20kurtains.mp4",
+            title: "The Troubles",
+            displayTitle: "The Troubles",
+            artist: "glaive and kurtains",
+            displayArtist: "glaive and kurtains",
+            addedAt: "2026-05-02T03:27:44.362Z",
+            segmentIndex: 0,
+            segmentCount: 1,
+            segmentStart: 0,
+            segmentOffset: 0
+          }
+        ]
+      })
+    });
+  });
+  await page.route(/\/Shuffle\/.*\.(?:m4v|mov|mp4|webm)(?:\?.*)?$/i, async (route) => {
+    staleMediaRequests.push(route.request().url());
+    await route.fulfill({ status: 410, body: "" });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction(() => {
+    const track = window.__internetAngelShuffleDebug?.getTrack?.();
+    const state = window.__internetAngelShuffleDebug?.getState?.();
+    return track?.mediaType === "youtube"
+      && /^https:\/\/www\.youtube\.com\/watch\?v=/.test(String(track?.youtubeUrl || ""))
+      && state?.hasTrack === true;
+  }, null, { timeout: 15_000 });
+
+  const shuffleState = await page.evaluate(() => ({
+    track: window.__internetAngelShuffleDebug?.getTrack?.() || null,
+    state: window.__internetAngelShuffleDebug?.getState?.() || null,
+    staleLocal: window.localStorage.getItem("internetAngelShuffleQueue"),
+    staleSession: window.sessionStorage.getItem("internetAngelShuffleCurrentTrack")
+  }));
+  expect(staleMediaRequests).toEqual([]);
+  expect(shuffleState.staleLocal).toBeNull();
+  expect(shuffleState.staleSession).toBeNull();
+  expect(shuffleState.track?.mediaType).toBe("youtube");
+  expect(shuffleState.track?.youtubeUrl).toContain("youtube.com/watch");
+  expect(shuffleState.track?.videoPath).toContain("youtube.com/watch");
+  expect(shuffleState.track?.youtubeUrl).not.toContain("/Shuffle/");
+  expect(["Thailand", "The Troubles"]).not.toContain(shuffleState.state?.title);
+});
+
 test("josie keeps shuffle playback alive while a Last.fm details card is open", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");

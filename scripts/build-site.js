@@ -12,6 +12,7 @@ const appOutputPath = path.join(distDir, "josie.app.js");
 const headersPath = path.join(distDir, "_headers");
 const avatarManifestPath = path.join(distDir, "assets", "avatar-manifest.json");
 const shuffleManifestPath = path.join(distDir, "assets", "shuffle-manifest.json");
+const sourceShuffleManifestPath = path.join(siteDir, "assets", "shuffle-manifest.json");
 const steamRecentActivitySnapshotPath = path.join(siteDir, "assets", "steam-recent-activity-snapshot.json");
 const josieHtmlPath = path.join(distDir, "josie.html");
 const josieDirectoryIndexPath = path.join(distDir, "josie", "index.html");
@@ -186,6 +187,12 @@ function injectClientBuildVersions(source, versions = {}) {
       `var SHUFFLE_MANIFEST_BUILD_VERSION = "${versions.shuffleManifest}";`
     );
   }
+  if (versions.shuffleManifestData) {
+    output = output.replace(
+      /var SHUFFLE_MANIFEST_FALLBACK = null;/,
+      `var SHUFFLE_MANIFEST_FALLBACK = ${JSON.stringify(versions.shuffleManifestData)};`
+    );
+  }
   if (versions.steamRecentActivitySnapshot) {
     output = output.replace(
       /var STEAM_RECENT_ACTIVITY_SNAPSHOT = null;/,
@@ -212,10 +219,13 @@ fs.cpSync(siteDir, distDir, {
 fs.writeFileSync(headersPath, headersFile, "utf8");
 fs.mkdirSync(path.dirname(avatarManifestPath), { recursive: true });
 fs.writeFileSync(avatarManifestPath, JSON.stringify(buildAvatarManifest(), null, 2), "utf8");
-await writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
+const shuffleManifest = await writeShuffleManifest({ siteDir, outputPath: shuffleManifestPath });
+fs.mkdirSync(path.dirname(sourceShuffleManifestPath), { recursive: true });
+fs.writeFileSync(sourceShuffleManifestPath, JSON.stringify(shuffleManifest, null, 2), "utf8");
 const appSource = fs.readFileSync(appSourcePath, "utf8");
 const appClientSource = injectClientBuildVersions(appSource, {
   shuffleManifest: hashFileVersion(shuffleManifestPath),
+  shuffleManifestData: shuffleManifest,
   steamRecentActivitySnapshot: readJsonFile(steamRecentActivitySnapshotPath)
 });
 fs.writeFileSync(clientOutputPath, appClientSource, "utf8");

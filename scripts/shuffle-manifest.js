@@ -2,9 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const DEFAULT_TRACK_DURATION_SECONDS = 0;
-const YOUTUBE_DEFAULT_ARTIST = "Youtube";
+const YOUTUBE_DEFAULT_ARTIST = "YouTube";
 const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const YOUTUBE_METADATA_TIMEOUT_MS = 3_500;
+const HTML_ENTITY_PATTERN = /&(?:amp|lt|gt|quot|apos|#\d{1,7}|#x[0-9a-f]{1,6});/gi;
+const UNICODE_FORMAT_CONTROL_PATTERN = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const ASCII_CONTROL_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+const LONE_SURROGATE_PATTERN = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
 
 function slugify(value) {
   return String(value || "")
@@ -48,8 +52,44 @@ function normalizeYouTubeUrl(value) {
   return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
 }
 
+function decodeHtmlEntity(entity) {
+  const source = String(entity || "").toLowerCase();
+  if (source === "&amp;") return "&";
+  if (source === "&lt;") return "<";
+  if (source === "&gt;") return ">";
+  if (source === "&quot;") return "\"";
+  if (source === "&apos;") return "'";
+  const decimalMatch = source.match(/^&#(\d{1,7});$/);
+  const hexMatch = source.match(/^&#x([0-9a-f]{1,6});$/);
+  const codePoint = decimalMatch
+    ? Number(decimalMatch[1])
+    : hexMatch ? Number.parseInt(hexMatch[1], 16) : NaN;
+  if (!Number.isFinite(codePoint) || codePoint <= 0 || codePoint > 0x10ffff) {
+    return entity;
+  }
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return entity;
+  }
+}
+
+function toWellFormedText(value) {
+  const source = String(value || "");
+  if (typeof source.toWellFormed === "function") {
+    return source.toWellFormed();
+  }
+  return source.replace(LONE_SURROGATE_PATTERN, "\ufffd");
+}
+
 function cleanMetadataValue(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return toWellFormedText(value)
+    .replace(HTML_ENTITY_PATTERN, decodeHtmlEntity)
+    .replace(UNICODE_FORMAT_CONTROL_PATTERN, "")
+    .replace(ASCII_CONTROL_PATTERN, "")
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isFallbackYouTubeTitle(track) {
@@ -82,7 +122,8 @@ export async function fetchYouTubeOEmbedMetadata(videoUrl, options = {}) {
       }
     });
     if (!response?.ok) return null;
-    const data = await response.json();
+    const responseBuffer = await response.arrayBuffer();
+    const data = JSON.parse(new TextDecoder("utf-8", { fatal: false }).decode(responseBuffer));
     return {
       title: cleanMetadataValue(data?.title),
       artist: cleanMetadataValue(data?.author_name),
@@ -218,6 +259,7 @@ export async function writeShuffleManifest({
 
 export const __test = {
   extractYouTubeVideoId,
+  cleanMetadataValue,
   fetchYouTubeOEmbedMetadata,
   applyYouTubeMetadata,
   parseTrackLine

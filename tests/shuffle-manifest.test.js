@@ -71,6 +71,23 @@ test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => 
   assert.equal(enrichedFallback.artist, "Rick Astley");
 });
 
+test("shuffle metadata is normalized as UTF-8 clean text", () => {
+  assert.equal(
+    shuffleManifestTest.cleanMetadataValue("caf\u0065\u0301 &amp; cr\u00e8me \u200e \ud800"),
+    "café & crème �"
+  );
+
+  const fallbackTrack = shuffleManifestTest.parseTrackLine("https://youtu.be/C78R3s3zeB0", 0);
+  const enrichedFallback = shuffleManifestTest.applyYouTubeMetadata(fallbackTrack, {
+    title: "ericdoa – goddamn &#39;extended&#39;",
+    artist: "𐂯",
+    channelUrl: "https://www.youtube.com/@artist"
+  });
+  assert.equal(enrichedFallback.title, "ericdoa – goddamn 'extended'");
+  assert.equal(enrichedFallback.artist, "𐂯");
+  assert.equal(enrichedFallback.displayArtist, "𐂯");
+});
+
 test("shuffle YouTube parser accepts common YouTube URL shapes", () => {
   assert.equal(shuffleManifestTest.extractYouTubeVideoId("r-6lO_UN3NY"), "r-6lO_UN3NY");
   assert.equal(shuffleManifestTest.extractYouTubeVideoId("https://www.youtube.com/watch?v=r-6lO_UN3NY"), "r-6lO_UN3NY");

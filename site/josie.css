@@ -922,12 +922,18 @@ body.site-load-playing .os-ambient-backdrop {
   inset: -8%;
   z-index: 0;
   display: block;
+  background-color: #050508;
+  background-image:
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.36) 66%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.46), rgba(13, 16, 26, 0.18) 38%, rgba(13, 16, 26, 0.18) 62%, rgba(0, 0, 0, 0.46)),
+    var(--shuffle-youtube-poster-image, none);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: 0.82;
-  filter: blur(34px) brightness(0.52) contrast(1.18) saturate(1.16);
-  transform: translate3d(0, 0, 0) scale(1.08);
+  background-blend-mode: soft-light, normal, normal;
+  opacity: 0.68;
+  filter: blur(42px) brightness(0.46) contrast(1.08) saturate(1.02);
+  transform: translate3d(0, 0, 0) scale(1.14);
 }
 
 .shuffle-youtube-player-frame {
@@ -958,9 +964,15 @@ body.site-load-playing .os-ambient-backdrop {
 }
 
 .shuffle-youtube-player-frame--poster {
+  background-color: #050508;
+  background-image:
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.28) 72%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.28)),
+    var(--shuffle-youtube-poster-image, none);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
+  background-blend-mode: soft-light, normal, normal;
 }
 
 .shuffle-youtube-player-frame--poster::before {

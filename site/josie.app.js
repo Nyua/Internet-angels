@@ -1840,6 +1840,7 @@
   var JOSIE_TOP_SHOWCASE_TEXT = "I'm just here, lol.";
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
   var SHUFFLE_MANIFEST_BUILD_VERSION = "";
+  var SHUFFLE_MANIFEST_FALLBACK = null;
   var SHUFFLE_ANALYSER_FFT_SIZE = 256;
   var SHUFFLE_SCRUB_PREVIEW_INTERVAL_MS = 34;
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
@@ -1875,6 +1876,114 @@
     const looseMatch = source.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([a-zA-Z0-9_-]{11})/);
     return looseMatch ? looseMatch[1] : "";
   }
+  function safeDecodeUriComponent(value) {
+    try {
+      return decodeURIComponent(String(value || ""));
+    } catch {
+      return String(value || "");
+    }
+  }
+  function isLegacyLocalShuffleVideoPath(value) {
+    const source = String(value || "").trim();
+    if (!source) return false;
+    const candidates = [source, safeDecodeUriComponent(source)];
+    for (const candidate of candidates) {
+      if (/[/\\]Shuffle[/\\][^"'?#]+\.(?:m4v|mov|mp4|webm)(?:[?#]|$|["'])/i.test(candidate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function hasLegacyLocalShuffleVideoTrack(entry) {
+    if (!entry || typeof entry !== "object") return false;
+    const youtubeVideoId = extractYouTubeVideoId(entry.youtubeVideoId || entry.youtubeUrl || entry.path || entry.videoPath || "");
+    if (youtubeVideoId) return false;
+    return isLegacyLocalShuffleVideoPath(entry.path)
+      || isLegacyLocalShuffleVideoPath(entry.videoPath)
+      || isLegacyLocalShuffleVideoPath(entry.url)
+      || isLegacyLocalShuffleVideoPath(JSON.stringify(entry));
+  }
+  function getEmbeddedShuffleManifestTracks() {
+    const fallbackTracks = Array.isArray(SHUFFLE_MANIFEST_FALLBACK?.tracks)
+      ? SHUFFLE_MANIFEST_FALLBACK.tracks
+      : [];
+    return fallbackTracks.filter((entry) => entry && typeof entry === "object");
+  }
+  function selectShuffleManifestTracks(manifest) {
+    const fetchedTracks = Array.isArray(manifest?.tracks) ? manifest.tracks : [];
+    const fallbackTracks = getEmbeddedShuffleManifestTracks();
+    if (fallbackTracks.length && fetchedTracks.some(hasLegacyLocalShuffleVideoTrack)) {
+      return fallbackTracks;
+    }
+    if (!fetchedTracks.length && fallbackTracks.length) {
+      return fallbackTracks;
+    }
+    return fetchedTracks;
+  }
+  function purgeLegacyShuffleStorageArea(storageArea) {
+    if (!storageArea) return 0;
+    let removedCount = 0;
+    try {
+      const keys = [];
+      for (let index = 0; index < storageArea.length; index += 1) {
+        const key = storageArea.key(index);
+        if (key) keys.push(key);
+      }
+      keys.forEach((key) => {
+        const value = storageArea.getItem(key);
+        if (isLegacyLocalShuffleVideoPath(key) || isLegacyLocalShuffleVideoPath(value)) {
+          storageArea.removeItem(key);
+          removedCount += 1;
+        }
+      });
+    } catch {
+    }
+    return removedCount;
+  }
+  async function purgeLegacyShuffleCacheStorage() {
+    if (!("caches" in window) || !window.caches?.keys) return 0;
+    let removedCount = 0;
+    try {
+      const cacheNames = await window.caches.keys();
+      await Promise.all(cacheNames.map(async (cacheName) => {
+        const cache = await window.caches.open(cacheName);
+        const requests = await cache.keys();
+        await Promise.all(requests.map(async (request) => {
+          const requestUrl = String(request?.url || "");
+          let pathname = requestUrl;
+          try {
+            const parsed = new URL(requestUrl, window.location.origin);
+            if (parsed.origin !== window.location.origin) return;
+            pathname = parsed.pathname;
+          } catch {
+          }
+          if (pathname === SHUFFLE_MANIFEST_URL || isLegacyLocalShuffleVideoPath(pathname)) {
+            if (await cache.delete(request)) {
+              removedCount += 1;
+            }
+          }
+        }));
+      }));
+    } catch {
+    }
+    return removedCount;
+  }
+  function purgeLegacyShuffleMediaState() {
+    let localStorageArea = null;
+    let sessionStorageArea = null;
+    try {
+      localStorageArea = window.localStorage;
+    } catch {
+    }
+    try {
+      sessionStorageArea = window.sessionStorage;
+    } catch {
+    }
+    const storageRemoved = purgeLegacyShuffleStorageArea(localStorageArea)
+      + purgeLegacyShuffleStorageArea(sessionStorageArea);
+    void purgeLegacyShuffleCacheStorage();
+    return storageRemoved;
+  }
   function normalizeShuffleArtist(value) {
     const tokens = String(value || "").split(/[;|/]+/).map((token) => token.trim()).filter(Boolean);
     if (!tokens.length) return "";
@@ -1897,7 +2006,7 @@
     const declaredMediaType = String(source.mediaType || "").trim().toLowerCase();
     const videoPath = String(source.videoPath || "").trim();
     const mediaType = youtubeVideoId || declaredMediaType === "youtube" ? "youtube" : declaredMediaType === "video" || /\.(?:m4v|mov|mp4|webm)(?:[?#]|$)/i.test(path) ? "video" : "audio";
-    const fileName = youtubeVideoId ? `YouTube Video ${youtubeVideoId}` : decodeURIComponent(path.split("/").pop() || "").replace(/\.[^/.]+$/, "");
+    const fileName = youtubeVideoId ? `YouTube Video ${youtubeVideoId}` : safeDecodeUriComponent(path.split("/").pop() || "").replace(/\.[^/.]+$/, "");
     const sourceTitle = String(source.title || "").trim() || fileName || `Track ${index + 1}`;
     const sourceArtist = normalizeShuffleArtist(source.artist || source.albumArtist || "");
     const sourceId = String(source.id || "").trim();
@@ -2221,6 +2330,15 @@
       const videoId = getTrackYouTubeVideoId(track);
       return videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
     }
+    function setYouTubePosterArtwork(element, track = currentTrack) {
+      if (!(element instanceof HTMLElement)) return;
+      const posterUrl = getTrackYouTubePosterUrl(track);
+      if (!posterUrl) {
+        element.style.removeProperty("--shuffle-youtube-poster-image");
+        return;
+      }
+      element.style.setProperty("--shuffle-youtube-poster-image", `url("${posterUrl.replace(/"/g, "%22")}")`);
+    }
     function isIOSMobileHardware() {
       if (typeof navigator === "undefined") return false;
       const ua = String(navigator.userAgent || "");
@@ -2447,8 +2565,7 @@
       } else if (bleed.parentElement === layer && bleed !== layer.firstElementChild) {
         layer.prepend(bleed);
       }
-      const posterUrl = getTrackYouTubePosterUrl(track);
-      bleed.style.backgroundImage = posterUrl ? `url("${posterUrl.replace(/"/g, "%22")}")` : "";
+      setYouTubePosterArtwork(bleed, track);
       return bleed;
     }
     function ensureYouTubePlayerLayer(track = currentTrack) {
@@ -2534,8 +2651,7 @@
       } else {
         ensureYouTubeBlurFill(layer, track);
       }
-      const posterUrl = getTrackYouTubePosterUrl(track);
-      host.style.backgroundImage = posterUrl ? `url("${posterUrl.replace(/"/g, "%22")}")` : "";
+      setYouTubePosterArtwork(host, track);
       backgroundVideoLayer = layer;
       backgroundVideoEl = null;
       backgroundVideoBleedEl = null;
@@ -4567,16 +4683,16 @@
           throw new Error(`Manifest fetch failed (${response.status})`);
         }
         const data = await response.json();
-        const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(normalizeShuffleTrackEntry).filter(Boolean);
+        const tracks = selectShuffleManifestTracks(data).map(normalizeShuffleTrackEntry).filter(Boolean);
         waveformTracks = sortShuffleTracksByRecency(tracks);
         refreshWaveformTrackLookup();
         return waveformTracks;
       })().catch(() => {
-        waveformTracks = [];
+        waveformTracks = sortShuffleTracksByRecency(getEmbeddedShuffleManifestTracks().map(normalizeShuffleTrackEntry).filter(Boolean));
         refreshWaveformTrackLookup();
-        loadState = "error";
+        loadState = waveformTracks.length ? "loading" : "error";
         syncUi();
-        return [];
+        return waveformTracks;
       });
       return manifestPromise;
     }
@@ -4911,6 +5027,7 @@
         : Number(payload || Date.now());
       return activateYouTubeInlinePlayback(Number.isFinite(activatedAt) ? activatedAt : Date.now());
     };
+    purgeLegacyShuffleMediaState();
     syncShufflePerformanceMode();
     rafId = window.requestAnimationFrame(renderLoop);
     void ensureManifest().then((tracks) => {
