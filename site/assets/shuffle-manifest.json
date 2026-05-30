@@ -20,7 +20,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-9r2lfcilfq",
@@ -42,7 +46,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-zd0j0xnhwfw",
@@ -64,7 +72,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-pu9fbotxxn8",
@@ -86,7 +98,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "16:9",
+      "youtubeAspectRatioValue": 1.777778,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 113
     },
     {
       "id": "youtube-l8nwtujx2b4",
@@ -108,7 +124,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-i9-y-tofb6i",
@@ -130,7 +150,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-ly33pihkxwe",
@@ -152,7 +176,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "16:9",
+      "youtubeAspectRatioValue": 1.777778,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 113
     },
     {
       "id": "youtube-dsa1ouhcdy8",
@@ -174,7 +202,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     },
     {
       "id": "youtube-lzmkfiw8etm",
@@ -196,7 +228,11 @@
       "segmentIndex": 0,
       "segmentCount": 1,
       "segmentStart": 0,
-      "segmentOffset": 0
+      "segmentOffset": 0,
+      "youtubeAspectRatio": "4:3",
+      "youtubeAspectRatioValue": 1.333333,
+      "youtubeEmbedWidth": 200,
+      "youtubeEmbedHeight": 150
     }
   ],
   "mobileFallbackTrack": {

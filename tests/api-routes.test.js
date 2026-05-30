@@ -1903,3 +1903,86 @@ test("steam route returns retained stale payload when upstream fails", async () 
     globalThis.caches = originalCaches;
   }
 });
+
+test("steam route refreshes a fresh cache entry without a usable profile avatar", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/steam-recent-activity");
+  const liveAvatarUrl = "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg";
+  const profileUrl = "https://steamcommunity.com/id/HalfTwo/";
+  const callUrls = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const url = String(resource);
+      callUrls.push(url);
+      if (url.includes("?xml=1")) {
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <steamID><![CDATA[josie]]></steamID>
+  <profileURL><![CDATA[${profileUrl}]]></profileURL>
+  <onlineState><![CDATA[online]]></onlineState>
+  <stateMessage><![CDATA[Currently Online]]></stateMessage>
+  <avatarFull><![CDATA[${liveAvatarUrl}]]></avatarFull>
+</profile>`, {
+          status: 200,
+          headers: { "content-type": "text/xml; charset=utf-8" }
+        });
+      }
+      if (url.startsWith("https://r.jina.ai/")) {
+        return new Response(`Title: Steam Community :: josie
+
+URL Source: http://steamcommunity.com/id/HalfTwo/
+
+Markdown Content:
+# Steam Community :: josie
+
+[![Image 6](${liveAvatarUrl})](${profileUrl})
+
+josie
+
+50
+
+Currently Online
+`, {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" }
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    };
+
+    await primeCache(cache, request, {
+      sourceStatus: "OK",
+      stale: false,
+      fetchedAt: new Date().toISOString(),
+      profileUrl,
+      profile: {
+        name: "Error",
+        url: profileUrl,
+        avatarUrl: "",
+        statusText: "Unknown"
+      },
+      stats: [],
+      items: []
+    }, 7 * 24 * 60 * 60);
+
+    const response = await onSteamRequest({
+      request,
+      env: { STEAM_PROFILE_URL: profileUrl }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.profile.name, "josie");
+    assert.equal(payload.profile.url, profileUrl);
+    assert.equal(payload.profile.avatarUrl, liveAvatarUrl);
+    assert.ok(callUrls.some((url) => url.includes("?xml=1")));
+    assert.ok(callUrls.some((url) => url.startsWith("https://r.jina.ai/")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});

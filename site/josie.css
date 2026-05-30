@@ -937,12 +937,13 @@ body.site-load-playing .os-ambient-backdrop {
 }
 
 .shuffle-youtube-player-frame {
+  --shuffle-youtube-aspect-ratio: 1.777778;
   position: absolute;
   z-index: 1;
   top: 50%;
   left: 50%;
-  width: max(100vw, 177.78vh);
-  height: max(100vh, 56.25vw);
+  width: max(100vw, calc(100vh * var(--shuffle-youtube-aspect-ratio)));
+  height: max(100vh, calc(100vw / var(--shuffle-youtube-aspect-ratio)));
   display: block;
   transform: translate3d(-50%, -50%, 0);
   overflow: hidden;

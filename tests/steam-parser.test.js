@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildSteamRecentActivityPayloadFromMarkdown } from "../functions/lib/steam.js";
+import { buildSteamProfilePatchFromXml, buildSteamRecentActivityPayloadFromMarkdown } from "../functions/lib/steam.js";
 
 const fixturesDir = path.resolve(import.meta.dirname, "fixtures");
 
@@ -81,4 +81,22 @@ Recent Activity
   assert.equal(payload.profile.name, "Josie");
   assert.equal(payload.profile.bio, "The Internet Angel");
   assert.equal(payload.profile.statusText, "Currently Online");
+});
+
+test("steam profile XML parser extracts the live profile avatar", () => {
+  const patch = buildSteamProfilePatchFromXml(`<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <steamID><![CDATA[josie]]></steamID>
+  <profileURL><![CDATA[https://steamcommunity.com/id/HalfTwo/]]></profileURL>
+  <onlineState><![CDATA[online]]></onlineState>
+  <stateMessage><![CDATA[Currently Online]]></stateMessage>
+  <avatarFull><![CDATA[https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg]]></avatarFull>
+</profile>`, "https://steamcommunity.com/id/HalfTwo/");
+
+  assert.ok(patch);
+  assert.equal(patch.name, "josie");
+  assert.equal(patch.handle, "steamcommunity.com/id/HalfTwo");
+  assert.equal(patch.url, "https://steamcommunity.com/id/HalfTwo/");
+  assert.equal(patch.statusText, "Currently Online");
+  assert.equal(patch.avatarUrl, "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg");
 });

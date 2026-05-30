@@ -148,7 +148,7 @@
       id: "steam",
       label: "Steam",
       shortLabel: "ST",
-      url: "https://steamcommunity.com/id/foundlifeless/",
+      url: "https://steamcommunity.com/id/HalfTwo/",
       refreshIntervalMs: 24 * 60 * 60 * 1e3,
       visibleOnly: true
     },
@@ -190,9 +190,12 @@
   var LASTFM_PROXY_REFRESH_INTERVAL_MS = 60 * 60 * 1e3;
   var STEAM_PROXY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1e3;
   var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
+  var STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260530-steam-profile-avatar";
   var SOCIAL_HUB_BOOT_RETRY_DELAYS_MS = [2e3, 4e3, 8e3, 15e3, 3e4, 45e3, 6e4];
   var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
   var SITE_LAYOUT_MODE_STORAGE_KEY = "internetAngelSiteLayoutMode";
+  var STEAM_PROFILE_URL = "https://steamcommunity.com/id/HalfTwo/";
+  var STEAM_PROFILE_HANDLE = "steamcommunity.com/id/HalfTwo";
   var STEAM_RECENT_ACTIVITY_SNAPSHOT = null;
   var DISCORD_PROFILE_HANDLE = "foundlifeless";
   var PROFILE_LINK_SITE_IDS = /* @__PURE__ */ new Set(["soundcloud", "spotify", "lastfm", "discord", "steam", "twitter"]);
@@ -349,9 +352,9 @@
     return {
       siteId: "steam",
       profile: {
-        name: pickSteamSnapshotValue(profile.name, "FoundLifeless"),
-        handle: pickSteamSnapshotValue(profile.handle, "steamcommunity.com/id/foundlifeless"),
-        url: pickSteamSnapshotValue(profile.url, snapshot.profileUrl, "https://steamcommunity.com/id/foundlifeless/"),
+        name: pickSteamSnapshotValue(profile.name, "Josie"),
+        handle: pickSteamSnapshotValue(profile.handle, STEAM_PROFILE_HANDLE),
+        url: pickSteamSnapshotValue(profile.url, snapshot.profileUrl, STEAM_PROFILE_URL),
         avatarUrl: pickSteamSnapshotValue(profile.avatarUrl),
         borderImageUrl: pickSteamSnapshotValue(profile.borderImageUrl),
         borderVideoUrl: pickSteamSnapshotValue(profile.borderVideoUrl),
@@ -402,9 +405,9 @@
     return {
       siteId: "steam",
       profile: {
-        name: "FoundLifeless",
-        handle: "steamcommunity.com/id/foundlifeless",
-        url: "https://steamcommunity.com/id/foundlifeless/",
+        name: "Josie",
+        handle: STEAM_PROFILE_HANDLE,
+        url: STEAM_PROFILE_URL,
         avatarUrl: "",
         borderImageUrl: "",
         borderVideoUrl: "",
@@ -1515,9 +1518,10 @@
     });
   }
   async function loadSteamPayload({ previous, now, signal }) {
-    const steamProxyEndpoint = buildProxyEndpoint(PROXY_ENDPOINTS.steam);
+    const steamProxyEndpoint = new URL(buildProxyEndpoint(PROXY_ENDPOINTS.steam));
+    steamProxyEndpoint.searchParams.set("v", STEAM_PROFILE_AVATAR_ENDPOINT_VERSION);
     try {
-      const proxyPayload = await fetchJsonWithTimeout(steamProxyEndpoint, 12e3, signal, { cacheMode: "default" });
+      const proxyPayload = await fetchJsonWithTimeout(steamProxyEndpoint.toString(), 12e3, signal, { cacheMode: "no-store" });
       if (!proxyPayload || typeof proxyPayload !== "object") {
         return previous || null;
       }
@@ -1846,6 +1850,16 @@
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
   var SHUFFLE_SCRUB_PREVIEW_GAIN = 0.84;
   var YOUTUBE_VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+  var YOUTUBE_ASPECT_RATIO_EPSILON = 0.035;
+  var YOUTUBE_DEFAULT_BACKGROUND_ASPECT_RATIO = 16 / 9;
+  var YOUTUBE_MIN_BACKGROUND_ASPECT_RATIO = 0.35;
+  var YOUTUBE_MAX_BACKGROUND_ASPECT_RATIO = 2.4;
+  var YOUTUBE_KNOWN_ASPECT_RATIOS = [
+    { label: "9:16", value: 9 / 16 },
+    { label: "1:1", value: 1 },
+    { label: "4:3", value: 4 / 3 },
+    { label: "16:9", value: 16 / 9 }
+  ];
   function buildShuffleManifestUrl() {
     const version = String(SHUFFLE_MANIFEST_BUILD_VERSION || "").trim();
     if (!version) {
@@ -1882,6 +1896,54 @@
     } catch {
       return String(value || "");
     }
+  }
+  function normalizeYouTubeAspectRatioValue(value) {
+    if (typeof value === "number") {
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+    const source = String(value || "").trim().toLowerCase();
+    if (!source) return 0;
+    if (source === "portrait") return 9 / 16;
+    if (source === "square") return 1;
+    if (source === "landscape") return 16 / 9;
+    const ratioMatch = source.match(/^(?:aspect(?:-ratio)?\s*[:=]\s*)?(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$/i);
+    if (ratioMatch) {
+      const width = Number(ratioMatch[1]);
+      const height = Number(ratioMatch[2]);
+      return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? width / height : 0;
+    }
+    const decimalMatch = source.match(/^(?:aspect(?:-ratio)?\s*[:=]\s*)?(\d+(?:\.\d+)?)$/i);
+    if (decimalMatch) {
+      const ratio = Number(decimalMatch[1]);
+      return Number.isFinite(ratio) && ratio > 0 ? ratio : 0;
+    }
+    return 0;
+  }
+  function normalizeYouTubeAspectRatioLabel(value) {
+    const ratio = normalizeYouTubeAspectRatioValue(value);
+    if (!ratio) return "";
+    const known = findKnownYouTubeAspectRatio(ratio);
+    if (known) return known.label;
+    return `${ratio.toFixed(4)}:1`;
+  }
+  function findKnownYouTubeAspectRatio(ratio) {
+    return YOUTUBE_KNOWN_ASPECT_RATIOS.find((entry) => Math.abs(entry.value - ratio) <= YOUTUBE_ASPECT_RATIO_EPSILON) || null;
+  }
+  function buildYouTubeAspectRatioFields(widthValue, heightValue, fallbackValue = "") {
+    const width = Number(widthValue);
+    const height = Number(heightValue);
+    const ratio = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+      ? width / height
+      : normalizeYouTubeAspectRatioValue(fallbackValue);
+    if (!Number.isFinite(ratio) || ratio <= 0) return {};
+    const known = findKnownYouTubeAspectRatio(ratio);
+    const clampedRatio = clamp2(known?.value || ratio, YOUTUBE_MIN_BACKGROUND_ASPECT_RATIO, YOUTUBE_MAX_BACKGROUND_ASPECT_RATIO);
+    return {
+      youtubeAspectRatio: known?.label || normalizeYouTubeAspectRatioLabel(clampedRatio) || `${clampedRatio.toFixed(4)}:1`,
+      youtubeAspectRatioValue: Number(clampedRatio.toFixed(6)),
+      ...(Number.isFinite(width) && width > 0 ? { youtubeEmbedWidth: Math.round(width) } : {}),
+      ...(Number.isFinite(height) && height > 0 ? { youtubeEmbedHeight: Math.round(height) } : {})
+    };
   }
   function isLegacyLocalShuffleVideoPath(value) {
     const source = String(value || "").trim();
@@ -2031,6 +2093,11 @@
     const durationValue = Number(source.duration);
     const sortOrderValue = Number(source.sortOrder);
     const nextTrackId = String(source.nextTrackId || "").trim();
+    const youtubeAspectRatio = buildYouTubeAspectRatioFields(
+      source.youtubeEmbedWidth || source.embedWidth || source.width,
+      source.youtubeEmbedHeight || source.embedHeight || source.height,
+      source.youtubeAspectRatioValue || source.youtubeAspectRatio || source.aspectRatio || source.backgroundAspectRatio
+    );
     return {
       id: sourceId || `shuffle-track-${index}-${hashText(`${path}|${sourceTitle}|${sourceArtist}`).slice(0, 10)}`,
       title: sourceTitle,
@@ -2055,7 +2122,8 @@
       groupDuration: Number.isFinite(groupDurationValue) && groupDurationValue > 0 ? groupDurationValue : 0,
       duration: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 0,
       sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : index,
-      mobileOnly: Boolean(source.mobileOnly)
+      mobileOnly: Boolean(source.mobileOnly),
+      ...youtubeAspectRatio
     };
   }
   function sortShuffleTracksByRecency(tracks) {
@@ -2361,6 +2429,31 @@
       }
       element.style.setProperty("--shuffle-youtube-poster-image", `url("${posterUrl.replace(/"/g, "%22")}")`);
     }
+    function getTrackYouTubeAspectRatioFields(track = currentTrack) {
+      const fields = buildYouTubeAspectRatioFields(
+        track?.youtubeEmbedWidth,
+        track?.youtubeEmbedHeight,
+        track?.youtubeAspectRatioValue || track?.youtubeAspectRatio || track?.aspectRatio || track?.backgroundAspectRatio
+      );
+      if (fields.youtubeAspectRatioValue) return fields;
+      return {
+        youtubeAspectRatio: "16:9",
+        youtubeAspectRatioValue: YOUTUBE_DEFAULT_BACKGROUND_ASPECT_RATIO
+      };
+    }
+    function applyYouTubeFrameAspectRatio(layer, host, track = currentTrack) {
+      if (!(layer instanceof HTMLElement) || !(host instanceof HTMLElement)) return;
+      const fields = getTrackYouTubeAspectRatioFields(track);
+      const ratio = clamp2(
+        Number(fields.youtubeAspectRatioValue) || YOUTUBE_DEFAULT_BACKGROUND_ASPECT_RATIO,
+        YOUTUBE_MIN_BACKGROUND_ASPECT_RATIO,
+        YOUTUBE_MAX_BACKGROUND_ASPECT_RATIO
+      );
+      const label = fields.youtubeAspectRatio || normalizeYouTubeAspectRatioLabel(ratio) || "16:9";
+      layer.dataset.shuffleYoutubeAspectRatio = label;
+      host.dataset.shuffleYoutubeAspectRatio = label;
+      host.style.setProperty("--shuffle-youtube-aspect-ratio", String(Number(ratio.toFixed(6))));
+    }
     function isIOSMobileHardware() {
       if (typeof navigator === "undefined") return false;
       const ua = String(navigator.userAgent || "");
@@ -2594,6 +2687,7 @@
       if (backgroundVideoLayer?.isConnected && youtubePlayerHost?.isConnected && backgroundVideoLayer.dataset.shuffleBackgroundKind === "youtube") {
         backgroundVideoLayer.hidden = false;
         ensureYouTubeBlurFill(backgroundVideoLayer, track);
+        applyYouTubeFrameAspectRatio(backgroundVideoLayer, youtubePlayerHost, track);
         return youtubePlayerHost;
       }
       let layer = document.querySelector("#shuffle-video-background");
@@ -2634,6 +2728,7 @@
       backgroundVideoBleedEl = null;
       youtubePlayerHost = host;
       youtubePlayerTarget = target instanceof HTMLElement ? target : null;
+      applyYouTubeFrameAspectRatio(layer, host, track);
       return host;
     }
     function ensureYouTubePlayerMountTarget() {
@@ -2679,6 +2774,7 @@
       backgroundVideoBleedEl = null;
       youtubePlayerHost = null;
       youtubePlayerTarget = null;
+      applyYouTubeFrameAspectRatio(layer, host, track);
       return host;
     }
     function startYouTubeProgressTimer() {
@@ -5116,6 +5212,10 @@
         youtubeVideoId: currentTrack.youtubeVideoId,
         youtubeUrl: currentTrack.youtubeUrl,
         youtubeChannelUrl: currentTrack.youtubeChannelUrl,
+        youtubeAspectRatio: currentTrack.youtubeAspectRatio,
+        youtubeAspectRatioValue: currentTrack.youtubeAspectRatioValue,
+        youtubeEmbedWidth: currentTrack.youtubeEmbedWidth,
+        youtubeEmbedHeight: currentTrack.youtubeEmbedHeight,
         mobileOnly: Boolean(currentTrack.mobileOnly)
       } : null,
       isPlaying,
@@ -5418,7 +5518,10 @@
   function renderHero(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const hero = pickHeroPayload(payloadById, sites);
-    const avatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL) || sanitizeUrl(hero?.profile?.avatarUrl || payloadById.get("steam")?.profile?.avatarUrl || "");
+    const steamProfileAvatarUrl = sanitizeUrl(payloadById.get("steam")?.profile?.avatarUrl || "");
+    const heroProfileAvatarUrl = sanitizeUrl(hero?.profile?.avatarUrl || "");
+    const localFallbackAvatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL);
+    const avatarUrl = firstNonEmpty(steamProfileAvatarUrl, heroProfileAvatarUrl, localFallbackAvatarUrl);
     const decorationUrl = sanitizeUrl(
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
     );

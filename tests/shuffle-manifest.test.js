@@ -60,19 +60,46 @@ test("shuffle metadata keeps explicit titles and fills YouTube defaults", () => 
   const enrichedExplicit = shuffleManifestTest.applyYouTubeMetadata(explicitTrack, {
     title: "OEmbed Title",
     artist: "WispVEVO",
-    channelUrl: "https://www.youtube.com/@WispVEVO"
+    channelUrl: "https://www.youtube.com/@WispVEVO",
+    width: 200,
+    height: 150
   });
   assert.equal(enrichedExplicit.title, "Cool Song");
   assert.equal(enrichedExplicit.artist, "WispVEVO");
   assert.equal(enrichedExplicit.youtubeChannelUrl, "https://www.youtube.com/@WispVEVO");
+  assert.equal(enrichedExplicit.youtubeAspectRatio, "4:3");
+  assert.equal(enrichedExplicit.youtubeAspectRatioValue, 1.333333);
 
   const fallbackTrack = shuffleManifestTest.parseTrackLine("https://youtu.be/dQw4w9WgXcQ", 1);
   const enrichedFallback = shuffleManifestTest.applyYouTubeMetadata(fallbackTrack, {
     title: "Never Gonna Give You Up",
-    artist: "Rick Astley"
+    artist: "Rick Astley",
+    youtubeEmbedWidth: 200,
+    youtubeEmbedHeight: 113
   });
   assert.equal(enrichedFallback.title, "Never Gonna Give You Up");
   assert.equal(enrichedFallback.artist, "Rick Astley");
+  assert.equal(enrichedFallback.youtubeAspectRatio, "16:9");
+});
+
+test("shuffle YouTube metadata carries presentation aspect ratios", () => {
+  const aspectTrack = shuffleManifestTest.parseTrackLine(
+    "Aspect Song | Aspect Artist | https://www.youtube.com/watch?v=r-6lO_UN3NY | 4:3 | 142",
+    0
+  );
+  assert.equal(aspectTrack.title, "Aspect Song");
+  assert.equal(aspectTrack.artist, "Aspect Artist");
+  assert.equal(aspectTrack.duration, 142);
+  assert.equal(aspectTrack.youtubeAspectRatio, "4:3");
+  assert.equal(aspectTrack.youtubeAspectRatioValue, 1.333333);
+
+  const fallbackTitleTrack = shuffleManifestTest.parseTrackLine(
+    "https://youtu.be/dQw4w9WgXcQ | 4:3",
+    1
+  );
+  assert.equal(fallbackTitleTrack.title, "YouTube Video dQw4w9WgXcQ");
+  assert.equal(fallbackTitleTrack.artist, "YouTube");
+  assert.equal(fallbackTitleTrack.youtubeAspectRatio, "4:3");
 });
 
 test("buildShuffleManifest exposes the committed mobile local video fallback", async () => {

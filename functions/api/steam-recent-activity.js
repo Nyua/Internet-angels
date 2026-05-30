@@ -12,7 +12,35 @@ import {
   resolveTimeoutMs,
   runWithTimeout
 } from "../lib/response.js";
-import { fetchSteamRecentActivityPayload } from "../lib/steam.js";
+import { fetchSteamRecentActivityPayload, normalizeSteamProfileUrl } from "../lib/steam.js";
+
+function getSteamRouteProfileUrl(env) {
+  return normalizeSteamProfileUrl(env?.STEAM_PROFILE_URL || "");
+}
+
+function getComparableSteamProfileUrl(value) {
+  const source = String(value || "").trim();
+  return source ? normalizeSteamProfileUrl(source).replace(/\/$/, "") : "";
+}
+
+function hasUsableSteamProfileCache(payload, profileUrl) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  if (/^error$/i.test(String(payload.profile?.name || "").trim())) {
+    return false;
+  }
+  const avatarUrl = String(payload.profile?.avatarUrl || "").trim();
+  if (!/^https:\/\/avatars\.fastly\.steamstatic\.com\//i.test(avatarUrl)) {
+    return false;
+  }
+  const expectedProfileUrl = getComparableSteamProfileUrl(profileUrl);
+  if (!expectedProfileUrl) {
+    return true;
+  }
+  const cachedProfileUrl = getComparableSteamProfileUrl(payload.profile?.url || payload.profileUrl || "");
+  return Boolean(cachedProfileUrl && cachedProfileUrl === expectedProfileUrl);
+}
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -24,6 +52,7 @@ export async function onRequest(context) {
   }
 
   const nowMs = Date.now();
+  const profileUrl = getSteamRouteProfileUrl(env);
   const cacheRequest = buildCacheRequest(request);
   const cacheState = await readCachedPayload({
     cache: caches.default,
@@ -33,7 +62,7 @@ export async function onRequest(context) {
     nowMs
   });
 
-  if (cacheState.status === "fresh" && cacheState.payload) {
+  if (cacheState.status === "fresh" && hasUsableSteamProfileCache(cacheState.payload, profileUrl)) {
     return jsonResponse(cacheState.payload, {
       status: 200,
       cacheControl: browserCacheControl(STEAM_FRESH_TTL_SEC)
@@ -46,7 +75,7 @@ export async function onRequest(context) {
       max: STEAM_ROUTE_TIMEOUT_MS
     });
     const payload = await runWithTimeout(
-      (signal) => fetchSteamRecentActivityPayload(nowMs, { signal }),
+      (signal) => fetchSteamRecentActivityPayload(nowMs, { signal, profileUrl }),
       routeTimeoutMs,
       "Steam route timed out"
     );

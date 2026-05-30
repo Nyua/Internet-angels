@@ -675,7 +675,7 @@ async function mockCompactLastFmSocialApis(page) {
       })
     });
   });
-  await page.route("**/api/steam-recent-activity", async (route) => {
+  await page.route("**/api/steam-recent-activity**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1109,6 +1109,7 @@ test("josie clears the site-load curtain when bootstrap stalls", async ({ page }
 
 test("mobile root keeps the meow gate and hands off into Josie", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
+  await emulateCoarseMobileInput(page);
   await page.goto("/");
   await expect(page).toHaveTitle(BLOOM_TITLE_PATTERN);
   await expect(page.locator("#introStartButton")).toBeVisible();
@@ -1138,18 +1139,29 @@ test("mobile root keeps the meow gate and hands off into Josie", async ({ page }
   await handoffFrame.locator("#social-hub-root[data-social-hub-ready='true']").waitFor({ timeout: 30_000 });
   await expect(handoffFrame.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-inline-activation", "false", { timeout: 10_000 });
   await expect(handoffFrame.locator("[data-mobile-speaker-toggle]")).toHaveAttribute("data-audio-playing", "true", { timeout: 10_000 });
-  await expect(handoffFrame.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube");
-  await expect(handoffFrame.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(1);
+  await expect(handoffFrame.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "video");
+  await expect(handoffFrame.locator("[data-shuffle-background-video]")).toHaveCount(1);
+  await expect(handoffFrame.locator("[data-shuffle-youtube-player] iframe")).toHaveCount(0);
+  await expect(handoffFrame.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   const handoffPlaybackState = await page.frames().find((frame) => /[?&]handoff=1(?:&|$)/.test(frame.url()))?.evaluate(() => ({
     handoffPending: Boolean(window.__josieHandoffPending),
     siteLoadComplete: Boolean(window.__amesSiteLoadComplete),
-    playerCount: Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers.length : 0
+    playerCount: Array.isArray(window.__youtubePlayers) ? window.__youtubePlayers.length : 0,
+    hasYouTubeApiScript: Boolean(document.querySelector("script[src='https://www.youtube.com/iframe_api']")),
+    hasYouTubeFrame: Boolean(document.querySelector("[data-shuffle-youtube-player] iframe")),
+    videoSrc: document.querySelector("[data-shuffle-background-video]")?.currentSrc || document.querySelector("[data-shuffle-background-video]")?.src || "",
+    track: window.__internetAngelShuffleDebug?.getTrack?.() || null
   }));
   expect(handoffPlaybackState).toMatchObject({
     handoffPending: false,
     siteLoadComplete: true,
-    playerCount: 1
+    playerCount: 0,
+    hasYouTubeApiScript: false,
+    hasYouTubeFrame: false
   });
+  expect(handoffPlaybackState?.videoSrc).toContain("/Shuffle/How%20to%20Pretend%20-%20Lucy%20Bedroque.mp4");
+  expect(handoffPlaybackState?.track?.mediaType).toBe("video");
+  expect(handoffPlaybackState?.track?.mobileOnly).toBe(true);
   const mobileIntroSfxLog = await readInteractionSfxLog(page);
   expect(mobileIntroSfxLog.filter((entry) => /introStartButton|introHandoffVisible/.test(String(entry?.source || "")))).toEqual([]);
 });
@@ -1311,6 +1323,7 @@ test("desktop Josie scales the social hub down on shorter desktop viewports", as
 });
 
 test("josie renders the profile picture without waiting on the avatar manifest", async ({ page }) => {
+  const liveSteamAvatarUrl = "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg";
   let releaseAvatarManifest = () => {};
   const avatarManifestGate = new Promise((resolve) => {
     releaseAvatarManifest = resolve;
@@ -1368,6 +1381,35 @@ test("josie renders the profile picture without waiting on the avatar manifest",
       })
     });
   });
+  await page.route("**/api/steam-recent-activity**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        profileUrl: "https://steamcommunity.com/id/HalfTwo/",
+        profile: {
+          name: "josie",
+          handle: "steamcommunity.com/id/HalfTwo",
+          url: "https://steamcommunity.com/id/HalfTwo/",
+          bio: "The Internet Angel",
+          avatarUrl: liveSteamAvatarUrl,
+          borderImageUrl: "",
+          statusText: "Currently Online",
+          levelBadgeLabel: "Level 50"
+        },
+        stats: [
+          { label: "Level", value: "50" },
+          { label: "Status", value: "Currently Online" },
+          { label: "2W Hours", value: "--" },
+          { label: "Recent Games", value: "0" }
+        ],
+        items: []
+      })
+    });
+  });
   await page.route("**/assets/avatar-manifest.json", async (route) => {
     await avatarManifestGate;
     await route.fulfill({
@@ -1380,8 +1422,7 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   await page.goto("/josie.html", { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
   await expect(page.locator(".steam-hero-avatar")).toHaveCount(1);
-  const heroAvatarSrc = await page.locator(".steam-hero-avatar").getAttribute("src");
-  expect(new URL(heroAvatarSrc, "http://127.0.0.1:8788").pathname).toBe("/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg");
+  await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("src", liveSteamAvatarUrl);
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("loading", "eager");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("fetchpriority", "high");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("decoding", "sync");
@@ -1419,7 +1460,7 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   );
   expect(priorityImagePreloads.some((preload) => {
     try {
-      return new URL(preload.href).pathname === "/avatars/9bea844be27ef3ddb8ff29d6f0474b0d.jpg"
+      return new URL(preload.href).href === liveSteamAvatarUrl
         && preload.fetchpriority === "high";
     } catch {
       return false;
@@ -1427,6 +1468,15 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   })).toBe(true);
   expect(priorityImagePreloads.some((preload) => preload.href.includes("a_c86b11a49bb8057ce9c974a6f7ad658a"))).toBe(false);
   releaseAvatarManifest();
+});
+
+test("josie cache-busts the Steam profile avatar refresh endpoint", async ({ request }) => {
+  const response = await request.get("/josie.client.js");
+  expect(response.ok()).toBe(true);
+  const clientSource = await response.text();
+  expect(clientSource).toContain('STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260530-steam-profile-avatar"');
+  expect(clientSource).toContain('steamProxyEndpoint.searchParams.set("v", STEAM_PROFILE_AVATAR_ENDPOINT_VERSION)');
+  expect(clientSource).toContain('fetchJsonWithTimeout(steamProxyEndpoint.toString(), 12e3, signal, { cacheMode: "no-store" })');
 });
 
 test("josie keeps the Shuffle video background opt-in and low-memory", async ({ page }) => {
@@ -1490,6 +1540,80 @@ test("josie keeps the Shuffle video background opt-in and low-memory", async ({ 
   await page.locator("[data-site-video-toggle]").click({ force: true });
   await expect(page.locator("[data-site-video-toggle]")).toHaveAttribute("data-video-active", "true");
   await expect(page.locator("body")).toHaveClass(/shuffle-video-background-active/);
+});
+
+test("josie covers the viewport with 4:3 YouTube backgrounds", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await installYouTubePlayerMock(page);
+  await page.route(/\/assets\/shuffle-manifest\.json(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tracks: [
+          {
+            id: "four-three-youtube",
+            groupId: "four-three-youtube",
+            queueId: "four-three-youtube",
+            mediaType: "youtube",
+            youtubeVideoId: "dSA1oUhCdy8",
+            youtubeUrl: "https://www.youtube.com/watch?v=dSA1oUhCdy8",
+            path: "https://www.youtube.com/watch?v=dSA1oUhCdy8",
+            videoPath: "https://www.youtube.com/watch?v=dSA1oUhCdy8",
+            title: "Four Three",
+            displayTitle: "Four Three",
+            artist: "Aspect Test",
+            displayArtist: "Aspect Test",
+            addedAt: "2026-01-01T00:00:00.000Z",
+            sortOrder: 0,
+            segmentIndex: 0,
+            segmentCount: 1,
+            segmentStart: 0,
+            segmentOffset: 0,
+            youtubeAspectRatio: "4:3",
+            youtubeAspectRatioValue: 1.333333,
+            youtubeEmbedWidth: 200,
+            youtubeEmbedHeight: 150
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/josie.html", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await waitForShufflePlayback(page);
+  await page.locator("[data-site-video-toggle]").click({ force: true });
+  await expect(page.locator("body")).toHaveClass(/shuffle-video-background-active/);
+  await expect(page.locator("#shuffle-video-background")).toHaveAttribute("data-shuffle-background-kind", "youtube");
+  const youtubeFitState = await page.evaluate(() => {
+    const layer = document.querySelector("#shuffle-video-background");
+    const host = document.querySelector("[data-shuffle-youtube-player]");
+    const layerRect = layer instanceof HTMLElement ? layer.getBoundingClientRect() : null;
+    const hostRect = host instanceof HTMLElement ? host.getBoundingClientRect() : null;
+    const hostStyles = host instanceof HTMLElement ? window.getComputedStyle(host) : null;
+    return {
+      layerAspect: layer instanceof HTMLElement ? layer.dataset.shuffleYoutubeAspectRatio || "" : "",
+      hostAspect: host instanceof HTMLElement ? host.dataset.shuffleYoutubeAspectRatio || "" : "",
+      cssAspect: hostStyles?.getPropertyValue("--shuffle-youtube-aspect-ratio").trim() || "",
+      layerWidth: layerRect?.width || 0,
+      layerHeight: layerRect?.height || 0,
+      hostWidth: hostRect?.width || 0,
+      hostHeight: hostRect?.height || 0,
+      playerVideoId: window.__youtubePlayers?.[0]?.__initialVideoId || "",
+      track: window.__internetAngelShuffleDebug?.getTrack?.() || null
+    };
+  });
+  expect(youtubeFitState.layerAspect).toBe("4:3");
+  expect(youtubeFitState.hostAspect).toBe("4:3");
+  expect(Number(youtubeFitState.cssAspect)).toBeCloseTo(4 / 3, 3);
+  expect(youtubeFitState.hostWidth).toBeGreaterThanOrEqual(youtubeFitState.layerWidth);
+  expect(youtubeFitState.hostHeight).toBeGreaterThanOrEqual(youtubeFitState.layerHeight);
+  expect(youtubeFitState.hostWidth / youtubeFitState.hostHeight).toBeCloseTo(4 / 3, 2);
+  expect(youtubeFitState.hostHeight).toBeGreaterThan(youtubeFitState.layerHeight);
+  expect(youtubeFitState.playerVideoId).toBe("dSA1oUhCdy8");
+  expect(youtubeFitState.track?.youtubeAspectRatio).toBe("4:3");
 });
 
 test("desktop Josie no longer background-throttles rendering when the window loses focus", async ({ page }) => {
@@ -1948,7 +2072,7 @@ test("josie retries Last.fm and Steam boot APIs after first-load failures", asyn
     });
   });
 
-  await page.route("**/api/steam-recent-activity", async (route) => {
+  await page.route("**/api/steam-recent-activity**", async (route) => {
     steamRequests += 1;
     if (steamRequests === 1) {
       await route.fulfill({
@@ -2047,7 +2171,7 @@ test("josie paints cached Steam recent activity before the cold live refresh ret
       })
     });
   });
-  await page.route("**/api/steam-recent-activity", async (route) => {
+  await page.route("**/api/steam-recent-activity**", async (route) => {
     steamRequests += 1;
     await steamRefreshGate;
     await route.fulfill({
@@ -2539,7 +2663,10 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator(".steam-hero-ornament")).toHaveCount(1);
   const heroAvatarSrc = await page.locator(".steam-hero-avatar").first().getAttribute("src");
   expect(heroAvatarSrc).toBeTruthy();
-  expect(avatarManifest.avatars).toContain(new URL(heroAvatarSrc, "http://127.0.0.1:8788").pathname);
+  const heroAvatarUrl = new URL(heroAvatarSrc, "http://127.0.0.1:8788");
+  const isSteamAvatar = heroAvatarUrl.hostname === "avatars.fastly.steamstatic.com";
+  const isLocalAvatar = avatarManifest.avatars.includes(heroAvatarUrl.pathname);
+  expect(isSteamAvatar || isLocalAvatar).toBe(true);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-heart")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
@@ -3515,7 +3642,7 @@ test("josie animates track and steam rows on hover and applies ambient artwork t
     });
   });
 
-  await page.route("**/api/steam-recent-activity", async (route) => {
+  await page.route("**/api/steam-recent-activity**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -4224,8 +4351,33 @@ test("josie mobile uses the speaker toggle, icon row links, and cinna over the D
   ]));
 });
 
+test("dist serves the mobile shuffle fallback with revalidated cache headers", async ({ request }) => {
+  const fallbackPath = "/Shuffle/How%20to%20Pretend%20-%20Lucy%20Bedroque.mp4";
+  const manifestResponse = await request.get("/assets/shuffle-manifest.json?v=cache-check");
+  expect(manifestResponse.status()).toBe(200);
+  const manifestCacheControl = manifestResponse.headers()["cache-control"] || "";
+  expect(manifestCacheControl).toContain("no-cache");
+  expect(manifestCacheControl).not.toContain("stale-while-revalidate");
+  expect(manifestCacheControl).not.toContain("max-age=3600");
+  const manifest = await manifestResponse.json();
+  expect(manifest?.mobileFallbackTrack?.path).toBe(fallbackPath);
+  expect(manifest?.mobileFallbackTrack?.videoPath).toBe(fallbackPath);
+  expect(manifest?.mobileFallbackTrack?.mobileOnly).toBe(true);
+
+  const videoResponse = await request.get(fallbackPath);
+  expect(videoResponse.status()).toBe(200);
+  expect(videoResponse.headers()["content-type"] || "").toContain("video/mp4");
+  expect(videoResponse.headers()["cache-control"] || "").toBe("no-cache, max-age=0, must-revalidate");
+  expect((await videoResponse.body()).length).toBeGreaterThan(1024 * 1024);
+});
+
 test("josie uses the local shuffle video on actual mobile hardware", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  const youtubeBootRequests = [];
+  await page.route(/https:\/\/(?:www\.)?youtube\.com\/(?:iframe_api|embed\/)/, async (route) => {
+    youtubeBootRequests.push(route.request().url());
+    await route.abort();
+  });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "userAgent", {
       configurable: true,
@@ -4328,6 +4480,7 @@ test("josie uses the local shuffle video on actual mobile hardware", async ({ pa
   await expect(page.locator("[data-shuffle-youtube-poster]")).toHaveCount(0);
   await expect(page.locator("[data-shuffle-background-video]")).toHaveAttribute("src", /How%20to%20Pretend%20-%20Lucy%20Bedroque\.mp4/);
   const externalLaunches = await page.evaluate(() => window.__codexExternalLaunchLog.slice());
+  expect(youtubeBootRequests).toEqual([]);
   expect(externalLaunches.some((entry) => /youtube\.com\/watch\?v=/.test(entry.url || ""))).toBe(false);
 });
 

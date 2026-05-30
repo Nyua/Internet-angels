@@ -83,7 +83,7 @@ function normalizeSteamMirrorTextLine(line) {
     .trim();
 }
 
-function normalizeSteamProfileUrl(rawValue = STEAM_PROFILE_URL) {
+export function normalizeSteamProfileUrl(rawValue = STEAM_PROFILE_URL) {
   const source = String(rawValue || "").trim();
   if (!source) {
     return STEAM_PROFILE_URL;
@@ -102,6 +102,154 @@ function normalizeSteamProfileUrl(rawValue = STEAM_PROFILE_URL) {
   } catch {
   }
   return "";
+}
+
+function buildSteamProfileHandle(profileUrl) {
+  const normalized = normalizeSteamProfileUrl(profileUrl);
+  return normalized ? normalized.replace(/^https?:\/\//i, "").replace(/\/$/, "") : "";
+}
+
+function buildSteamProfileXmlUrl(profileUrl) {
+  const normalized = normalizeSteamProfileUrl(profileUrl);
+  if (!normalized) {
+    return "";
+  }
+  const url = new URL(normalized);
+  url.searchParams.set("xml", "1");
+  return url.toString();
+}
+
+function decodeXmlText(value) {
+  const source = String(value || "").trim();
+  if (!source) {
+    return "";
+  }
+  const namedEntities = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    quot: "\""
+  };
+  return source.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, token) => {
+    const key = String(token || "").toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(namedEntities, key)) {
+      return namedEntities[key];
+    }
+    if (key.startsWith("#x")) {
+      const codePoint = Number.parseInt(key.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    if (key.startsWith("#")) {
+      const codePoint = Number.parseInt(key.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return match;
+  }).trim();
+}
+
+function readSteamXmlField(xml, tagName) {
+  const safeTag = String(tagName || "").replace(/[^A-Za-z0-9_-]/g, "");
+  if (!safeTag) {
+    return "";
+  }
+  const pattern = new RegExp(`<${safeTag}\\b[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*<\\/${safeTag}>`, "i");
+  const match = String(xml || "").match(pattern);
+  const rawValue = match?.[1] ?? match?.[2] ?? "";
+  return decodeXmlText(String(rawValue).replace(/<[^>]+>/g, " "));
+}
+
+function normalizeSteamAvatarUrl(value, baseUrl = "") {
+  const avatarUrl = resolveUrl(value, baseUrl);
+  if (!avatarUrl) {
+    return "";
+  }
+  try {
+    const parsed = new URL(avatarUrl);
+    return /avatars\.fastly\.steamstatic\.com$/i.test(parsed.hostname) ? parsed.toString() : "";
+  } catch {
+  }
+  return "";
+}
+
+function formatSteamXmlOnlineState(state, message = "") {
+  const stateMessage = String(message || "").replace(/\s+/g, " ").trim();
+  if (stateMessage) {
+    return stateMessage;
+  }
+  const normalized = String(state || "").trim().toLowerCase();
+  if (normalized === "online") {
+    return "Online";
+  }
+  if (normalized === "offline") {
+    return "Offline";
+  }
+  if (normalized === "in-game" || normalized === "in game" || normalized === "ingame") {
+    return "In-Game";
+  }
+  if (normalized === "away") {
+    return "Away";
+  }
+  if (normalized === "busy") {
+    return "Busy";
+  }
+  return normalized ? normalized.replace(/\b\w/g, (char) => char.toUpperCase()) : "";
+}
+
+export function buildSteamProfilePatchFromXml(xml, profileUrl = STEAM_PROFILE_URL) {
+  const source = String(xml || "");
+  if (!source.trim() || readSteamXmlField(source, "error")) {
+    return null;
+  }
+  const normalizedProfileUrl = normalizeSteamProfileUrl(profileUrl);
+  const xmlProfileUrl = normalizeSteamProfileUrl(readSteamXmlField(source, "profileURL"));
+  const resolvedProfileUrl = firstNonEmpty(xmlProfileUrl, normalizedProfileUrl);
+  const avatarUrl = normalizeSteamAvatarUrl(firstNonEmpty(
+    readSteamXmlField(source, "avatarFull"),
+    readSteamXmlField(source, "avatarMedium"),
+    readSteamXmlField(source, "avatarIcon")
+  ), resolvedProfileUrl);
+  const name = firstNonEmpty(readSteamXmlField(source, "steamID"), readSteamXmlField(source, "realname"));
+  const statusText = formatSteamXmlOnlineState(
+    readSteamXmlField(source, "onlineState"),
+    readSteamXmlField(source, "stateMessage")
+  );
+  const bio = firstNonEmpty(readSteamXmlField(source, "summary"), readSteamXmlField(source, "headline"));
+  if (!name && !avatarUrl && !statusText && !resolvedProfileUrl && !bio) {
+    return null;
+  }
+  return {
+    name,
+    handle: buildSteamProfileHandle(resolvedProfileUrl),
+    url: resolvedProfileUrl,
+    bio,
+    avatarUrl,
+    statusText
+  };
+}
+
+async function fetchSteamProfileXml(profileUrl, options = {}) {
+  const xmlUrl = buildSteamProfileXmlUrl(profileUrl);
+  if (!xmlUrl) {
+    return "";
+  }
+  const response = await fetchWithTimeout(xmlUrl, {
+    method: "GET",
+    signal: options?.signal,
+    headers: {
+      Accept: "application/xml, text/xml;q=0.9, text/html;q=0.8, */*;q=0.5",
+      "User-Agent": "Mozilla/5.0 (compatible; InternetAngelBot/1.0)"
+    }
+  }, options?.profileTimeoutMs ?? options?.timeoutMs ?? STEAM_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`Steam profile XML failed (${response.status})`);
+  }
+  return await response.text();
+}
+
+async function fetchSteamProfilePatch(profileUrl, options = {}) {
+  const xml = await fetchSteamProfileXml(profileUrl, options);
+  return buildSteamProfilePatchFromXml(xml, profileUrl);
 }
 
 function parseSteamAppId(value) {
@@ -312,7 +460,8 @@ function parseSteamMirrorHeader(lines, profileName, siteUrl) {
   const profileWindow = profileIndex >= 0
     ? normalizedHeaderLines.slice(profileIndex, Math.min(normalizedHeaderLines.length, profileIndex + 14))
     : normalizedHeaderLines;
-  const level = profileWindow.find((line) => /^\d{1,3}$/.test(line)) || "";
+  const levelLine = profileWindow.find((line) => /^(?:Level\s*)?\d{1,3}$/i.test(line)) || "";
+  const level = levelLine.match(/\d{1,3}/)?.[0] || "";
   const bioCandidates = (
     profileIndex >= 0
       ? normalizedHeaderLines.slice(
@@ -458,6 +607,10 @@ export function buildSteamRecentActivityPayloadFromMarkdown(markdown, profileUrl
   const lines = source.split(/\r?\n/);
   const titleMatch = source.match(/Title:\s*Steam Community ::\s*(.+)/i);
   const profileName = titleMatch?.[1] ? titleMatch[1].trim() : "";
+  const isSteamErrorPage = /^Error$/i.test(profileName) || /The specified profile could not be found\./i.test(source);
+  if (isSteamErrorPage) {
+    return null;
+  }
   const header = parseSteamMirrorHeader(lines, profileName, profileUrl);
   const avatarUrl = header.avatarUrl;
   const isPrivate = /This profile is private\./i.test(source);
@@ -520,25 +673,113 @@ export function buildSteamRecentActivityPayloadFromMarkdown(markdown, profileUrl
   };
 }
 
+function buildSteamProfilePayloadFromPatch(profilePatch, profileUrl, nowMs = Date.now()) {
+  const safePatch = profilePatch && typeof profilePatch === "object" ? profilePatch : {};
+  const resolvedProfileUrl = firstNonEmpty(safePatch.url, normalizeSteamProfileUrl(profileUrl));
+  const statusText = firstNonEmpty(safePatch.statusText, "Unknown");
+  return {
+    profileUrl: resolvedProfileUrl,
+    stale: false,
+    fetchedAt: new Date(nowMs).toISOString(),
+    sourceStatus: safePatch.avatarUrl || safePatch.name ? "PARTIAL" : "ERROR",
+    profile: {
+      name: firstNonEmpty(safePatch.name, "Steam User"),
+      handle: firstNonEmpty(safePatch.handle, buildSteamProfileHandle(resolvedProfileUrl)),
+      url: resolvedProfileUrl,
+      bio: firstNonEmpty(safePatch.bio),
+      avatarUrl: firstNonEmpty(safePatch.avatarUrl),
+      borderImageUrl: "",
+      statusText,
+      levelBadgeLabel: "Level --"
+    },
+    stats: [
+      { label: "Level", value: "--" },
+      { label: "Status", value: statusText },
+      { label: "2W Hours", value: "--" },
+      { label: "Recent Games", value: "0" }
+    ],
+    items: []
+  };
+}
+
+function mergeSteamProfilePatch(payload, profilePatch, profileUrl) {
+  if (!payload || !profilePatch) {
+    return payload;
+  }
+  const currentProfile = payload.profile && typeof payload.profile === "object" ? payload.profile : {};
+  const resolvedProfileUrl = firstNonEmpty(profilePatch.url, currentProfile.url, payload.profileUrl, normalizeSteamProfileUrl(profileUrl));
+  const statusText = firstNonEmpty(profilePatch.statusText, currentProfile.statusText, "Unknown");
+  const stats = Array.isArray(payload.stats) ? payload.stats.map((stat) => {
+    if (!stat || typeof stat !== "object") {
+      return stat;
+    }
+    if (String(stat.label || "").trim().toLowerCase() === "status") {
+      return {
+        ...stat,
+        value: statusText
+      };
+    }
+    return stat;
+  }) : [];
+  return {
+    ...payload,
+    profileUrl: resolvedProfileUrl,
+    profile: {
+      ...currentProfile,
+      name: firstNonEmpty(profilePatch.name, currentProfile.name, "Steam User"),
+      handle: firstNonEmpty(profilePatch.handle, currentProfile.handle, buildSteamProfileHandle(resolvedProfileUrl)),
+      url: resolvedProfileUrl,
+      bio: firstNonEmpty(currentProfile.bio, profilePatch.bio),
+      avatarUrl: firstNonEmpty(profilePatch.avatarUrl, currentProfile.avatarUrl),
+      borderImageUrl: firstNonEmpty(currentProfile.borderImageUrl),
+      statusText,
+      levelBadgeLabel: firstNonEmpty(currentProfile.levelBadgeLabel, "Level --")
+    },
+    stats
+  };
+}
+
+function withSteamRecentGamesStat(stats, itemCount) {
+  const safeStats = Array.isArray(stats) ? stats.filter((stat) => stat && typeof stat === "object") : [];
+  const recentGamesIndex = safeStats.findIndex((stat) => String(stat.label || "").trim().toLowerCase() === "recent games");
+  const value = String(Math.max(0, Number(itemCount) || 0));
+  if (recentGamesIndex >= 0) {
+    return safeStats.map((stat, index) => index === recentGamesIndex ? { ...stat, value } : stat);
+  }
+  return [
+    ...safeStats,
+    { label: "Recent Games", value }
+  ];
+}
+
 export async function fetchSteamRecentActivityPayload(nowMs = Date.now(), options = {}) {
-  const profileUrl = normalizeSteamProfileUrl(STEAM_PROFILE_URL);
+  const profileUrl = normalizeSteamProfileUrl(options?.profileUrl || STEAM_PROFILE_URL);
   if (!profileUrl) {
     throw new Error("Invalid Steam profile URL");
   }
-  const markdown = await fetchJinaMirrorMarkdown(profileUrl, options);
-  const payload = buildSteamRecentActivityPayloadFromMarkdown(markdown, profileUrl, nowMs);
-  if (!payload) {
-    throw new Error("Steam recent-activity parse failed");
+  const [markdownResult, profilePatchResult] = await Promise.allSettled([
+    fetchJinaMirrorMarkdown(profileUrl, options),
+    fetchSteamProfilePatch(profileUrl, options)
+  ]);
+  let payload = null;
+  let markdownError = null;
+  if (markdownResult.status === "fulfilled") {
+    payload = buildSteamRecentActivityPayloadFromMarkdown(markdownResult.value, profileUrl, nowMs);
+  } else {
+    markdownError = markdownResult.reason;
   }
+  const profilePatch = profilePatchResult.status === "fulfilled" ? profilePatchResult.value : null;
+  if (!payload && profilePatch) {
+    payload = buildSteamProfilePayloadFromPatch(profilePatch, profileUrl, nowMs);
+  }
+  if (!payload) {
+    throw markdownError instanceof Error ? markdownError : new Error("Steam recent-activity parse failed");
+  }
+  payload = mergeSteamProfilePatch(payload, profilePatch, profileUrl);
   const hydratedItems = await hydrateSteamMirrorRecentGameTitles(payload.items, options);
   return {
     ...payload,
     items: hydratedItems,
-    stats: [
-      payload.stats[0],
-      payload.stats[1],
-      payload.stats[2],
-      { label: "Recent Games", value: String(hydratedItems.length || 0) }
-    ]
+    stats: withSteamRecentGamesStat(payload.stats, hydratedItems.length)
   };
 }

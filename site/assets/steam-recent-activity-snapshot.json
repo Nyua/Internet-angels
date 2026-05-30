@@ -1,22 +1,22 @@
 {
-  "profileUrl": "https://steamcommunity.com/id/foundlifeless/",
+  "profileUrl": "https://steamcommunity.com/id/HalfTwo/",
   "stale": true,
   "fetchedAt": "2026-03-25T00:00:00.000Z",
   "sourceStatus": "PARTIAL",
   "profile": {
     "name": "Josie",
-    "handle": "steamcommunity.com/id/foundlifeless",
-    "url": "https://steamcommunity.com/id/foundlifeless/",
+    "handle": "steamcommunity.com/id/HalfTwo",
+    "url": "https://steamcommunity.com/id/HalfTwo/",
     "bio": "The Internet Angel",
-    "avatarUrl": "https://avatars.fastly.steamstatic.com/7f56a0dcc6eb91eb84174f52c44cf91aa6d051b5.jpg",
+    "avatarUrl": "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg",
     "borderImageUrl": "",
     "statusText": "Currently Online",
-    "levelBadgeLabel": "Level 22"
+    "levelBadgeLabel": "Level 50"
   },
   "stats": [
     {
       "label": "Level",
-      "value": "22"
+      "value": "50"
     },
     {
       "label": "Status",

@@ -9,6 +9,13 @@ const HTML_ENTITY_PATTERN = /&(?:amp|lt|gt|quot|apos|#\d{1,7}|#x[0-9a-f]{1,6});/
 const UNICODE_FORMAT_CONTROL_PATTERN = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const ASCII_CONTROL_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 const LONE_SURROGATE_PATTERN = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+const YOUTUBE_ASPECT_RATIO_EPSILON = 0.035;
+const YOUTUBE_KNOWN_ASPECT_RATIOS = [
+  { label: "9:16", value: 9 / 16 },
+  { label: "1:1", value: 1 },
+  { label: "4:3", value: 4 / 3 },
+  { label: "16:9", value: 16 / 9 }
+];
 
 export const MOBILE_LOCAL_SHUFFLE_VIDEO_FILE = "How to Pretend - Lucy Bedroque.mp4";
 
@@ -52,6 +59,60 @@ function extractYouTubeVideoId(value) {
 function normalizeYouTubeUrl(value) {
   const videoId = extractYouTubeVideoId(value);
   return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
+}
+
+function normalizeAspectRatioValue(value, options = {}) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+  const source = cleanMetadataValue(value).toLowerCase();
+  if (!source) return 0;
+  if (source === "portrait") return 9 / 16;
+  if (source === "square") return 1;
+  if (source === "landscape") return 16 / 9;
+  const ratioMatch = source.match(/^(?:aspect(?:-ratio)?\s*[:=]\s*)?(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$/i);
+  if (ratioMatch) {
+    const width = Number(ratioMatch[1]);
+    const height = Number(ratioMatch[2]);
+    return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? width / height : 0;
+  }
+  const decimalMatch = source.match(/^(?:aspect(?:-ratio)?\s*[:=]\s*)?(\d+(?:\.\d+)?)$/i);
+  const hasAspectPrefix = /^aspect(?:-ratio)?\s*[:=]/i.test(source);
+  if (decimalMatch && (options.allowBareNumber !== false || hasAspectPrefix)) {
+    const ratio = Number(decimalMatch[1]);
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 0;
+  }
+  return 0;
+}
+
+function normalizeAspectRatioLabel(value) {
+  const ratio = normalizeAspectRatioValue(value);
+  if (!ratio) return "";
+  const known = findKnownAspectRatio(ratio);
+  if (known) return known.label;
+  return `${ratio.toFixed(4)}:1`;
+}
+
+function findKnownAspectRatio(ratio) {
+  return YOUTUBE_KNOWN_ASPECT_RATIOS.find((entry) => Math.abs(entry.value - ratio) <= YOUTUBE_ASPECT_RATIO_EPSILON) || null;
+}
+
+function buildAspectRatioMetadata(widthValue, heightValue, fallbackValue = "") {
+  const width = Number(widthValue);
+  const height = Number(heightValue);
+  const ratio = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    ? width / height
+    : normalizeAspectRatioValue(fallbackValue);
+  if (!Number.isFinite(ratio) || ratio <= 0) return {};
+  const known = findKnownAspectRatio(ratio);
+  const normalizedRatio = known?.value || ratio;
+  const label = known?.label || normalizeAspectRatioLabel(normalizedRatio);
+  return {
+    youtubeAspectRatio: label || `${normalizedRatio.toFixed(4)}:1`,
+    youtubeAspectRatioValue: Number(normalizedRatio.toFixed(6)),
+    ...(Number.isFinite(width) && width > 0 ? { youtubeEmbedWidth: Math.round(width) } : {}),
+    ...(Number.isFinite(height) && height > 0 ? { youtubeEmbedHeight: Math.round(height) } : {})
+  };
 }
 
 function decodeHtmlEntity(entity) {
@@ -129,7 +190,8 @@ export async function fetchYouTubeOEmbedMetadata(videoUrl, options = {}) {
     return {
       title: cleanMetadataValue(data?.title),
       artist: cleanMetadataValue(data?.author_name),
-      channelUrl: cleanMetadataValue(data?.author_url)
+      channelUrl: cleanMetadataValue(data?.author_url),
+      ...buildAspectRatioMetadata(data?.width, data?.height)
     };
   } catch {
     return null;
@@ -143,6 +205,17 @@ function applyYouTubeMetadata(track, metadata) {
   const title = cleanMetadataValue(metadata?.title);
   const artist = cleanMetadataValue(metadata?.artist);
   const channelUrl = cleanMetadataValue(metadata?.channelUrl);
+  const explicitAspectRatio = buildAspectRatioMetadata(
+    track.youtubeEmbedWidth,
+    track.youtubeEmbedHeight,
+    track.youtubeAspectRatio || track.aspectRatio
+  );
+  const metadataAspectRatio = buildAspectRatioMetadata(
+    metadata?.youtubeEmbedWidth || metadata?.width,
+    metadata?.youtubeEmbedHeight || metadata?.height,
+    metadata?.youtubeAspectRatio || metadata?.aspectRatio
+  );
+  const aspectRatio = Object.keys(explicitAspectRatio).length ? explicitAspectRatio : metadataAspectRatio;
   const nextTitle = title && isFallbackYouTubeTitle(track) ? title : track.title;
   const nextArtist = artist && isFallbackYouTubeArtist(track) ? artist : track.artist;
   return {
@@ -151,7 +224,8 @@ function applyYouTubeMetadata(track, metadata) {
     displayTitle: title && isFallbackYouTubeTitle(track) ? title : track.displayTitle,
     artist: nextArtist,
     displayArtist: artist && isFallbackYouTubeArtist(track) ? artist : track.displayArtist,
-    youtubeChannelUrl: channelUrl || track.youtubeChannelUrl || ""
+    youtubeChannelUrl: channelUrl || track.youtubeChannelUrl || "",
+    ...aspectRatio
   };
 }
 
@@ -215,14 +289,19 @@ function parseTrackLine(line, index) {
   const videoId = extractYouTubeVideoId(sourceUrl);
   if (!videoId) return null;
 
-  const metadataParts = urlPartIndex >= 0
+  const rawMetadataParts = urlPartIndex >= 0
     ? parts.filter((_, partIndex) => partIndex !== urlPartIndex)
     : [];
+  const aspectPart = rawMetadataParts.find((part) => normalizeAspectRatioValue(part, { allowBareNumber: false }));
+  const metadataParts = aspectPart
+    ? rawMetadataParts.filter((part) => part !== aspectPart)
+    : rawMetadataParts;
   const title = metadataParts[0] || `YouTube Video ${videoId}`;
   const artist = metadataParts[1] || YOUTUBE_DEFAULT_ARTIST;
-  const duration = Number(metadataParts[2]);
+  const duration = Number(metadataParts.find((part, partIndex) => partIndex >= 2 && Number(part) > 0));
   const normalizedUrl = normalizeYouTubeUrl(sourceUrl);
   const id = slugify(`youtube-${videoId}`) || `youtube-${index + 1}`;
+  const aspectRatio = buildAspectRatioMetadata(null, null, aspectPart);
 
   return {
     id,
@@ -244,7 +323,8 @@ function parseTrackLine(line, index) {
     segmentIndex: 0,
     segmentCount: 1,
     segmentStart: 0,
-    segmentOffset: 0
+    segmentOffset: 0,
+    ...aspectRatio
   };
 }
 
@@ -320,5 +400,7 @@ export const __test = {
   fetchYouTubeOEmbedMetadata,
   applyYouTubeMetadata,
   parseTrackLine,
-  buildMobileLocalShuffleTrack
+  buildMobileLocalShuffleTrack,
+  normalizeAspectRatioValue,
+  buildAspectRatioMetadata
 };

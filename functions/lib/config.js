@@ -1,7 +1,7 @@
 export const LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/";
 export const LASTFM_USER = "FoundLifeless";
 export const DISCORD_USER_ID = "331350000154050560";
-export const STEAM_PROFILE_URL = "https://steamcommunity.com/id/foundlifeless/";
+export const STEAM_PROFILE_URL = "https://steamcommunity.com/id/HalfTwo/";
 
 export const LASTFM_FRESH_TTL_SEC = 15 * 60;
 export const LASTFM_RETAIN_TTL_SEC = 24 * 60 * 60;

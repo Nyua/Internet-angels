@@ -47,9 +47,6 @@ const avatarExtensions = /* @__PURE__ */ new Set([
 const headersFile = `/*.html
   Cache-Control: no-cache, max-age=0, must-revalidate
 
-/assets/shuffle-manifest.json
-  Cache-Control: no-cache, max-age=0, must-revalidate
-
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -58,6 +55,13 @@ const headersFile = `/*.html
 
 /*.json
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/assets/shuffle-manifest.json
+  ! Cache-Control
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/Shuffle/:file
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /*.ttf
   Access-Control-Allow-Origin: *
