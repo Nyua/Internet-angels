@@ -6510,24 +6510,106 @@ test("josie blocks real mobile Last.fm dropdown taps from shuffle links behind i
   expect(shield.openedWindows).toBe(0);
 });
 
-test("josie blocks desktop mobile-mode Last.fm dropdown taps from shuffle links behind it", async ({ page }) => {
+test("josie keeps desktop Last.fm panels when desktop users switch to mobile layout", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await openRecentTracksDropdownWithShuffleBehind(page, {
-    useDesktopMobileToggle: true
+  await stubWindowOpen(page);
+  await mockCompactLastFmSocialApis(page);
+  await page.route("**/api/lastfm-track-details**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "Shield Artist", track: "Shield Song", album: "Shield Album" },
+        track: {
+          title: "Shield Song",
+          artist: "Shield Artist",
+          album: "Shield Album",
+          durationMs: 184000,
+          durationLabel: "3:04",
+          artworkUrl: "https://example.com/shield-song-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/Shield+Artist/_/Shield+Song",
+          artistLastFmUrl: "https://www.last.fm/music/Shield+Artist",
+          userPlaycount: 3,
+          userLoved: false,
+          globalPlaycount: 2740015,
+          listeners: 285055,
+          summary: "",
+          publishedAt: null,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "unavailable",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/Shield%20Song%20Shield%20Artist",
+          previewUrl: "",
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: ""
+        },
+        scrobbles: { total: 3, items: [] },
+        artistTopTracks: { artist: "Shield Artist", items: [] }
+      })
+    });
   });
 
-  const shield = await readMobileLastFmShuffleShield(page);
-  expect(shield).not.toBeNull();
-  expect(shield.bodyMode).toBe("mobile");
-  expect(shield.bodyDropdownOpen).toBe("true");
-  expect(shield.rootDropdownOpen).toBe("true");
-  expect(shield.dropdownOpen).toBe(true);
-  expect(shield.shufflePointerEvents).toBe("none");
-  expect(shield.hitInsideLastFm).toBe(true);
-  expect(shield.hitShuffleLink).toBe(false);
-  expect(shield.dispatchResult).toBe(false);
-  expect(shield.defaultPrevented).toBe(true);
-  expect(shield.openedWindows).toBe(0);
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect(page.locator("body")).not.toHaveClass(/site-load-playing/, { timeout: 15_000 });
+  await page.locator("[data-site-layout-toggle]").click();
+  await expect(page.locator("body")).toHaveAttribute("data-site-layout-mode", "mobile");
+  await expect(page.locator("body")).toHaveAttribute("data-site-layout-device", "desktop");
+  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--desktop-lastfm-toggle/);
+  await expect(page.locator("#social-hub-showcases")).not.toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveCount(0);
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title").first()).toHaveText("Recent Tracks");
+  const topArtistsTitle = page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" });
+  const topAlbumsTitle = page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" });
+  await expect(topArtistsTitle).toHaveCount(1);
+  await expect(topAlbumsTitle).toHaveCount(1);
+  const desktopLastFmSectionState = await page.evaluate(() => {
+    const readTitle = (label) => {
+      const title = Array.from(document.querySelectorAll("#social-hub-showcases .lastfm-section-title"))
+        .find((node) => node.textContent?.includes(label));
+      if (!(title instanceof HTMLElement)) return null;
+      const rect = title.getBoundingClientRect();
+      const styles = window.getComputedStyle(title);
+      return {
+        display: styles.display,
+        visibility: styles.visibility,
+        width: rect.width,
+        height: rect.height
+      };
+    };
+    return {
+      topArtists: readTitle("Top Artists"),
+      topAlbums: readTitle("Top Albums")
+    };
+  });
+  expect(desktopLastFmSectionState.topArtists).toMatchObject({
+    display: "block",
+    visibility: "visible"
+  });
+  expect(desktopLastFmSectionState.topAlbums).toMatchObject({
+    display: "block",
+    visibility: "visible"
+  });
+  expect(desktopLastFmSectionState.topArtists?.width).toBeGreaterThan(0);
+  expect(desktopLastFmSectionState.topArtists?.height).toBeGreaterThan(0);
+  expect(desktopLastFmSectionState.topAlbums?.width).toBeGreaterThan(0);
+  expect(desktopLastFmSectionState.topAlbums?.height).toBeGreaterThan(0);
+
+  await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-title")).toHaveText("Shield Song", { timeout: 10_000 });
+  await expect(page.locator(".lastfm-track-panel-window--mobile")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-layout--mobile")).toHaveCount(0);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
 });
 
 test("josie settles mobile top artist details without stale loading UI", async ({ page }) => {

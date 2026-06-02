@@ -231,16 +231,22 @@
   function isActualMobileLayoutDevice() {
     return isViewportCompactMobileLayout() && hasCompactMobileInput();
   }
+  function shouldUseMobileLastFmPanels() {
+    return isActualMobileLayoutDevice();
+  }
   function getEffectiveSiteLayoutMode() {
     if (isActualMobileLayoutDevice()) return "mobile";
     return siteLayoutModeOverride || (isViewportCompactMobileLayout() ? "mobile" : "desktop");
   }
   function applySiteLayoutModeAttributes() {
     const effectiveMode = getEffectiveSiteLayoutMode();
+    const layoutDevice = isActualMobileLayoutDevice() ? "mobile" : "desktop";
     const overrideMode = isActualMobileLayoutDevice() ? "mobile-disabled" : siteLayoutModeOverride || "auto";
     document.documentElement?.setAttribute("data-site-layout-mode", effectiveMode);
+    document.documentElement?.setAttribute("data-site-layout-device", layoutDevice);
     document.documentElement?.setAttribute("data-site-layout-override", overrideMode);
     document.body?.setAttribute("data-site-layout-mode", effectiveMode);
+    document.body?.setAttribute("data-site-layout-device", layoutDevice);
     document.body?.setAttribute("data-site-layout-override", overrideMode);
   }
   function hasCompactMobileInput() {
@@ -6145,7 +6151,7 @@
     const ambientAttrs = renderLastFmPanelAmbientAttributes(safeViewModel.ambientImageUrl);
     const titleText = firstNonEmpty(safeViewModel.title, "Last.fm");
     const titleMarkup = firstNonEmpty(safeViewModel.titleMarkup, "");
-    const mobileClassName = isCompactMobileLayout() ? " lastfm-track-panel-window--mobile" : "";
+    const mobileClassName = shouldUseMobileLastFmPanels() ? " lastfm-track-panel-window--mobile" : "";
     if (safeViewModel.state === "error") {
       return `
       <div class="lastfm-track-panel-window${mobileClassName} lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}">
@@ -6230,7 +6236,7 @@
     const track = detail?.track || {};
     const spotify = detail?.spotify || {};
     const scrobbles = detail?.scrobbles || {};
-    const compactMobile = isCompactMobileLayout();
+    const compactMobile = shouldUseMobileLastFmPanels();
     const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
@@ -8041,7 +8047,7 @@
       const state = shufflePlayerController?.getState?.();
       const safeUrl = sanitizeUrl(state?.externalPlaybackUrl);
       if (!state?.externalPlaybackOnly || !safeUrl) return false;
-      if (isCompactMobileLayout()) {
+      if (isActualMobileLayoutDevice()) {
         launchMobileExternalWithSelection(safeUrl, {
           trigger: trigger instanceof HTMLElement ? trigger : null,
           target: "_blank"
@@ -8606,7 +8612,7 @@
     function showExternalPrompt(url, trigger = null) {
       const safeUrl = sanitizeUrl(url);
       if (!safeUrl) return;
-      if (isCompactMobileLayout()) {
+      if (isActualMobileLayoutDevice()) {
         launchMobileExternalWithSelection(safeUrl, {
           trigger: trigger instanceof HTMLElement ? trigger : null,
           target: resolveExternalLaunchTarget(trigger instanceof HTMLAnchorElement ? trigger : null, "_blank")
@@ -9117,7 +9123,7 @@
       });
     }
     function getLastFmTrackPanelArtworkSource(trigger) {
-      if (!(trigger instanceof HTMLElement) || isCompactMobileLayout()) return null;
+      if (!(trigger instanceof HTMLElement) || shouldUseMobileLastFmPanels()) return null;
       const shell = trigger.querySelector("[data-lastfm-art-source]");
       if (!(shell instanceof HTMLElement)) return null;
       const rect = shell.getBoundingClientRect();
@@ -9409,7 +9415,7 @@
       settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
     }
     async function launchLastFmPanelWithArtworkTransition(panelType, definition, normalizedQuery, trigger) {
-      if (!definition || !(trigger instanceof HTMLElement) || isCompactMobileLayout()) {
+      if (!definition || !(trigger instanceof HTMLElement) || shouldUseMobileLastFmPanels()) {
         return false;
       }
       const panel = ensureLastFmTrackDetailsOverlay();
@@ -10745,14 +10751,14 @@
         }
         const artToggle = target.closest("[data-lastfm-panel-art-toggle]");
         if (artToggle instanceof HTMLElement) {
-          if (isCompactMobileLayout()) return;
+          if (shouldUseMobileLastFmPanels()) return;
           event.preventDefault();
           setLastFmPanelArtFace(artToggle.closest(".lastfm-track-panel-art--flip"), "back", { focusTarget: true });
           return;
         }
         const artBack = target.closest("[data-lastfm-panel-art-back]");
         if (artBack instanceof HTMLElement && !target.closest(".lastfm-track-panel-cta")) {
-          if (isCompactMobileLayout()) return;
+          if (shouldUseMobileLastFmPanels()) return;
           event.preventDefault();
           setLastFmPanelArtFace(artBack.closest(".lastfm-track-panel-art--flip"), "front", { focusTarget: true });
           return;
@@ -11291,6 +11297,8 @@
         clearAngelsFooterLungeState();
       }
       const compactMobile = isCompactMobileLayout();
+      const mobileLastFmPanels = compactMobile && shouldUseMobileLastFmPanels();
+      const desktopToggleLastFmPanels = compactMobile && !mobileLastFmPanels;
       applySiteLayoutModeAttributes();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
@@ -11317,25 +11325,32 @@
         const lastFmSite = sites.find((site) => site.id === "lastfm");
         if (lastFmSite) {
           showcases.hidden = false;
-          showcases.classList.add("social-hub-showcases--mobile-lastfm");
+          showcases.classList.toggle("social-hub-showcases--mobile-lastfm", mobileLastFmPanels);
+          showcases.classList.toggle("social-hub-showcases--desktop-lastfm-toggle", desktopToggleLastFmPanels);
           showcases.innerHTML = renderLastFmShowcase(lastFmSite, ensurePayload(lastFmSite, payloadById.get("lastfm")), {
-            mobile: true,
+            mobile: mobileLastFmPanels,
             mobileRecentRevealState: mobileLastFmRevealPlayed ? "visible" : "pending",
             mobileRecentDropdownOpen: mobileLastFmDropdownOpen,
             mobileTopArtistsDropdownOpen
           });
-          scheduleMobileLastFmPanelPrefetch(showcases.querySelector("[data-mobile-lastfm-dropdown][open]"));
+          if (mobileLastFmPanels) {
+            scheduleMobileLastFmPanelPrefetch(showcases.querySelector("[data-mobile-lastfm-dropdown][open]"));
+          } else {
+            clearMobileLastFmPanelPrefetchTimer();
+          }
         } else {
           showcases.innerHTML = "";
           showcases.hidden = true;
           showcases.classList.remove("social-hub-showcases--mobile-lastfm");
+          showcases.classList.remove("social-hub-showcases--desktop-lastfm-toggle");
         }
       } else {
         showcases.classList.remove("social-hub-showcases--mobile-lastfm");
+        showcases.classList.remove("social-hub-showcases--desktop-lastfm-toggle");
         showcases.hidden = false;
         showcases.innerHTML = showcaseSites.map((site) => renderSiteShowcase(site, payloadById.get(site.id))).join("");
       }
-      syncMobileLastFmDropdownBlockingState(compactMobile && Boolean(mobileLastFmDropdownOpen || mobileTopArtistsDropdownOpen));
+      syncMobileLastFmDropdownBlockingState(mobileLastFmPanels && Boolean(mobileLastFmDropdownOpen || mobileTopArtistsDropdownOpen));
       syncMobileAudioDock(false);
       const shuffleRoot = null;
       shufflePlayerController?.attach(shuffleRoot);
@@ -11356,7 +11371,11 @@
       if (compactMobile) {
         syncMobileLinkSelectedState();
         scheduleMobileDiscordReveal();
-        scheduleMobileLastFmReveal();
+        if (mobileLastFmPanels) {
+          scheduleMobileLastFmReveal();
+        } else {
+          clearMobileLastFmRevealTimer();
+        }
       }
       syncCinnaMobileGif(compactMobile);
       syncMobileSpeakerToggle(true);

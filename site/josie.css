@@ -8495,6 +8495,33 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
       max(10px, env(safe-area-inset-left, 0px));
   }
 
+  .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle {
+    position: relative;
+    z-index: 80;
+    isolation: isolate;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 336px);
+    max-width: 336px;
+    margin: 8px auto 0;
+    padding:
+      0 max(10px, env(safe-area-inset-right, 0px))
+      calc(env(safe-area-inset-bottom, 0px) + 14px)
+      max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle .steam-showcase--lastfm-minimal {
+    display: block;
+    width: 100%;
+  }
+
+  .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle .lastfm-section {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+    overflow: visible;
+  }
+
   .social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-mobile {
     width: 100%;
   }
@@ -9772,115 +9799,115 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     font-size: 15px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel {
     padding: 18px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-shell,
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-shell,
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window {
     width: min(100%, calc(calc(var(--site-mobile-layout-viewport-width) * 1) - 36px));
     max-height: calc(100vh - 36px);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-body {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-body {
     padding: 10px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-layout {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stack--split {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stack--split {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-primary {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-primary {
     order: 1;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-secondary {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-secondary {
     order: 2;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats--single {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats--single {
     grid-template-columns: minmax(132px, 160px);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats--with-spotify {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats--with-spotify {
     grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-spotify-slot {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-spotify-slot {
     grid-column: 2 / 3;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-history-list,
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-related-list,
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-tracklist {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-history-list,
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-related-list,
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-tracklist {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-preview-head {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-preview-head {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-preview-time {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-preview-time {
     grid-column: 1 / -1;
     text-align: left;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel {
     padding: 10px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window {
     border-radius: 16px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-title {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-title {
     font-size: 64px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-history-item {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-history-item {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats--single {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats--single {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-stats--with-spotify {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-stats--with-spotify {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-spotify-slot {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-spotify-slot {
     grid-column: auto;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-preview {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-preview {
     width: 100%;
     padding: 9px 10px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-track-item {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-track-item {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-track-status {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-track-status {
     grid-column: 2;
     justify-content: flex-start;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-tracklist {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window[data-panel-density="ultra"] .lastfm-track-panel-tracklist {
     grid-template-columns: 1fr;
   }
 
@@ -10148,6 +10175,33 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
       0 max(10px, env(safe-area-inset-right, 0px))
       calc(env(safe-area-inset-bottom, 0px) + 14px)
       max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  body[data-site-layout-mode="mobile"] .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle {
+    position: relative;
+    z-index: 80;
+    isolation: isolate;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 336px);
+    max-width: 336px;
+    margin: 8px auto 0;
+    padding:
+      0 max(10px, env(safe-area-inset-right, 0px))
+      calc(env(safe-area-inset-bottom, 0px) + 14px)
+      max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  body[data-site-layout-mode="mobile"] .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle .steam-showcase--lastfm-minimal {
+    display: block;
+    width: 100%;
+  }
+
+  body[data-site-layout-mode="mobile"] .social-hub-showcases.social-hub-showcases--desktop-lastfm-toggle .lastfm-section {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+    overflow: visible;
   }
 
   body[data-site-layout-mode="mobile"] .social-hub-showcases--mobile-lastfm .steam-showcase--lastfm-mobile {
@@ -11547,18 +11601,18 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     border-radius: 8px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu,
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu,
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
     width: min(100%, calc(calc(var(--site-mobile-layout-viewport-width) * 1) - 20px));
     border-radius: 16px;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-layout--focus-menu,
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-focus--track {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-layout--focus-menu,
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-focus--track {
     grid-template-columns: 1fr;
   }
 
-  body[data-site-layout-mode="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--mobile.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-title {
+  body[data-site-layout-device="mobile"] .lastfm-track-panel-window.lastfm-track-panel-window--mobile.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-title {
     font-size: clamp(34px, calc(var(--site-mobile-layout-viewport-width) * 0.1), 44px);
     line-height: 1;
   }

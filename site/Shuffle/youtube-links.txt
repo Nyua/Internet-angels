@@ -1,12 +1,4 @@
 # Add or remove shuffle tracks here. Use one YouTube video per line.
 # Optional metadata format:
 # Title | Artist | https://www.youtube.com/watch?v=VIDEO_ID
-https://www.youtube.com/watch?v=lzMkFIw8ETM
-https://www.youtube.com/watch?v=dSA1oUhCdy8
-https://www.youtube.com/watch?v=Ly33PihkXwE
-https://www.youtube.com/watch?v=I9_y-tofB6I
-https://www.youtube.com/watch?v=L8NWTUjx2B4
-https://www.youtube.com/watch?v=pU9fbOTxxn8
-https://www.youtube.com/watch?v=Zd0j0xnhWFw
-https://www.youtube.com/watch?v=_9R2lFciLFQ
-https://www.youtube.com/watch?v=kvhVECfGsw8
+https://www.youtube.com/watch?v=r-6lO_UN3NY
