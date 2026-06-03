@@ -1,17 +1,17 @@
 {
   "profileUrl": "https://steamcommunity.com/id/HalfTwo/",
-  "stale": true,
-  "fetchedAt": "2026-03-25T00:00:00.000Z",
-  "sourceStatus": "PARTIAL",
+  "stale": false,
+  "fetchedAt": "2026-06-03T12:33:25.021Z",
+  "sourceStatus": "OK",
   "profile": {
     "name": "Josie",
     "handle": "steamcommunity.com/id/HalfTwo",
-    "url": "https://steamcommunity.com/id/HalfTwo/",
-    "bio": "The Internet Angel",
-    "avatarUrl": "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg",
+    "bio": "Australia",
+    "avatarUrl": "https://avatars.akamai.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_full.jpg",
     "borderImageUrl": "",
-    "statusText": "Currently Online",
-    "levelBadgeLabel": "Level 50"
+    "statusText": "Offline",
+    "levelBadgeLabel": "Level 50",
+    "url": "https://steamcommunity.com/id/HalfTwo/"
   },
   "stats": [
     {
@@ -20,11 +20,11 @@
     },
     {
       "label": "Status",
-      "value": "Currently Online"
+      "value": "Offline"
     },
     {
       "label": "2W Hours",
-      "value": "84.2h"
+      "value": "51.4h"
     },
     {
       "label": "Recent Games",
@@ -33,37 +33,37 @@
   ],
   "items": [
     {
-      "id": "steam-snapshot-3065800",
-      "title": "Marathon",
-      "meta": "77 hrs on record | last played on Mar 18",
-      "url": "https://steamcommunity.com/app/3065800",
-      "appId": "3065800",
-      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3065800/4a77146f41c57cb6d41c984ce27b54c41847678d/capsule_184x69.jpg?t=1773437772",
-      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3065800/4a77146f41c57cb6d41c984ce27b54c41847678d/capsule_184x69.jpg?t=1773437772",
-      "hoursOnRecord": "77",
-      "lastPlayed": "last played on Mar 18"
+      "id": "steam-mirror-2357570",
+      "title": "Overwatch®",
+      "meta": "838 hrs on record | last played on Jun 2",
+      "url": "https://steamcommunity.com/app/2357570",
+      "appId": "2357570",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2357570/4dd87b23d0fb4b6295f8e77178f3a080a03ebf3a/capsule_184x69.jpg?t=1778610036",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2357570/4dd87b23d0fb4b6295f8e77178f3a080a03ebf3a/capsule_184x69.jpg?t=1778610036",
+      "hoursOnRecord": "838",
+      "lastPlayed": "last played on Jun 2"
     },
     {
-      "id": "steam-snapshot-3764200",
-      "title": "Resident Evil Requiem",
-      "meta": "2.8 hrs on record | last played on Mar 16",
-      "url": "https://steamcommunity.com/app/3764200",
-      "appId": "3764200",
-      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3764200/64f506b9b6210df6055136e7017f2082957e5b22/capsule_184x69.jpg?t=1772587704",
-      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3764200/64f506b9b6210df6055136e7017f2082957e5b22/capsule_184x69.jpg?t=1772587704",
-      "hoursOnRecord": "2.8",
-      "lastPlayed": "last played on Mar 16"
+      "id": "steam-mirror-3124540",
+      "title": "Far Far West",
+      "meta": "15.4 hrs on record | last played on May 31",
+      "url": "https://steamcommunity.com/app/3124540",
+      "appId": "3124540",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3124540/396b26f278210ddfbb9e944d8b20da2e8bd17ded/capsule_184x69.jpg?t=1779807563",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3124540/396b26f278210ddfbb9e944d8b20da2e8bd17ded/capsule_184x69.jpg?t=1779807563",
+      "hoursOnRecord": "15.4",
+      "lastPlayed": "last played on May 31"
     },
     {
-      "id": "steam-snapshot-1229490",
-      "title": "ULTRAKILL",
-      "meta": "15.7 hrs on record | last played on Mar 16",
-      "url": "https://steamcommunity.com/app/1229490",
-      "appId": "1229490",
-      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1229490/capsule_184x69.jpg?t=1771983912",
-      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1229490/capsule_184x69.jpg?t=1771983912",
-      "hoursOnRecord": "15.7",
-      "lastPlayed": "last played on Mar 16"
+      "id": "steam-mirror-1091500",
+      "title": "Cyberpunk 2077",
+      "meta": "65 hrs on record | last played on May 31",
+      "url": "https://steamcommunity.com/app/1091500",
+      "appId": "1091500",
+      "imageUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1091500/590e0988a2fb79f44d3e31e41fd4949eb76abc41/capsule_184x69.jpg?t=1769690377",
+      "artworkUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1091500/590e0988a2fb79f44d3e31e41fd4949eb76abc41/capsule_184x69.jpg?t=1769690377",
+      "hoursOnRecord": "65",
+      "lastPlayed": "last played on May 31"
     }
   ]
 }

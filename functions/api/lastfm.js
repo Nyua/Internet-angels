@@ -5,6 +5,7 @@ import {
 } from "../lib/config.js";
 import { buildCacheRequest, readCachedPayload, toStalePayload, writeCachedPayload } from "../lib/cache.js";
 import { buildEmptyLastFmPayload, fetchLastFmPayload } from "../lib/lastfm.js";
+import { LASTFM_SNAPSHOT } from "../lib/lastfm-snapshot.js";
 import {
   browserCacheControl,
   isSameOriginRequest,
@@ -13,6 +14,68 @@ import {
   resolveTimeoutMs,
   runWithTimeout
 } from "../lib/response.js";
+
+const LASTFM_STALE_BROWSER_TTL_SEC = 30;
+
+function cloneJsonPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  return JSON.parse(JSON.stringify(payload));
+}
+
+function hasUsableLastFmSnapshot(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const recentTrack = payload.recenttracks?.track;
+  const topArtist = payload.topartists?.artist;
+  const topAlbum = payload.topalbums?.album;
+  return Boolean(
+    (Array.isArray(recentTrack) && recentTrack.length) ||
+    (Array.isArray(topArtist) && topArtist.length) ||
+    (Array.isArray(topAlbum) && topAlbum.length) ||
+    String(payload.user?.playcount || "").trim()
+  );
+}
+
+function buildRetainedLastFmSnapshotPayload() {
+  const snapshot = cloneJsonPayload(LASTFM_SNAPSHOT);
+  return hasUsableLastFmSnapshot(snapshot) ? toStalePayload(snapshot, "PARTIAL") : null;
+}
+
+async function fetchAndCacheLastFmPayload({
+  apiKey,
+  cache,
+  cacheRequest,
+  env,
+  nowMs
+}) {
+  const routeTimeoutMs = resolveTimeoutMs(env?.LASTFM_ROUTE_TIMEOUT_MS, LASTFM_ROUTE_TIMEOUT_MS, {
+    min: 500,
+    max: LASTFM_ROUTE_TIMEOUT_MS
+  });
+  const payload = await runWithTimeout(
+    (signal) => fetchLastFmPayload(apiKey, nowMs, { signal }),
+    routeTimeoutMs,
+    "Last.fm route timed out"
+  );
+  await writeCachedPayload({
+    cache,
+    request: cacheRequest,
+    payload,
+    retainTtlSec: LASTFM_RETAIN_TTL_SEC
+  });
+  return payload;
+}
+
+function scheduleLastFmCacheRefresh(context, createRefreshPromise) {
+  if (typeof context?.waitUntil !== "function") {
+    return false;
+  }
+  context.waitUntil(createRefreshPromise().catch(() => {}));
+  return true;
+}
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -23,7 +86,7 @@ export async function onRequest(context) {
     return jsonResponse({ error: "Origin not allowed" }, { status: 403 });
   }
 
-  const apiKey = String(env.LASTFM_API_KEY || "").trim();
+  const apiKey = String(env?.LASTFM_API_KEY || "").trim();
   const nowMs = Date.now();
   if (!apiKey) {
     return jsonResponse({
@@ -48,22 +111,38 @@ export async function onRequest(context) {
     });
   }
 
+  let refreshPromise = null;
+  const getRefreshPromise = () => {
+    if (!refreshPromise) {
+      refreshPromise = fetchAndCacheLastFmPayload({
+        apiKey,
+        cache: caches.default,
+        cacheRequest,
+        env,
+        nowMs
+      });
+    }
+    return refreshPromise;
+  };
+
+  if (cacheState.status === "retained" && cacheState.payload) {
+    scheduleLastFmCacheRefresh(context, getRefreshPromise);
+    return jsonResponse(toStalePayload(cacheState.payload, "PARTIAL"), {
+      status: 200,
+      cacheControl: browserCacheControl(LASTFM_STALE_BROWSER_TTL_SEC)
+    });
+  }
+
+  const retainedSnapshot = buildRetainedLastFmSnapshotPayload();
+  if (retainedSnapshot && scheduleLastFmCacheRefresh(context, getRefreshPromise)) {
+    return jsonResponse(retainedSnapshot, {
+      status: 200,
+      cacheControl: browserCacheControl(LASTFM_STALE_BROWSER_TTL_SEC)
+    });
+  }
+
   try {
-    const routeTimeoutMs = resolveTimeoutMs(env.LASTFM_ROUTE_TIMEOUT_MS, LASTFM_ROUTE_TIMEOUT_MS, {
-      min: 500,
-      max: LASTFM_ROUTE_TIMEOUT_MS
-    });
-    const payload = await runWithTimeout(
-      (signal) => fetchLastFmPayload(apiKey, nowMs, { signal }),
-      routeTimeoutMs,
-      "Last.fm route timed out"
-    );
-    await writeCachedPayload({
-      cache: caches.default,
-      request: cacheRequest,
-      payload,
-      retainTtlSec: LASTFM_RETAIN_TTL_SEC
-    });
+    const payload = await getRefreshPromise();
     return jsonResponse(payload, {
       status: 200,
       cacheControl: browserCacheControl(LASTFM_FRESH_TTL_SEC)
@@ -73,6 +152,13 @@ export async function onRequest(context) {
       return jsonResponse(toStalePayload(cacheState.payload, "PARTIAL"), {
         status: 200,
         cacheControl: browserCacheControl(5 * 60)
+      });
+    }
+
+    if (retainedSnapshot) {
+      return jsonResponse(retainedSnapshot, {
+        status: 200,
+        cacheControl: browserCacheControl(LASTFM_STALE_BROWSER_TTL_SEC)
       });
     }
 

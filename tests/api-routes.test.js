@@ -140,7 +140,94 @@ test("lastfm route returns retained stale payload when upstream fails", async ()
   }
 });
 
-test("lastfm route aborts hung upstreams before the browser request timeout", async () => {
+test("lastfm route serves bundled snapshot on cold cache miss and warms live cache", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm");
+  const waitUntilPromises = [];
+  const callUrls = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const resourceUrl = String(resource);
+      callUrls.push(resourceUrl);
+      const requestUrl = new URL(resourceUrl);
+      const method = requestUrl.searchParams.get("method");
+      if (method === "user.getrecenttracks") {
+        return Response.json({
+          recenttracks: {
+            track: [
+              {
+                name: "Live Cold Song",
+                artist: { name: "Live Cold Artist" },
+                album: { "#text": "Live Cold Album" },
+                userloved: "1",
+                image: [],
+                url: "https://www.last.fm/music/Live+Cold+Artist/_/Live+Cold+Song",
+                "@attr": { nowplaying: "true" }
+              }
+            ]
+          }
+        });
+      }
+      if (method === "user.gettopartists") {
+        return Response.json({ topartists: { artist: [] } });
+      }
+      if (method === "user.gettopalbums") {
+        return Response.json({ topalbums: { album: [] } });
+      }
+      if (method === "user.getinfo") {
+        return Response.json({ user: { name: "FoundLifeless", playcount: "777", artist_count: "55" } });
+      }
+      if (method === "user.getlovedtracks") {
+        return Response.json({ lovedtracks: { "@attr": { total: "12" } } });
+      }
+      if (method === "user.gettoptracks") {
+        return Response.json({ toptracks: { track: [] } });
+      }
+      if (method === "track.getsimilar") {
+        return Response.json({ similartracks: { track: [] } });
+      }
+      if (method === "track.gettoptags") {
+        return Response.json({ toptags: { tag: [] } });
+      }
+      throw new Error(`Unexpected Last.fm method: ${method}`);
+    };
+
+    const response = await onLastFmRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" },
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, true);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.ok(Array.isArray(payload.recenttracks.track));
+    assert.ok(payload.recenttracks.track.length > 0);
+    assert.equal(waitUntilPromises.length, 1);
+
+    await Promise.all(waitUntilPromises);
+
+    const cachedResponse = await cache.match(request);
+    assert.ok(cachedResponse);
+    const cachedPayload = await cachedResponse.json();
+    assert.equal(cachedPayload.stale, false);
+    assert.equal(cachedPayload.user.playcount, "777");
+    assert.equal(cachedPayload.nowPlaying.track.title, "Live Cold Song");
+    assert.ok(callUrls.some((url) => url.includes("method=user.getrecenttracks")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("lastfm route falls back to bundled snapshot when a cold upstream hangs", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
@@ -166,8 +253,11 @@ test("lastfm route aborts hung upstreams before the browser request timeout", as
     });
     const payload = await response.json();
 
-    assert.equal(response.status, 504);
-    assert.equal(payload.error, "Last.fm upstream timed out");
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, true);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.ok(Array.isArray(payload.recenttracks.track));
+    assert.ok(payload.recenttracks.track.length > 0);
     assert.ok(Date.now() - startedAt < 1_000);
   } finally {
     globalThis.fetch = originalFetch;
@@ -1898,6 +1988,51 @@ test("steam route returns retained stale payload when upstream fails", async () 
     assert.equal(payload.stale, true);
     assert.equal(payload.sourceStatus, "PARTIAL");
     assert.equal(payload.profile.name, "Josie");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("steam route accepts a fresh full-size Akamai avatar cache entry", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/steam-recent-activity");
+  const profileUrl = "https://steamcommunity.com/id/HalfTwo/";
+  const avatarUrl = "https://avatars.akamai.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_full.jpg";
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async () => {
+      throw new Error("fresh avatar cache should not fetch upstream");
+    };
+
+    await primeCache(cache, request, {
+      sourceStatus: "OK",
+      stale: false,
+      fetchedAt: new Date().toISOString(),
+      profileUrl,
+      profile: {
+        name: "Josie",
+        url: profileUrl,
+        avatarUrl,
+        statusText: "Offline"
+      },
+      stats: [{ label: "Recent Games", value: "1" }],
+      items: [{ id: "steam-akamai-cache", title: "Cached Game", meta: "Recently played" }]
+    }, 7 * 24 * 60 * 60);
+
+    const response = await onSteamRequest({
+      request,
+      env: { STEAM_PROFILE_URL: profileUrl }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, false);
+    assert.equal(payload.profile.avatarUrl, avatarUrl);
+    assert.equal(payload.items[0].title, "Cached Game");
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

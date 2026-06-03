@@ -31,7 +31,7 @@ function hasUsableSteamProfileCache(payload, profileUrl) {
     return false;
   }
   const avatarUrl = String(payload.profile?.avatarUrl || "").trim();
-  if (!/^https:\/\/avatars\.fastly\.steamstatic\.com\//i.test(avatarUrl)) {
+  if (!/^https:\/\/avatars\.(?:fastly|akamai)\.steamstatic\.com\//i.test(avatarUrl)) {
     return false;
   }
   const expectedProfileUrl = getComparableSteamProfileUrl(profileUrl);

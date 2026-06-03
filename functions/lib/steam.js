@@ -6,6 +6,7 @@ import {
 import { fetchWithTimeout } from "./response.js";
 
 const steamAppTitleCache = new Map();
+const STEAM_AVATAR_HOST_PATTERN = /^avatars\.(?:fastly|akamai)\.steamstatic\.com$/i;
 
 function firstNonEmpty(...values) {
   for (const value of values) {
@@ -174,7 +175,11 @@ function normalizeSteamAvatarUrl(value, baseUrl = "") {
   }
   try {
     const parsed = new URL(avatarUrl);
-    return /avatars\.fastly\.steamstatic\.com$/i.test(parsed.hostname) ? parsed.toString() : "";
+    if (!STEAM_AVATAR_HOST_PATTERN.test(parsed.hostname)) {
+      return "";
+    }
+    parsed.pathname = parsed.pathname.replace(/(?:_medium|_full)?(\.(?:jpe?g|png|gif|webp))$/i, "_full$1");
+    return parsed.toString();
   } catch {
   }
   return "";
@@ -465,18 +470,18 @@ function findSteamProfileAvatarFromMarkdown(lines, siteUrl) {
   const normalizedSiteUrl = resolveUrl(siteUrl).replace(/\/$/, "");
   for (const rawLine of lines) {
     const imageUrl = parseMarkdownImageUrl(rawLine);
-    if (!/avatars\.fastly\.steamstatic\.com/i.test(imageUrl)) {
+    if (!/avatars\.(?:fastly|akamai)\.steamstatic\.com/i.test(imageUrl)) {
       continue;
     }
     const linkedUrl = resolveUrl(parseMarkdownLastUrl(rawLine), siteUrl).replace(/\/$/, "");
     if (linkedUrl === normalizedSiteUrl) {
-      return resolveUrl(imageUrl, siteUrl);
+      return normalizeSteamAvatarUrl(imageUrl, siteUrl);
     }
   }
   for (const rawLine of lines) {
     const imageUrl = parseMarkdownImageUrl(rawLine);
-    if (/avatars\.fastly\.steamstatic\.com/i.test(imageUrl)) {
-      return resolveUrl(imageUrl, siteUrl);
+    if (/avatars\.(?:fastly|akamai)\.steamstatic\.com/i.test(imageUrl)) {
+      return normalizeSteamAvatarUrl(imageUrl, siteUrl);
     }
   }
   return "";

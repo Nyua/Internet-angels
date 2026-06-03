@@ -51,6 +51,12 @@ npm run test:unit
 npm run test:e2e
 ```
 
+To refresh the first-paint Steam and Last.fm retained snapshots from live data:
+
+```bash
+npm run refresh:snapshots
+```
+
 ## Cloudflare Setup
 
 Pages project defaults:
@@ -114,6 +120,7 @@ Cloudflare dashboard path:
 - No Firebase services are used in this repo.
 - No client bundle contains API keys.
 - Last.fm, Discord, and Steam requests are proxied through first-party endpoints and cached at the edge.
+- Deploys run `npm run refresh:snapshots` before build so the bundled Steam first-paint snapshot and Last.fm cold-cache fallback are refreshed from live data.
 - The site is intended for the Cloudflare Pages custom domain `internet-angel.net`.
 - Cloudflare Pages has a 25 MiB limit per static asset, so production builds exclude local downloaded Shuffle media from `dist/`; the live Shuffle manifest uses YouTube links instead.
 - YouTube must allow embedding for a Shuffle link to play inside the site. Links that are blocked from embedding can still appear as tracks, but YouTube will show its own unavailable embed state.

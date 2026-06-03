@@ -100,3 +100,29 @@ test("steam profile XML parser extracts the live profile avatar", () => {
   assert.equal(patch.statusText, "Currently Online");
   assert.equal(patch.avatarUrl, "https://avatars.fastly.steamstatic.com/377fab253c8b880c72d11ff7524e636c1894256e_full.jpg");
 });
+
+test("steam avatar parser promotes base and medium avatar URLs to the full-size image", () => {
+  const patch = buildSteamProfilePatchFromXml(`<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <steamID><![CDATA[josie]]></steamID>
+  <profileURL><![CDATA[https://steamcommunity.com/id/HalfTwo/]]></profileURL>
+  <avatarFull><![CDATA[https://avatars.fastly.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69.jpg]]></avatarFull>
+</profile>`, "https://steamcommunity.com/id/HalfTwo/");
+
+  const markdownPayload = buildSteamRecentActivityPayloadFromMarkdown(`Title: Steam Community :: Josie
+
+URL Source: http://steamcommunity.com/id/HalfTwo/
+
+Markdown Content:
+# Steam Community :: Josie
+
+[![Image 1](https://avatars.akamai.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_medium.jpg)](https://steamcommunity.com/id/HalfTwo)
+
+Josie
+`, "https://steamcommunity.com/id/HalfTwo/", Date.parse("2026-06-03T00:00:00.000Z"));
+
+  assert.ok(patch);
+  assert.equal(patch.avatarUrl, "https://avatars.fastly.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_full.jpg");
+  assert.ok(markdownPayload);
+  assert.equal(markdownPayload.profile.avatarUrl, "https://avatars.akamai.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_full.jpg");
+});

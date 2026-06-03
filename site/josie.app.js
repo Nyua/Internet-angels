@@ -1710,7 +1710,8 @@
           { label: "Recent", value: String(recentTracks.length || 0) }
         ],
         items,
-        sections
+        sections,
+        needsBootRefresh: Boolean(proxyPayload?.stale)
       }, sourceStatus);
     } catch {
       return previous || null;
@@ -5553,7 +5554,14 @@
     const steamProfileAvatarUrl = sanitizeUrl(payloadById.get("steam")?.profile?.avatarUrl || "");
     const heroProfileAvatarUrl = sanitizeUrl(hero?.profile?.avatarUrl || "");
     const localFallbackAvatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL);
-    const avatarUrl = firstNonEmpty(steamProfileAvatarUrl, heroProfileAvatarUrl, localFallbackAvatarUrl);
+    const avatarSource = steamProfileAvatarUrl ? "steam" : heroProfileAvatarUrl ? "profile" : localFallbackAvatarUrl ? "fallback" : "empty";
+    const avatarUrl = avatarSource === "steam"
+      ? steamProfileAvatarUrl
+      : avatarSource === "profile"
+        ? heroProfileAvatarUrl
+        : avatarSource === "fallback"
+          ? localFallbackAvatarUrl
+          : "";
     const decorationUrl = sanitizeUrl(
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
     );
@@ -5562,9 +5570,15 @@
     const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
     const heroNameMarkup = compact ? "" : `<h2 class="steam-hero-name${compact ? " steam-hero-name--compact-mobile" : ""}">${heroName}</h2>`;
     const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
+    const avatarWrapClass = [
+      "steam-hero-avatar-wrap",
+      decorationUrl ? "steam-hero-avatar-wrap--decorated" : "",
+      avatarSource === "steam" ? "steam-hero-avatar-wrap--steam-live" : "",
+      avatarSource === "fallback" ? "steam-hero-avatar-wrap--fallback-profile" : ""
+    ].filter(Boolean).join(" ");
     const avatarMarkup = compact ? "" : `
-        <div class="steam-hero-avatar-wrap${decorationUrl ? " steam-hero-avatar-wrap--decorated" : ""}">
-          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback">A</div>'}
+        <div class="${escapeHtml(avatarWrapClass)}" data-hero-avatar-source="${escapeHtml(avatarSource)}" data-fallback-profile-active="${avatarSource === "fallback" ? "true" : "false"}">
+          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" data-hero-avatar-source="${escapeHtml(avatarSource)}" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback" data-hero-avatar-source="empty">A</div>'}
           ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" aria-hidden="true" />` : ""}
         </div>
     `;
@@ -11891,6 +11905,7 @@
     }
     function isPayloadRealizedForBoot(siteId, payload) {
       if (!siteById.has(siteId) || !payload || typeof payload !== "object") return false;
+      if (payload.needsBootRefresh === true) return false;
       const sourceStatus = String(payload.sourceStatus || "").toUpperCase();
       if (sourceStatus === "OK") return true;
       const updatedAt = Number(payload.updatedAt);

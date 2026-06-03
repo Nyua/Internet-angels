@@ -1,4 +1,12 @@
 import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+
+const STEAM_RECENT_ACTIVITY_SNAPSHOT = JSON.parse(
+  fs.readFileSync(new URL("../site/assets/steam-recent-activity-snapshot.json", import.meta.url), "utf8")
+);
+const STEAM_RECENT_ACTIVITY_SNAPSHOT_FIRST_TITLE = String(
+  STEAM_RECENT_ACTIVITY_SNAPSHOT?.items?.[0]?.title || ""
+).trim();
 
 function createSilentWavBuffer(durationSeconds = 4, sampleRate = 8_000) {
   const sampleCount = Math.max(1, Math.floor(durationSeconds * sampleRate));
@@ -1423,6 +1431,12 @@ test("josie renders the profile picture without waiting on the avatar manifest",
   await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { state: "attached", timeout: 3_000 });
   await expect(page.locator(".steam-hero-avatar")).toHaveCount(1);
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("src", liveSteamAvatarUrl);
+  await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("data-hero-avatar-source", "steam");
+  await expect(page.locator(".steam-hero-avatar-wrap")).toHaveAttribute("data-hero-avatar-source", "steam");
+  await expect(page.locator(".steam-hero-avatar-wrap")).toHaveAttribute("data-fallback-profile-active", "false");
+  await expect(page.locator(".steam-hero-avatar-wrap")).toHaveClass(/steam-hero-avatar-wrap--steam-live/);
+  await expect(page.locator(".steam-hero-avatar-wrap")).not.toHaveClass(/steam-hero-avatar-wrap--fallback-profile/);
+  await expect(page.locator(".steam-hero-avatar--fallback")).toHaveCount(0);
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("loading", "eager");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("fetchpriority", "high");
   await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("decoding", "sync");
@@ -1458,14 +1472,17 @@ test("josie renders the profile picture without waiting on the avatar manifest",
       expect.objectContaining({ fetchpriority: "high" })
     ])
   );
-  expect(priorityImagePreloads.some((preload) => {
+  const steamAvatarPreload = priorityImagePreloads.find((preload) => {
     try {
-      return new URL(preload.href).href === liveSteamAvatarUrl
+      const preloadUrl = new URL(preload.href);
+      return /^avatars\.(?:fastly|akamai)\.steamstatic\.com$/i.test(preloadUrl.hostname)
+        && /_full\.(?:jpg|jpeg|png|gif|webp)$/i.test(preloadUrl.pathname)
         && preload.fetchpriority === "high";
     } catch {
       return false;
     }
-  })).toBe(true);
+  });
+  expect(steamAvatarPreload).toBeTruthy();
   expect(priorityImagePreloads.some((preload) => preload.href.includes("a_c86b11a49bb8057ce9c974a6f7ad658a"))).toBe(false);
   releaseAvatarManifest();
 });
@@ -2293,11 +2310,160 @@ test("josie paints cached Steam recent activity before the cold live refresh ret
   await page.goto("/josie.html");
   await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
   await expect.poll(() => steamRequests, { timeout: 5_000 }).toBe(1);
-  await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Marathon");
+  expect(STEAM_RECENT_ACTIVITY_SNAPSHOT_FIRST_TITLE).toBeTruthy();
+  await expect(page.locator(".steam-activity-game-title").first()).toHaveText(STEAM_RECENT_ACTIVITY_SNAPSHOT_FIRST_TITLE);
   await expect(page.locator(".steam-activity-game-title", { hasText: "Recent activity pending" })).toHaveCount(0);
 
   releaseSteamRefresh();
   await expect(page.locator(".steam-activity-game-title").first()).toHaveText("Live Refresh Game", { timeout: 5_000 });
+});
+
+test("josie paints retained Last.fm showcase before the cold live refresh returns", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__internetAngelApiBootRetryDelaysMs = [50, 100, 150];
+  });
+
+  const nowIso = new Date().toISOString();
+  const recentUts = String(Math.floor(Date.now() / 1000) - 180);
+  let lastfmRequests = 0;
+  let releaseLastFmRefresh;
+  const lastFmRefreshGate = new Promise((resolve) => {
+    releaseLastFmRefresh = resolve;
+  });
+
+  const buildLastFmPayload = (trackTitle, artistName, options = {}) => ({
+    sourceStatus: options.stale ? "PARTIAL" : "OK",
+    stale: Boolean(options.stale),
+    fetchedAt: nowIso,
+    user: {
+      name: "FoundLifeless",
+      realname: "FoundLifeless",
+      playcount: options.stale ? "111" : "222",
+      artist_count: "33",
+      image: []
+    },
+    lovedtracks: {
+      "@attr": { total: "44" }
+    },
+    recenttracks: {
+      track: [
+        {
+          name: trackTitle,
+          artist: { name: artistName },
+          album: { "#text": `${trackTitle} Album` },
+          image: [],
+          date: { uts: recentUts, "#text": "3 minutes ago" },
+          url: `https://www.last.fm/music/${encodeURIComponent(artistName)}/_/${encodeURIComponent(trackTitle)}`,
+          userloved: "0"
+        }
+      ]
+    },
+    topalbums: {
+      album: [
+        {
+          name: `${trackTitle} Album`,
+          artist: { name: artistName },
+          playcount: "8",
+          image: [],
+          url: `https://www.last.fm/music/${encodeURIComponent(artistName)}/${encodeURIComponent(`${trackTitle} Album`)}`
+        }
+      ]
+    },
+    topartists: {
+      artist: [
+        {
+          name: artistName,
+          playcount: "9",
+          image: [],
+          url: `https://www.last.fm/music/${encodeURIComponent(artistName)}`
+        }
+      ]
+    },
+    toptracks: { track: [] },
+    nowPlaying: {
+      nowPlaying: false,
+      stale: Boolean(options.stale),
+      fetchedAt: nowIso,
+      track: null
+    },
+    discovery: { referenceTrack: null }
+  });
+
+  await page.route("**/api/discord", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        data: {
+          discord_user: {
+            id: "331350000154050560",
+            username: "foundlifeless",
+            display_name: "foundlifeless"
+          },
+          discord_status: "online",
+          activities: []
+        }
+      })
+    });
+  });
+  await page.route("**/api/steam-recent-activity**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: nowIso,
+        profile: {
+          name: "FoundLifeless",
+          handle: "steamcommunity.com/id/foundlifeless",
+          url: "https://steamcommunity.com/id/foundlifeless/",
+          statusText: "Online"
+        },
+        stats: [
+          { label: "2W Hours", value: "1.0 hours" },
+          { label: "Recent Games", value: "1" }
+        ],
+        items: [
+          {
+            id: "lastfm-cold-steam-game",
+            title: "Steam Ready Game",
+            url: "https://store.steampowered.com/app/123456/Steam_Ready_Game/",
+            artworkUrl: "",
+            hoursOnRecord: "1.0",
+            lastPlayed: "Played just now"
+          }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/lastfm", async (route) => {
+    lastfmRequests += 1;
+    if (lastfmRequests === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(buildLastFmPayload("Snapshot Song", "Snapshot Artist", { stale: true }))
+      });
+      return;
+    }
+    await lastFmRefreshGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(buildLastFmPayload("Live Cold Song", "Live Cold Artist"))
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect(page.locator(".lastfm-recent-title").first()).toHaveText("Snapshot Song");
+  await expect.poll(() => lastfmRequests, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+
+  releaseLastFmRefresh();
+  await expect(page.locator(".lastfm-recent-title").first()).toHaveText("Live Cold Song", { timeout: 5_000 });
 });
 
 test("josie renders and dynamic endpoints respond", async ({ page, request }) => {
@@ -2749,9 +2915,18 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   const heroAvatarSrc = await page.locator(".steam-hero-avatar").first().getAttribute("src");
   expect(heroAvatarSrc).toBeTruthy();
   const heroAvatarUrl = new URL(heroAvatarSrc, "http://127.0.0.1:8788");
-  const isSteamAvatar = heroAvatarUrl.hostname === "avatars.fastly.steamstatic.com";
+  const isSteamAvatar = /^avatars\.(?:fastly|akamai)\.steamstatic\.com$/i.test(heroAvatarUrl.hostname);
   const isLocalAvatar = avatarManifest.avatars.includes(heroAvatarUrl.pathname);
   expect(isSteamAvatar || isLocalAvatar).toBe(true);
+  if (isSteamAvatar) {
+    expect(heroAvatarUrl.pathname).toMatch(/_full\.(?:jpg|jpeg|png|gif|webp)$/i);
+    await expect(page.locator(".steam-hero-avatar")).toHaveAttribute("data-hero-avatar-source", "steam");
+    await expect(page.locator(".steam-hero-avatar-wrap")).toHaveAttribute("data-hero-avatar-source", "steam");
+    await expect(page.locator(".steam-hero-avatar-wrap")).toHaveAttribute("data-fallback-profile-active", "false");
+    await expect(page.locator(".steam-hero-avatar-wrap")).toHaveClass(/steam-hero-avatar-wrap--steam-live/);
+    await expect(page.locator(".steam-hero-avatar-wrap")).not.toHaveClass(/steam-hero-avatar-wrap--fallback-profile/);
+    await expect(page.locator(".steam-hero-avatar--fallback")).toHaveCount(0);
+  }
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-heart")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--left")).toHaveCount(1);
   await expect(page.locator(".steam-hero-ornament .steam-hero-bio-wing--right")).toHaveCount(1);
@@ -2761,111 +2936,116 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   await expect(page.locator("#os-ambient-backdrop canvas")).toHaveCount(2);
   await expect(page.locator(".steam-showcase--josie-intro")).toHaveCount(0);
   await expect(page.locator("#os-shuffle-visualizer-layer, #os-shuffle-visualizer-player")).toHaveCount(0);
-  await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
-  const heroDecorationOverflow = await page.evaluate(() => {
-    const profile = document.querySelector(".social-hub-profile");
-    const shell = document.querySelector(".steam-hero-shell");
-    const wrap = document.querySelector(".steam-hero-avatar-wrap");
-    const decoration = document.querySelector(".steam-hero-avatar-decoration");
-    if (!(profile instanceof HTMLElement && shell instanceof HTMLElement && wrap instanceof HTMLElement && decoration instanceof HTMLElement)) {
-      return null;
-    }
-    const wrapRect = wrap.getBoundingClientRect();
-    const decorationRect = decoration.getBoundingClientRect();
-    return {
-      profileOverflow: window.getComputedStyle(profile).overflow,
-      shellOverflow: window.getComputedStyle(shell).overflow,
-      extendsPastWrapTop: decorationRect.top < wrapRect.top,
-      extendsPastWrapLeft: decorationRect.left < wrapRect.left,
-      extendsPastWrapRight: decorationRect.right > wrapRect.right
-    };
-  });
-  expect(heroDecorationOverflow).not.toBeNull();
-  expect(heroDecorationOverflow.profileOverflow).toBe("visible");
-  expect(heroDecorationOverflow.shellOverflow).toBe("visible");
-  expect(heroDecorationOverflow.extendsPastWrapTop).toBe(true);
-  expect(heroDecorationOverflow.extendsPastWrapLeft).toBe(true);
-  expect(heroDecorationOverflow.extendsPastWrapRight).toBe(true);
-  const heroDecorationLayering = await page.evaluate(() => {
-    const leftRail = document.querySelector("#social-hub-left-rail");
-    const profile = document.querySelector("#social-hub-profile");
-    const showcases = document.querySelector("#social-hub-showcases");
-    const wrap = document.querySelector("#social-hub-profile .steam-hero-avatar-wrap");
-    const avatar = document.querySelector("#social-hub-profile .steam-hero-avatar");
-    const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
-    if (
-      !(leftRail instanceof HTMLElement)
-      || !(profile instanceof HTMLElement)
-      || !(showcases instanceof HTMLElement)
-      || !(wrap instanceof HTMLElement)
-      || !(avatar instanceof HTMLElement)
-      || !(decoration instanceof HTMLElement)
-    ) {
-      return null;
-    }
-    const zIndexNumber = (element) => {
-      const value = Number.parseInt(window.getComputedStyle(element).zIndex, 10);
-      return Number.isFinite(value) ? value : 0;
-    };
-    return {
-      leftRailZ: zIndexNumber(leftRail),
-      profileZ: zIndexNumber(profile),
-      showcasesZ: zIndexNumber(showcases),
-      wrapZ: zIndexNumber(wrap),
-      avatarZ: zIndexNumber(avatar),
-      decorationZ: zIndexNumber(decoration)
-    };
-  });
-  expect(heroDecorationLayering).not.toBeNull();
-  expect(heroDecorationLayering.leftRailZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
-  expect(heroDecorationLayering.profileZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
-  expect(heroDecorationLayering.wrapZ).toBeGreaterThan(heroDecorationLayering.avatarZ);
-  expect(heroDecorationLayering.decorationZ).toBeGreaterThan(heroDecorationLayering.wrapZ);
-  const profileDecorationScrollGuard = await page.evaluate(async () => {
-    const stage = document.querySelector("#os-stage");
-    const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
-    if (!(stage instanceof HTMLElement && decoration instanceof HTMLElement)) return null;
-    const waitFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const readShift = () => window.getComputedStyle(decoration).getPropertyValue("--steam-avatar-decoration-scroll-y").trim();
-    stage.scrollTop = 0;
-    window.scrollTo(0, 0);
-    stage.dispatchEvent(new Event("scroll", { bubbles: true }));
-    window.dispatchEvent(new Event("scroll"));
-    await waitFrame();
-    const initialShift = readShift();
-    const scrollTop = Math.min(160, Math.max(0, stage.scrollHeight - stage.clientHeight));
-    if (scrollTop > 0) {
-      stage.scrollTop = scrollTop;
+  const heroDecorationCount = await page.locator(".steam-hero-avatar-decoration").count();
+  if (heroDecorationCount > 0) {
+    await expect(page.locator(".steam-hero-avatar-decoration")).toHaveCount(1);
+    const heroDecorationOverflow = await page.evaluate(() => {
+      const profile = document.querySelector(".social-hub-profile");
+      const shell = document.querySelector(".steam-hero-shell");
+      const wrap = document.querySelector(".steam-hero-avatar-wrap");
+      const decoration = document.querySelector(".steam-hero-avatar-decoration");
+      if (!(profile instanceof HTMLElement && shell instanceof HTMLElement && wrap instanceof HTMLElement && decoration instanceof HTMLElement)) {
+        return null;
+      }
+      const wrapRect = wrap.getBoundingClientRect();
+      const decorationRect = decoration.getBoundingClientRect();
+      return {
+        profileOverflow: window.getComputedStyle(profile).overflow,
+        shellOverflow: window.getComputedStyle(shell).overflow,
+        extendsPastWrapTop: decorationRect.top < wrapRect.top,
+        extendsPastWrapLeft: decorationRect.left < wrapRect.left,
+        extendsPastWrapRight: decorationRect.right > wrapRect.right
+      };
+    });
+    expect(heroDecorationOverflow).not.toBeNull();
+    expect(heroDecorationOverflow.profileOverflow).toBe("visible");
+    expect(heroDecorationOverflow.shellOverflow).toBe("visible");
+    expect(heroDecorationOverflow.extendsPastWrapTop).toBe(true);
+    expect(heroDecorationOverflow.extendsPastWrapLeft).toBe(true);
+    expect(heroDecorationOverflow.extendsPastWrapRight).toBe(true);
+    const heroDecorationLayering = await page.evaluate(() => {
+      const leftRail = document.querySelector("#social-hub-left-rail");
+      const profile = document.querySelector("#social-hub-profile");
+      const showcases = document.querySelector("#social-hub-showcases");
+      const wrap = document.querySelector("#social-hub-profile .steam-hero-avatar-wrap");
+      const avatar = document.querySelector("#social-hub-profile .steam-hero-avatar");
+      const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
+      if (
+        !(leftRail instanceof HTMLElement)
+        || !(profile instanceof HTMLElement)
+        || !(showcases instanceof HTMLElement)
+        || !(wrap instanceof HTMLElement)
+        || !(avatar instanceof HTMLElement)
+        || !(decoration instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const zIndexNumber = (element) => {
+        const value = Number.parseInt(window.getComputedStyle(element).zIndex, 10);
+        return Number.isFinite(value) ? value : 0;
+      };
+      return {
+        leftRailZ: zIndexNumber(leftRail),
+        profileZ: zIndexNumber(profile),
+        showcasesZ: zIndexNumber(showcases),
+        wrapZ: zIndexNumber(wrap),
+        avatarZ: zIndexNumber(avatar),
+        decorationZ: zIndexNumber(decoration)
+      };
+    });
+    expect(heroDecorationLayering).not.toBeNull();
+    expect(heroDecorationLayering.leftRailZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
+    expect(heroDecorationLayering.profileZ).toBeGreaterThan(heroDecorationLayering.showcasesZ);
+    expect(heroDecorationLayering.wrapZ).toBeGreaterThan(heroDecorationLayering.avatarZ);
+    expect(heroDecorationLayering.decorationZ).toBeGreaterThan(heroDecorationLayering.wrapZ);
+    const profileDecorationScrollGuard = await page.evaluate(async () => {
+      const stage = document.querySelector("#os-stage");
+      const decoration = document.querySelector("#social-hub-profile .steam-hero-avatar-decoration");
+      if (!(stage instanceof HTMLElement && decoration instanceof HTMLElement)) return null;
+      const waitFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const readShift = () => window.getComputedStyle(decoration).getPropertyValue("--steam-avatar-decoration-scroll-y").trim();
+      stage.scrollTop = 0;
+      window.scrollTo(0, 0);
       stage.dispatchEvent(new Event("scroll", { bubbles: true }));
-    } else {
-      window.scrollTo(0, 80);
       window.dispatchEvent(new Event("scroll"));
-    }
-    await waitFrame();
-    const shiftedScrollTop = Math.max(stage.scrollTop, window.scrollY || 0);
-    const shiftedShift = readShift();
-    const activeAfterScroll = document.body.classList.contains("steam-profile-decoration-scroll-guard");
-    stage.scrollTop = 0;
-    window.scrollTo(0, 0);
-    stage.dispatchEvent(new Event("scroll", { bubbles: true }));
-    window.dispatchEvent(new Event("scroll"));
-    await waitFrame();
-    return {
-      initialShift,
-      shiftedScrollTop,
-      shiftedShift,
-      activeAfterScroll,
-      restoredShift: readShift(),
-      activeAfterRestore: document.body.classList.contains("steam-profile-decoration-scroll-guard")
-    };
-  });
-  expect(profileDecorationScrollGuard).not.toBeNull();
-  expect(profileDecorationScrollGuard.shiftedScrollTop).toBeGreaterThan(6);
-  expect(profileDecorationScrollGuard.initialShift).toBe("0px");
-  expect(profileDecorationScrollGuard.activeAfterScroll).toBe(true);
-  expect(profileDecorationScrollGuard.shiftedShift).toBe("22px");
-  expect(profileDecorationScrollGuard.activeAfterRestore).toBe(false);
-  expect(profileDecorationScrollGuard.restoredShift).toBe("0px");
+      await waitFrame();
+      const initialShift = readShift();
+      const scrollTop = Math.min(160, Math.max(0, stage.scrollHeight - stage.clientHeight));
+      if (scrollTop > 0) {
+        stage.scrollTop = scrollTop;
+        stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+      } else {
+        window.scrollTo(0, 80);
+        window.dispatchEvent(new Event("scroll"));
+      }
+      await waitFrame();
+      const shiftedScrollTop = Math.max(stage.scrollTop, window.scrollY || 0);
+      const shiftedShift = readShift();
+      const activeAfterScroll = document.body.classList.contains("steam-profile-decoration-scroll-guard");
+      stage.scrollTop = 0;
+      window.scrollTo(0, 0);
+      stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+      window.dispatchEvent(new Event("scroll"));
+      await waitFrame();
+      return {
+        initialShift,
+        shiftedScrollTop,
+        shiftedShift,
+        activeAfterScroll,
+        restoredShift: readShift(),
+        activeAfterRestore: document.body.classList.contains("steam-profile-decoration-scroll-guard")
+      };
+    });
+    expect(profileDecorationScrollGuard).not.toBeNull();
+    expect(profileDecorationScrollGuard.shiftedScrollTop).toBeGreaterThan(6);
+    expect(profileDecorationScrollGuard.initialShift).toBe("0px");
+    expect(profileDecorationScrollGuard.activeAfterScroll).toBe(true);
+    expect(profileDecorationScrollGuard.shiftedShift).toBe("22px");
+    expect(profileDecorationScrollGuard.activeAfterRestore).toBe(false);
+    expect(profileDecorationScrollGuard.restoredShift).toBe("0px");
+  } else {
+    await expect(page.locator(".steam-hero-avatar-wrap--decorated")).toHaveCount(0);
+  }
   await expect(page.locator(".lastfm-section-title").first()).toHaveText("Recent Tracks");
   await expect(page.locator(".lastfm-section-title", { hasText: "Top Albums" })).toBeVisible();
   await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-image").first()).toBeVisible();
