@@ -32,10 +32,18 @@ function resolveUrl(value, baseUrl = "") {
   return "";
 }
 
-function buildJinaMirrorUrl(targetUrl) {
-  const normalized = String(targetUrl || "").trim();
+function buildJinaMirrorUrl(targetUrl, options = {}) {
+  let normalized = String(targetUrl || "").trim();
   if (!normalized) {
     return "";
+  }
+  if (options?.cacheBust) {
+    try {
+      const target = new URL(normalized);
+      target.searchParams.set("internetAngelLive", String(Math.floor(Date.now() / 60_000)));
+      normalized = target.toString();
+    } catch {
+    }
   }
   return `https://r.jina.ai/http://${normalized.replace(/^https?:\/\//i, "")}`;
 }
@@ -55,7 +63,7 @@ async function fetchTextWithTimeout(url, timeoutMs = STEAM_TIMEOUT_MS, options =
 }
 
 async function fetchJinaMirrorMarkdown(targetUrl, options = {}) {
-  const mirrorUrl = buildJinaMirrorUrl(targetUrl);
+  const mirrorUrl = buildJinaMirrorUrl(targetUrl, options);
   if (!mirrorUrl) {
     return "";
   }
@@ -367,6 +375,27 @@ function parseSteamMirrorAppTitle(markdown) {
   return titleMatch?.[1] ? titleMatch[1].trim() : "";
 }
 
+async function fetchSteamAppTitleFromStore(appId, options = {}) {
+  const safeAppId = String(appId || "").trim();
+  if (!safeAppId) {
+    return "";
+  }
+  const url = `https://store.steampowered.com/api/appdetails?appids=${encodeURIComponent(safeAppId)}&filters=basic`;
+  const response = await fetchWithTimeout(url, {
+    method: "GET",
+    signal: options?.signal,
+    headers: {
+      Accept: "application/json, */*;q=0.8"
+    }
+  }, options?.appTitleTimeoutMs ?? options?.timeoutMs ?? STEAM_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`Steam app title lookup failed (${response.status})`);
+  }
+  const payload = await response.json();
+  const appPayload = payload?.[safeAppId];
+  return firstNonEmpty(appPayload?.data?.name, "");
+}
+
 async function fetchSteamAppTitleFromMirror(appId, options = {}) {
   const safeAppId = String(appId || "").trim();
   if (!safeAppId) {
@@ -377,8 +406,14 @@ async function fetchSteamAppTitleFromMirror(appId, options = {}) {
   if (cached?.title && nowMs - cached.fetchedAtMs <= STEAM_APP_TITLE_CACHE_TTL_MS) {
     return cached.title;
   }
-  const markdown = await fetchJinaMirrorMarkdown(`https://steamcommunity.com/app/${safeAppId}`, options);
-  const title = parseSteamMirrorAppTitle(markdown);
+  const [mirrorResult, storeResult] = await Promise.allSettled([
+    fetchJinaMirrorMarkdown(`https://steamcommunity.com/app/${safeAppId}`, options).then(parseSteamMirrorAppTitle),
+    fetchSteamAppTitleFromStore(safeAppId, options)
+  ]);
+  const title = firstNonEmpty(
+    mirrorResult.status === "fulfilled" ? mirrorResult.value : "",
+    storeResult.status === "fulfilled" ? storeResult.value : ""
+  );
   if (title) {
     steamAppTitleCache.set(safeAppId, {
       title,
@@ -758,7 +793,7 @@ export async function fetchSteamRecentActivityPayload(nowMs = Date.now(), option
     throw new Error("Invalid Steam profile URL");
   }
   const [markdownResult, profilePatchResult] = await Promise.allSettled([
-    fetchJinaMirrorMarkdown(profileUrl, options),
+    fetchJinaMirrorMarkdown(profileUrl, { ...options, cacheBust: true }),
     fetchSteamProfilePatch(profileUrl, options)
   ]);
   let payload = null;

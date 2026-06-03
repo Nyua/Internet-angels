@@ -1986,3 +1986,122 @@ Currently Online
     globalThis.caches = originalCaches;
   }
 });
+
+test("steam route refreshes retained profile data for live avatar and recent games", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/steam-recent-activity");
+  const profileUrl = "https://steamcommunity.com/id/HalfTwo/";
+  const oldAvatarUrl = "https://avatars.fastly.steamstatic.com/oldoldoldoldoldoldoldoldoldoldoldoldoldoldoldoldoldoldol_full.jpg";
+  const liveAvatarUrl = "https://avatars.fastly.steamstatic.com/liveb880c72d11ff7524e636c1894256eliveb880c72d_full.jpg";
+  const callUrls = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const url = String(resource);
+      callUrls.push(url);
+      if (url.includes("?xml=1")) {
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <steamID><![CDATA[josie]]></steamID>
+  <profileURL><![CDATA[${profileUrl}]]></profileURL>
+  <onlineState><![CDATA[online]]></onlineState>
+  <stateMessage><![CDATA[Currently Online]]></stateMessage>
+  <avatarFull><![CDATA[${liveAvatarUrl}]]></avatarFull>
+</profile>`, {
+          status: 200,
+          headers: { "content-type": "text/xml; charset=utf-8" }
+        });
+      }
+      if (url.includes("store.steampowered.com/api/appdetails")) {
+        return new Response(JSON.stringify({
+          3065800: {
+            success: true,
+            data: { name: "Live Game" }
+          }
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json; charset=utf-8" }
+        });
+      }
+      if (url.includes("steamcommunity.com/app/3065800")) {
+        return new Response(`Title: Steam Community
+
+URL Source: http://steamcommunity.com/app/3065800
+
+Markdown Content:
+# Steam App`, {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" }
+        });
+      }
+      if (url.startsWith("https://r.jina.ai/")) {
+        return new Response(`Title: Steam Community :: josie
+
+URL Source: http://steamcommunity.com/id/HalfTwo/
+
+Markdown Content:
+# Steam Community :: josie
+
+[![Image 6](${liveAvatarUrl})](${profileUrl})
+
+josie
+
+50
+
+Currently Online
+
+Recent Activity
+
+1.5 hours past 2 weeks
+
+[![Image 8](https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3065800/capsule_184x69.jpg)](https://steamcommunity.com/app/3065800)
+
+1.5 hrs on record
+
+ last played on Jun 2
+
+Comments
+`, {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" }
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    };
+
+    await primeCache(cache, request, {
+      sourceStatus: "OK",
+      stale: false,
+      fetchedAt: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+      profileUrl,
+      profile: {
+        name: "josie",
+        url: profileUrl,
+        avatarUrl: oldAvatarUrl,
+        statusText: "Online"
+      },
+      stats: [{ label: "Recent Games", value: "1" }],
+      items: [{ id: "old-game", title: "Old Cached Game", meta: "Recently played" }]
+    }, 7 * 24 * 60 * 60);
+
+    const response = await onSteamRequest({
+      request,
+      env: { STEAM_PROFILE_URL: profileUrl }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.stale, false);
+    assert.equal(payload.profile.avatarUrl, liveAvatarUrl);
+    assert.equal(payload.items[0]?.title, "Live Game");
+    assert.ok(callUrls.some((url) => url.includes("internetAngelLive=")));
+    assert.ok(callUrls.some((url) => url.includes("?xml=1")));
+    assert.ok(callUrls.some((url) => url.includes("store.steampowered.com/api/appdetails")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});

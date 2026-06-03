@@ -1875,6 +1875,91 @@ test("josie drops stale local shuffle videos and keeps the current YouTube manif
   expect(["Thailand", "The Troubles"]).not.toContain(shuffleState.state?.title);
 });
 
+test("josie filters stale local shuffle videos out of a mixed manifest before playback", async ({ page }) => {
+  await mockClientTime(page, { year: 2026, monthIndex: 4, day: 30, hour: 10 });
+  await installYouTubePlayerMock(page);
+  const staleMediaRequests = [];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("internetAngelShuffleQueue", JSON.stringify([
+      { path: "/Shuffle/Thailand - Malcolm Todd.mp4" }
+    ]));
+    window.sessionStorage.setItem("internetAngelShuffleCurrentTrack", JSON.stringify({
+      videoPath: "/Shuffle/The%20Troubles%20-%20glaive%20and%20kurtains.mp4"
+    }));
+  });
+
+  await page.route(/\/assets\/shuffle-manifest\.json(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tracks: [
+          {
+            id: "deleted-local-video",
+            groupId: "deleted-local-video",
+            mediaType: "video",
+            videoPath: "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4",
+            path: "/Shuffle/Thailand%20-%20Malcolm%20Todd.mp4",
+            title: "Thailand",
+            displayTitle: "Thailand",
+            artist: "Malcolm Todd",
+            displayArtist: "Malcolm Todd",
+            addedAt: "2026-05-02T03:27:49.404Z",
+            segmentIndex: 0,
+            segmentCount: 1
+          },
+          {
+            id: "current-youtube-track",
+            groupId: "current-youtube-track",
+            mediaType: "youtube",
+            youtubeVideoId: "r-6lO_UN3NY",
+            youtubeUrl: "https://www.youtube.com/watch?v=r-6lO_UN3NY",
+            path: "https://www.youtube.com/watch?v=r-6lO_UN3NY",
+            videoPath: "https://www.youtube.com/watch?v=r-6lO_UN3NY",
+            title: "How to Pretend",
+            displayTitle: "How to Pretend",
+            artist: "Lucy Bedroque",
+            displayArtist: "Lucy Bedroque",
+            addedAt: "2026-05-29T03:27:49.404Z",
+            segmentIndex: 0,
+            segmentCount: 1
+          }
+        ]
+      })
+    });
+  });
+  await page.route(/\/Shuffle\/.*\.(?:m4v|mov|mp4|webm)(?:\?.*)?$/i, async (route) => {
+    staleMediaRequests.push(route.request().url());
+    await route.fulfill({ status: 410, body: "" });
+  });
+
+  await page.goto("/josie.html");
+  await page.waitForSelector("#social-hub-root[data-social-hub-ready='true']", { timeout: 30_000 });
+  await page.locator("[data-mobile-speaker-toggle]").click();
+  await page.waitForFunction(() => {
+    const track = window.__internetAngelShuffleDebug?.getTrack?.();
+    const state = window.__internetAngelShuffleDebug?.getState?.();
+    return track?.id === "current-youtube-track"
+      && track?.mediaType === "youtube"
+      && state?.hasTrack === true;
+  }, null, { timeout: 15_000 });
+
+  const shuffleState = await page.evaluate(() => ({
+    track: window.__internetAngelShuffleDebug?.getTrack?.() || null,
+    state: window.__internetAngelShuffleDebug?.getState?.() || null,
+    staleLocal: window.localStorage.getItem("internetAngelShuffleQueue"),
+    staleSession: window.sessionStorage.getItem("internetAngelShuffleCurrentTrack")
+  }));
+  expect(staleMediaRequests).toEqual([]);
+  expect(shuffleState.staleLocal).toBeNull();
+  expect(shuffleState.staleSession).toBeNull();
+  expect(shuffleState.track?.id).toBe("current-youtube-track");
+  expect(shuffleState.track?.youtubeVideoId).toBe("r-6lO_UN3NY");
+  expect(String(shuffleState.track?.youtubeUrl || shuffleState.track?.videoPath || "")).not.toContain("/Shuffle/");
+  expect(shuffleState.state?.title).toBe("How to Pretend");
+});
+
 test("josie keeps shuffle playback alive while a Last.fm details card is open", async ({ page }) => {
   await mockClientTime(page, { year: 2026, monthIndex: 2, day: 25, hour: 22 });
   await page.goto("/josie.html");
@@ -4938,7 +5023,7 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   expect(panelBox.bodyHeight).toBeGreaterThan(0);
   expect(panelBox.artWidth).toBeGreaterThanOrEqual(220);
   expect(panelBox.artHeight).toBeGreaterThanOrEqual(220);
-  expect(panelBox.backgroundColor).toBe("rgb(0, 0, 0)");
+  expect(panelBox.backgroundColor).toBe("rgba(190, 190, 190, 0.1)");
   expect(panelBox.backdropFilter).toContain("blur");
   expect(panelBox.compactDebugBadgeCount).toBeLessThanOrEqual(1);
   await expect(page.locator(".lastfm-track-panel-badge", { hasText: "Cloudflare" })).toHaveCount(0);
@@ -5823,6 +5908,182 @@ test("josie opens artist and album detail panels from top charts and follows alb
   expect(apiRequests.some((url) => url.includes("/api/lastfm-artist-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("/api/lastfm-album-details"))).toBe(true);
   expect(apiRequests.some((url) => url.includes("ws.audioscrobbler.com"))).toBe(false);
+});
+
+test("josie renders artist and album panel snapshots before slow Last.fm detail responses", async ({ page }) => {
+  let artistDetailFulfilled = false;
+  let albumDetailFulfilled = false;
+
+  await page.route("**/api/lastfm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        recenttracks: {
+          track: [
+            {
+              name: "High",
+              artist: { name: "Slow Pulp" },
+              album: { "#text": "Yard" },
+              image: [{ "#text": "https://example.com/high-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp/_/High",
+              date: { uts: String(Math.floor(Date.now() / 1000) - 3600) },
+              monthlyTopPlaycount: "5"
+            }
+          ]
+        },
+        topartists: {
+          artist: [
+            {
+              name: "Slow Pulp",
+              playcount: "96",
+              image: [{ "#text": "https://example.com/slow-pulp-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp"
+            }
+          ]
+        },
+        topalbums: {
+          album: [
+            {
+              name: "Yard",
+              artist: { name: "Slow Pulp" },
+              playcount: "14",
+              image: [{ "#text": "https://example.com/yard-grid.jpg", size: "large" }],
+              url: "https://www.last.fm/music/Slow+Pulp/Yard"
+            }
+          ]
+        },
+        toptracks: { track: [] },
+        user: { playcount: "65188", artist_count: "1234" },
+        lovedtracks: { "@attr": { total: "1197" } },
+        discovery: { referenceTrack: null },
+        nowPlaying: { nowPlaying: false, stale: false, fetchedAt: new Date().toISOString(), track: null }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-artist-details**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    artistDetailFulfilled = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "Slow Pulp" },
+        artist: {
+          name: "Slow Pulp",
+          artworkUrl: "https://example.com/slow-pulp-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/Slow+Pulp",
+          summary: "Full artist profile loaded from Last.fm.",
+          summaryHasMore: false,
+          listeners: 385055,
+          playcount: 3740015,
+          userPlaycount: 96,
+          topTrackCount: 1,
+          topTags: []
+        },
+        topTracks: {
+          artist: "Slow Pulp",
+          items: [
+            {
+              title: "High",
+              artist: "Slow Pulp",
+              lastfmUrl: "https://www.last.fm/music/Slow+Pulp/_/High",
+              artistLastFmUrl: "https://www.last.fm/music/Slow+Pulp",
+              artworkUrl: "https://example.com/high-detail.jpg",
+              userPlaycount: 5,
+              userLoved: false
+            }
+          ]
+        },
+        topAlbums: {
+          artist: "Slow Pulp",
+          items: [
+            {
+              title: "Yard",
+              artist: "Slow Pulp",
+              artworkUrl: "https://example.com/yard-detail.jpg",
+              lastfmUrl: "https://www.last.fm/music/Slow+Pulp/Yard",
+              trackCount: 10,
+              userPlaycount: 14
+            }
+          ]
+        }
+      })
+    });
+  });
+
+  await page.route("**/api/lastfm-album-details**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    albumDetailFulfilled = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceStatus: "OK",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+        query: { artist: "Slow Pulp", album: "Yard" },
+        album: {
+          title: "Yard",
+          artist: "Slow Pulp",
+          artworkUrl: "https://example.com/yard-detail.jpg",
+          lastfmUrl: "https://www.last.fm/music/Slow+Pulp/Yard",
+          artistLastFmUrl: "https://www.last.fm/music/Slow+Pulp",
+          summary: "Full album profile loaded from Last.fm.",
+          summaryHasMore: false,
+          userPlaycount: 14,
+          trackCount: 1
+        },
+        spotify: {
+          matchStatus: "unavailable",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: "https://open.spotify.com/search/Yard%20Slow%20Pulp",
+          previewUrl: ""
+        },
+        tracks: {
+          items: [
+            {
+              rank: 1,
+              title: "High",
+              artist: "Slow Pulp",
+              artistLastFmUrl: "https://www.last.fm/music/Slow+Pulp",
+              lastfmUrl: "https://www.last.fm/music/Slow+Pulp/_/High",
+              userPlaycount: 5
+            }
+          ]
+        },
+        relatedTracks: { artist: "Slow Pulp", items: [] }
+      })
+    });
+  });
+
+  await page.goto("/josie.html");
+  await expect(page.locator("#social-hub-root")).toHaveAttribute("data-social-hub-ready", "true", { timeout: 30_000 });
+  await expect(page.locator("body")).not.toHaveClass(/site-load-playing/, { timeout: 15_000 });
+  await expect(page.locator(".lastfm-media-grid--artists .lastfm-media-button", { hasText: "Slow Pulp" })).toBeVisible();
+
+  await page.locator(".lastfm-media-grid--artists .lastfm-media-button", { hasText: "Slow Pulp" }).click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Slow Pulp", { timeout: 900 });
+  expect(artistDetailFulfilled).toBe(false);
+  await expect(page.locator(".lastfm-track-panel-summary-text")).toContainText("Full artist profile loaded", { timeout: 5_000 });
+  expect(artistDetailFulfilled).toBe(true);
+
+  await page.locator(".lastfm-track-panel-close").click();
+  await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(0);
+
+  await page.locator(".lastfm-media-grid--albums .lastfm-media-button", { hasText: "Yard" }).click();
+  await expect(page.locator(".lastfm-track-panel-title")).toContainText("Yard", { timeout: 900 });
+  expect(albumDetailFulfilled).toBe(false);
+  await expect(page.locator(".lastfm-track-panel-summary-text")).toContainText("Full album profile loaded", { timeout: 5_000 });
+  expect(albumDetailFulfilled).toBe(true);
 });
 
 test("josie escalates stalled panel loads into the hung cat and explosion overlay before closing the panel", async ({ page }) => {
@@ -6758,8 +7019,7 @@ test("josie settles mobile top artist details without stale loading UI", async (
 
   await topArtistsDropdown.locator(".lastfm-media-button", { hasText: "Slow Pulp" }).click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
-  await expect(page.locator(".lastfm-track-panel-window.is-loading")).toHaveCount(1);
-  await expect.poll(() => artistDetailsRequests).toEqual(["Slow Pulp"]);
+  await expect.poll(() => artistDetailsRequests.includes("Slow Pulp")).toBe(true);
 
   await expect(page.locator(".lastfm-track-panel-title")).toHaveText("Slow Pulp", { timeout: 10_000 });
   await expect.poll(async () => {

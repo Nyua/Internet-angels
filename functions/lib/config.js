@@ -37,7 +37,7 @@ export const SPOTIFY_TRACK_MATCH_FRESH_TTL_SEC = 7 * 24 * 60 * 60;
 export const SPOTIFY_TRACK_MATCH_RETAIN_TTL_SEC = 30 * 24 * 60 * 60;
 export const DISCORD_FRESH_TTL_SEC = 10 * 60;
 export const DISCORD_RETAIN_TTL_SEC = 6 * 60 * 60;
-export const STEAM_FRESH_TTL_SEC = 12 * 60 * 60;
+export const STEAM_FRESH_TTL_SEC = 5 * 60;
 export const STEAM_RETAIN_TTL_SEC = 7 * 24 * 60 * 60;
 
 export const LASTFM_TIMEOUT_MS = 10_000;

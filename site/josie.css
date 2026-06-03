@@ -1914,13 +1914,14 @@ body.lastfm-track-panel-open {
   flex-direction: column;
   max-height: calc(100vh - 16px);
   scrollbar-width: none;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: 18px;
-  background: #000000;
+  background: rgba(190, 190, 190, 0.10);
   box-shadow:
-    0 42px 90px rgba(0, 0, 0, 0.72),
-    0 0 0 1px rgba(255, 255, 255, 0.025) inset,
-    0 0 42px rgba(var(--accent-rgb), 0.05);
+    0 30px 74px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(255, 255, 255, 0.018) inset;
+  backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
+  -webkit-backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
   font-family: var(--lastfm-font);
   isolation: isolate;
   contain: paint;
@@ -1981,15 +1982,14 @@ body.lastfm-track-panel-open {
   inset: 0;
   opacity: 0;
   background:
-    radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.05), transparent 34%),
-    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.08), transparent 32%),
-    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03), transparent 48%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.7) 54%, rgba(0, 0, 0, 0.94) 100%);
+    radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.07), transparent 34%),
+    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.11), transparent 32%),
+    linear-gradient(180deg, rgba(12, 12, 16, 0.22), rgba(7, 7, 10, 0.54) 58%, rgba(0, 0, 0, 0.78) 100%);
   transition: opacity 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::before {
-  opacity: 0.26;
+  opacity: 0.34;
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::after {
@@ -2025,15 +2025,15 @@ body.lastfm-track-panel-open {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 6px;
+  padding: 9px;
 }
 
 .lastfm-track-panel-layout {
   position: relative;
   display: grid;
   grid-template-columns: minmax(220px, 244px) minmax(0, 1fr);
-  gap: 14px;
+  gap: 12px;
   padding: 0;
   z-index: 1;
   align-items: start;
@@ -2049,7 +2049,7 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-stack {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .lastfm-track-panel-stack--split {
@@ -2071,7 +2071,7 @@ body.lastfm-track-panel-open {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .lastfm-track-panel-layout--compact-primary .lastfm-track-panel-primary {
@@ -2087,7 +2087,7 @@ body.lastfm-track-panel-open {
   border-radius: 14px;
   overflow: hidden;
   background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.035);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   isolation: isolate;
   transform: translateY(0);
@@ -12253,12 +12253,12 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu {
   width: min(calc(100vw - 54px), 1068px);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 68% 0%, rgba(255, 170, 214, 0.09), transparent 33%),
-    linear-gradient(180deg, rgba(24, 20, 27, 0.9), rgba(0, 0, 0, 0.96) 58%),
-    #000;
+    radial-gradient(circle at 68% 0%, rgba(255, 255, 255, 0.055), transparent 33%),
+    linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
+    rgba(190, 190, 190, 0.10);
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] {
@@ -12274,8 +12274,8 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-body {
-  gap: 8px;
-  padding: 12px 16px 16px;
+  gap: 6px;
+  padding: 10px 13px 13px;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-layout--focus-menu {
@@ -12284,13 +12284,13 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-layout--focus-menu {
   grid-template-columns: minmax(360px, 452px) minmax(0, 1fr);
-  gap: 14px;
+  gap: 12px;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-layout--focus-menu,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-layout--focus-menu {
   grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
-  gap: 18px;
+  gap: 14px;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-art {
@@ -12308,10 +12308,12 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
 }
 
 .lastfm-track-panel-focus {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.045);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
-    rgba(0, 0, 0, 0.58);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
+    rgba(190, 190, 190, 0.075);
+  backdrop-filter: blur(14px) saturate(122%);
+  -webkit-backdrop-filter: blur(14px) saturate(122%);
 }
 
 .lastfm-track-panel-focus--track {
@@ -12354,8 +12356,10 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-summary,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-related,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-history--album {
-  background: rgba(0, 0, 0, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(190, 190, 190, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-list--album-cards {
@@ -12487,11 +12491,11 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
     width: min(980px, calc(100vw - 32px));
-    border-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.055);
     background:
-      radial-gradient(circle at 73% 3%, rgba(255, 213, 236, 0.08), transparent 30%),
-      linear-gradient(180deg, rgba(22, 18, 24, 0.92), rgba(0, 0, 0, 0.97) 55%),
-      #000;
+      radial-gradient(circle at 73% 3%, rgba(255, 255, 255, 0.055), transparent 30%),
+      linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
+      rgba(190, 190, 190, 0.10);
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] {
@@ -12509,39 +12513,39 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-body {
-    padding: 12px 16px 16px;
+    padding: 10px 13px 13px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-body {
-    gap: 10px;
-    padding: 13px 14px 14px;
+    gap: 8px;
+    padding: 12px 13px 13px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-body {
     gap: 4px;
-    padding: 12px 16px 16px;
+    padding: 10px 13px 13px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-body {
-    gap: 8px;
-    padding: 13px 14px 18px;
+    gap: 6px;
+    padding: 11px 13px 14px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-layout--focus-menu {
     grid-template-columns: 452px minmax(0, 1fr);
-    gap: 12px;
+    gap: 10px;
     min-height: 452px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-layout--focus-menu {
     grid-template-columns: 341px minmax(0, 1fr);
-    gap: 16px;
+    gap: 12px;
     min-height: 341px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-layout--focus-menu {
     grid-template-columns: 360px minmax(0, 1fr);
-    gap: 18px;
+    gap: 13px;
     min-height: 360px;
   }
 
@@ -12571,20 +12575,20 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-secondary {
     min-height: 0;
-    padding-top: 18px;
-    gap: 10px;
+    padding-top: 12px;
+    gap: 7px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-secondary {
-    padding-top: 17px;
+    padding-top: 16px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-secondary {
-    padding-top: 30px;
+    padding-top: 16px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-secondary {
-    padding-top: 26px;
+    padding-top: 14px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-header {
@@ -12643,29 +12647,30 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-focus {
     border-radius: 8px;
+    border-color: rgba(255, 255, 255, 0.04);
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
-      rgba(0, 0, 0, 0.62);
+      rgba(190, 190, 190, 0.075);
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-focus {
-    min-height: 164px;
-    padding: 10px;
+    min-height: 138px;
+    padding: 9px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-stat--scrobble-focus {
-    min-height: 142px;
+    min-height: 120px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-focus {
     position: relative;
-    min-height: 244px;
-    padding: 10px;
+    min-height: 218px;
+    padding: 9px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-stat--scrobble-focus {
-    min-height: 224px;
-    padding-bottom: 106px;
+    min-height: 198px;
+    padding-bottom: 98px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-focus {
@@ -12674,21 +12679,21 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
     grid-auto-rows: auto;
     align-content: start;
     min-height: 0;
-    padding: 8px;
-    column-gap: 10px;
-    row-gap: 6px;
+    padding: 7px;
+    column-gap: 8px;
+    row-gap: 5px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-stat--scrobble-focus {
-    min-height: 234px;
+    min-height: 214px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-history {
-    min-height: 234px;
+    min-height: 214px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-history-scroll {
-    max-height: 236px;
+    max-height: 216px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-stat--scrobble-focus .lastfm-track-panel-stat-value {
@@ -12765,23 +12770,23 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-related,
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-history--album {
     border-radius: 7px;
-    border-color: rgba(255, 255, 255, 0.04);
-    background: rgba(0, 0, 0, 0.82);
+    border-color: rgba(255, 255, 255, 0.032);
+    background: rgba(190, 190, 190, 0.075);
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] .lastfm-track-panel-summary {
-    min-height: 80px;
-    padding: 10px;
+    min-height: 72px;
+    padding: 9px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-summary {
-    min-height: 94px;
-    padding: 10px;
+    min-height: 74px;
+    padding: 9px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-summary {
-    min-height: 106px;
-    padding: 10px 32px 10px;
+    min-height: 86px;
+    padding: 9px 24px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] .lastfm-track-panel-summary-text {
@@ -12790,8 +12795,8 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related--albums {
-    min-height: 270px;
-    padding: 10px;
+    min-height: 218px;
+    padding: 9px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-list--album-cards {
@@ -12800,19 +12805,19 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] .lastfm-track-panel-related-button--album-card {
-    min-height: 76px;
+    min-height: 68px;
     grid-template-columns: 58px minmax(0, 1fr);
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.42);
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-history--album {
     min-height: 0;
-    padding: 12px 24px 24px;
+    padding: 10px 18px 18px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-history--album-long {
-    min-height: 624px;
+    min-height: 520px;
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="album"] .lastfm-track-panel-section-head {

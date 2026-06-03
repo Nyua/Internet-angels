@@ -1851,6 +1851,7 @@
   var SHUFFLE_MANIFEST_URL = "/assets/shuffle-manifest.json";
   var SHUFFLE_MANIFEST_BUILD_VERSION = "";
   var SHUFFLE_MANIFEST_FALLBACK = null;
+  var SHUFFLE_MOBILE_LOCAL_FALLBACK_PATH = "/Shuffle/How%20to%20Pretend%20-%20Lucy%20Bedroque.mp4";
   var SHUFFLE_ANALYSER_FFT_SIZE = 256;
   var SHUFFLE_SCRUB_PREVIEW_INTERVAL_MS = 34;
   var SHUFFLE_SCRUB_PREVIEW_DURATION_SEC = 0.075;
@@ -1951,25 +1952,47 @@
       ...(Number.isFinite(height) && height > 0 ? { youtubeEmbedHeight: Math.round(height) } : {})
     };
   }
-  function isLegacyLocalShuffleVideoPath(value) {
+  function normalizeLocalShuffleMediaPath(value) {
     const source = String(value || "").trim();
-    if (!source) return false;
+    if (!source) return "";
     const candidates = [source, safeDecodeUriComponent(source)];
     for (const candidate of candidates) {
-      if (/[/\\]Shuffle[/\\][^"'?#]+\.(?:m4v|mov|mp4|webm)(?:[?#]|$|["'])/i.test(candidate)) {
-        return true;
+      const match = candidate.match(/[/\\]Shuffle[/\\]([^"'?#]+\.(?:m4v|mov|mp4|webm))(?:[?#]|$|["'])/i);
+      if (match?.[1]) {
+        return `/Shuffle/${safeDecodeUriComponent(match[1]).replace(/\\/g, "/")}`.toLowerCase();
       }
     }
-    return false;
+    return "";
   }
-  function hasLegacyLocalShuffleVideoTrack(entry) {
+  function isLocalShuffleVideoPath(value) {
+    return Boolean(normalizeLocalShuffleMediaPath(value));
+  }
+  function isCurrentMobileLocalShuffleVideoPath(value) {
+    const normalized = normalizeLocalShuffleMediaPath(value);
+    if (!normalized) return false;
+    return normalized === normalizeLocalShuffleMediaPath(SHUFFLE_MOBILE_LOCAL_FALLBACK_PATH);
+  }
+  function isLegacyLocalShuffleVideoPath(value) {
+    return isLocalShuffleVideoPath(value) && !isCurrentMobileLocalShuffleVideoPath(value);
+  }
+  function shouldPurgeStoredShuffleMediaPath(value) {
+    if (!isLocalShuffleVideoPath(value)) return false;
+    return !isActualMobileLayoutDevice() || !isCurrentMobileLocalShuffleVideoPath(value);
+  }
+  function isAllowedLocalShuffleVideoTrack(entry, path, videoPath) {
+    if (!isActualMobileLayoutDevice()) return false;
+    const source = entry && typeof entry === "object" ? entry : {};
+    if (!source.mobileOnly) return false;
+    return isCurrentMobileLocalShuffleVideoPath(path) || isCurrentMobileLocalShuffleVideoPath(videoPath);
+  }
+  function hasUsableShuffleManifestTrackCandidate(entry) {
     if (!entry || typeof entry !== "object") return false;
     const youtubeVideoId = extractYouTubeVideoId(entry.youtubeVideoId || entry.youtubeUrl || entry.path || entry.videoPath || "");
-    if (youtubeVideoId) return false;
-    return isLegacyLocalShuffleVideoPath(entry.path)
-      || isLegacyLocalShuffleVideoPath(entry.videoPath)
-      || isLegacyLocalShuffleVideoPath(entry.url)
-      || isLegacyLocalShuffleVideoPath(JSON.stringify(entry));
+    if (youtubeVideoId) return true;
+    if (isLocalShuffleVideoPath(entry.path) || isLocalShuffleVideoPath(entry.videoPath) || isLocalShuffleVideoPath(entry.url)) {
+      return isAllowedLocalShuffleVideoTrack(entry, entry.path || entry.url || "", entry.videoPath || "");
+    }
+    return true;
   }
   function getEmbeddedShuffleManifestTracks() {
     const fallbackTracks = Array.isArray(SHUFFLE_MANIFEST_FALLBACK?.tracks)
@@ -1980,7 +2003,7 @@
   function selectShuffleManifestTracks(manifest) {
     const fetchedTracks = Array.isArray(manifest?.tracks) ? manifest.tracks : [];
     const fallbackTracks = getEmbeddedShuffleManifestTracks();
-    if (fallbackTracks.length && fetchedTracks.some(hasLegacyLocalShuffleVideoTrack)) {
+    if (fallbackTracks.length && fetchedTracks.length && !fetchedTracks.some(hasUsableShuffleManifestTrackCandidate)) {
       return fallbackTracks;
     }
     if (!fetchedTracks.length && fallbackTracks.length) {
@@ -2010,7 +2033,7 @@
       }
       keys.forEach((key) => {
         const value = storageArea.getItem(key);
-        if (isLegacyLocalShuffleVideoPath(key) || isLegacyLocalShuffleVideoPath(value)) {
+        if (shouldPurgeStoredShuffleMediaPath(key) || shouldPurgeStoredShuffleMediaPath(value)) {
           storageArea.removeItem(key);
           removedCount += 1;
         }
@@ -2036,7 +2059,7 @@
             pathname = parsed.pathname;
           } catch {
           }
-          if (pathname === SHUFFLE_MANIFEST_URL || isLegacyLocalShuffleVideoPath(pathname)) {
+          if (pathname === SHUFFLE_MANIFEST_URL || shouldPurgeStoredShuffleMediaPath(pathname)) {
             if (await cache.delete(request)) {
               removedCount += 1;
             }
@@ -2085,6 +2108,9 @@
     const declaredMediaType = String(source.mediaType || "").trim().toLowerCase();
     const videoPath = String(source.videoPath || "").trim();
     const mediaType = youtubeVideoId || declaredMediaType === "youtube" ? "youtube" : declaredMediaType === "video" || /\.(?:m4v|mov|mp4|webm)(?:[?#]|$)/i.test(path) ? "video" : "audio";
+    if (!youtubeVideoId && mediaType === "video" && isLocalShuffleVideoPath(path || videoPath) && !isAllowedLocalShuffleVideoTrack(source, path, videoPath)) {
+      return null;
+    }
     const fileName = youtubeVideoId ? `YouTube Video ${youtubeVideoId}` : safeDecodeUriComponent(path.split("/").pop() || "").replace(/\.[^/.]+$/, "");
     const sourceTitle = String(source.title || "").trim() || fileName || `Track ${index + 1}`;
     const sourceArtist = normalizeShuffleArtist(source.artist || source.albumArtist || "");
@@ -7291,6 +7317,7 @@
     let activeAngelsFooter = null;
     let angelsFooterCollisionTimer = 0;
     let angelsFooterLungeTimer = 0;
+    let latestLastFmPayload = null;
     const PROFILE_LINK_LAUNCH_DELAY_MS = 380;
     const MOBILE_PROFILE_ICON_LAUNCH_DELAY_MS = 2000;
     const MOBILE_GENERIC_EXTERNAL_LAUNCH_DELAY_MS = 120;
@@ -8136,11 +8163,14 @@
       mobileSpeakerButton.setAttribute("aria-label", label);
       mobileSpeakerButton.setAttribute("title", label);
       if (siteVideoButton instanceof HTMLButtonElement) {
+        const videoDisabledOnMobile = isActualMobileLayoutDevice();
         const videoLabel = state.videoMode ? "Use starry background" : "Use music video background";
         siteVideoButton.dataset.videoActive = String(state.videoMode);
         siteVideoButton.dataset.videoAvailable = String(state.videoAvailable);
-        siteVideoButton.disabled = !state.hasTrack && state.blocked;
+        siteVideoButton.dataset.mobileDisabled = String(videoDisabledOnMobile);
+        siteVideoButton.disabled = videoDisabledOnMobile || (!state.hasTrack && state.blocked);
         siteVideoButton.setAttribute("aria-pressed", String(state.videoMode));
+        siteVideoButton.setAttribute("aria-disabled", String(videoDisabledOnMobile));
         siteVideoButton.setAttribute("aria-label", videoLabel);
         siteVideoButton.setAttribute("title", videoLabel);
       }
@@ -8461,6 +8491,10 @@
     async function onSiteVideoToggleClick(event) {
       if (!(event.currentTarget instanceof HTMLButtonElement)) return;
       event.preventDefault();
+      if (event.currentTarget.disabled || isActualMobileLayoutDevice()) {
+        syncMobileSpeakerToggle(true);
+        return;
+      }
       primeInteractionSfx("siteVideoToggle");
       playInteractionSfx("toggle_soft", "siteVideoToggle");
       const state = shufflePlayerController.getState();
@@ -8708,6 +8742,218 @@
     function getLastFmPanelDefinition(panelType) {
       const definition = LASTFM_PANEL_DEFINITIONS[String(panelType || "").trim().toLowerCase()];
       return definition && typeof definition === "object" ? definition : null;
+    }
+    function normalizeLastFmSnapshotLookup(value) {
+      return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+    }
+    function parseLastFmSnapshotCount(value) {
+      const match = String(value || "").replace(/,/g, "").match(/\d+/);
+      const parsed = match ? Number.parseInt(match[0], 10) : 0;
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    function buildLastFmSnapshotMusicUrl(...segments) {
+      const safeSegments = segments.map((segment) => String(segment || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+      if (!safeSegments.length) return "";
+      return `https://www.last.fm/music/${safeSegments.map((segment) => encodeURIComponent(segment).replace(/%20/g, "+")).join("/")}`;
+    }
+    function getLatestLastFmSections() {
+      const sections = latestLastFmPayload?.sections;
+      return sections && typeof sections === "object" ? sections : {};
+    }
+    function getLastFmSnapshotItemList(value) {
+      return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object") : [];
+    }
+    function getLastFmSnapshotRecentItems(sections = getLatestLastFmSections()) {
+      const items = getLastFmSnapshotItemList(sections.recentTracks);
+      if (sections.currentlyListening && typeof sections.currentlyListening === "object") {
+        return [sections.currentlyListening, ...items];
+      }
+      return items;
+    }
+    function pickLastFmSnapshotArtwork(...items) {
+      for (const item of items) {
+        const imageUrl = sanitizeUrl(item?.imageUrl || item?.artworkUrl);
+        if (imageUrl && !isLastFmGenericImageUrl(imageUrl)) return imageUrl;
+      }
+      return "";
+    }
+    function buildLastFmArtistPanelSnapshotPayload(query) {
+      const sections = getLatestLastFmSections();
+      const artistName = String(query?.artist || "").replace(/\s+/g, " ").trim();
+      const artistKey = normalizeLastFmSnapshotLookup(artistName);
+      if (!artistKey) return null;
+      const topArtists = getLastFmSnapshotItemList(sections.topArtists);
+      const topAlbums = getLastFmSnapshotItemList(sections.topAlbums);
+      const recentItems = getLastFmSnapshotRecentItems(sections);
+      const chartArtist = topArtists.find((item) => normalizeLastFmSnapshotLookup(item?.artistName || item?.title) === artistKey) || null;
+      const artistAlbums = topAlbums.filter((item) => normalizeLastFmSnapshotLookup(item?.albumArtist || item?.subtitle || item?.artist) === artistKey);
+      const artistTracks = recentItems.filter((item) => normalizeLastFmSnapshotLookup(item?.subtitle || item?.artist) === artistKey);
+      if (!chartArtist && !artistAlbums.length && !artistTracks.length) return null;
+      const lastfmUrl = sanitizeUrl(firstNonEmpty(query?.url, chartArtist?.url, buildLastFmSnapshotMusicUrl(artistName)));
+      const artworkUrl = pickLastFmSnapshotArtwork(chartArtist, artistAlbums[0], artistTracks[0]);
+      const seenTracks = /* @__PURE__ */ new Set();
+      const topTrackItems = artistTracks.map((item) => {
+        const title = firstNonEmpty(item?.title, "");
+        const trackKey = normalizeLastFmSnapshotLookup(title);
+        if (!trackKey || seenTracks.has(trackKey)) return null;
+        seenTracks.add(trackKey);
+        return {
+          title,
+          artist: artistName,
+          lastfmUrl: sanitizeUrl(item?.url) || buildLastFmSnapshotMusicUrl(artistName, "_", title),
+          artistLastFmUrl: lastfmUrl,
+          artworkUrl: sanitizeUrl(item?.imageUrl),
+          userPlaycount: parseLastFmSnapshotCount(item?.monthlyTopPlaycount),
+          userLoved: Boolean(item?.isLoved),
+          globalPlaycount: 0,
+          listeners: 0
+        };
+      }).filter(Boolean).slice(0, 6);
+      const topAlbumItems = artistAlbums.map((item) => ({
+        title: firstNonEmpty(item?.albumTitle, item?.title, "Unknown album"),
+        artist: artistName,
+        artworkUrl: sanitizeUrl(item?.imageUrl),
+        lastfmUrl: sanitizeUrl(item?.url) || buildLastFmSnapshotMusicUrl(artistName, firstNonEmpty(item?.albumTitle, item?.title, "")),
+        releasedAt: "",
+        releaseYear: "",
+        topTags: [],
+        trackCount: 0,
+        userPlaycount: parseLastFmSnapshotCount(item?.countLabel),
+        playcount: 0,
+        listeners: 0
+      })).slice(0, 6);
+      return {
+        sourceStatus: "PARTIAL",
+        stale: true,
+        fetchedAt: firstNonEmpty(latestLastFmPayload?.fetchedAt, new Date().toISOString()),
+        query: { artist: artistName },
+        artist: {
+          name: artistName,
+          artworkUrl,
+          lastfmUrl,
+          summary: "",
+          summaryHasMore: false,
+          listeners: 0,
+          playcount: 0,
+          userPlaycount: parseLastFmSnapshotCount(chartArtist?.countLabel),
+          topTrackCount: topTrackItems.length,
+          topTags: []
+        },
+        topTracks: {
+          artist: artistName,
+          items: topTrackItems
+        },
+        topAlbums: {
+          artist: artistName,
+          items: topAlbumItems
+        }
+      };
+    }
+    function buildLastFmAlbumPanelSnapshotPayload(query) {
+      const sections = getLatestLastFmSections();
+      const artistName = String(query?.artist || "").replace(/\s+/g, " ").trim();
+      const albumTitle = String(query?.album || "").replace(/\s+/g, " ").trim();
+      const artistKey = normalizeLastFmSnapshotLookup(artistName);
+      const albumKey = normalizeLastFmSnapshotLookup(albumTitle);
+      if (!artistKey || !albumKey) return null;
+      const topAlbums = getLastFmSnapshotItemList(sections.topAlbums);
+      const recentItems = getLastFmSnapshotRecentItems(sections);
+      const chartAlbum = topAlbums.find((item) => normalizeLastFmSnapshotLookup(item?.albumTitle || item?.title) === albumKey && normalizeLastFmSnapshotLookup(item?.albumArtist || item?.subtitle || item?.artist) === artistKey) || null;
+      const albumTracks = recentItems.filter((item) => normalizeLastFmSnapshotLookup(item?.album) === albumKey && normalizeLastFmSnapshotLookup(item?.subtitle || item?.artist) === artistKey);
+      if (!chartAlbum && !albumTracks.length) return null;
+      const albumLastFmUrl = sanitizeUrl(firstNonEmpty(query?.url, chartAlbum?.url, buildLastFmSnapshotMusicUrl(artistName, albumTitle)));
+      const artistLastFmUrl = buildLastFmSnapshotMusicUrl(artistName);
+      const artworkUrl = pickLastFmSnapshotArtwork(chartAlbum, albumTracks[0]);
+      const seenTracks = /* @__PURE__ */ new Set();
+      const trackItems = albumTracks.map((item) => {
+        const title = firstNonEmpty(item?.title, "");
+        const trackKey = normalizeLastFmSnapshotLookup(title);
+        if (!trackKey || seenTracks.has(trackKey)) return null;
+        seenTracks.add(trackKey);
+        return {
+          rank: seenTracks.size,
+          title,
+          artist: artistName,
+          artistLastFmUrl,
+          durationMs: 0,
+          durationLabel: "",
+          lastfmUrl: sanitizeUrl(item?.url) || buildLastFmSnapshotMusicUrl(artistName, "_", title),
+          userPlaycount: parseLastFmSnapshotCount(item?.monthlyTopPlaycount),
+          userLoved: Boolean(item?.isLoved),
+          globalPlaycount: 0,
+          listeners: 0
+        };
+      }).filter(Boolean).slice(0, 12);
+      const relatedTracks = recentItems.filter((item) => {
+        const sameArtist = normalizeLastFmSnapshotLookup(item?.subtitle || item?.artist) === artistKey;
+        const sameAlbum = normalizeLastFmSnapshotLookup(item?.album) === albumKey;
+        return sameArtist && !sameAlbum;
+      }).map((item) => ({
+        title: firstNonEmpty(item?.title, "Unknown track"),
+        artist: artistName,
+        lastfmUrl: sanitizeUrl(item?.url) || buildLastFmSnapshotMusicUrl(artistName, "_", firstNonEmpty(item?.title, "")),
+        artistLastFmUrl,
+        artworkUrl: sanitizeUrl(item?.imageUrl),
+        userPlaycount: parseLastFmSnapshotCount(item?.monthlyTopPlaycount),
+        userLoved: Boolean(item?.isLoved),
+        globalPlaycount: 0,
+        listeners: 0
+      })).slice(0, 4);
+      return {
+        sourceStatus: "PARTIAL",
+        stale: true,
+        fetchedAt: firstNonEmpty(latestLastFmPayload?.fetchedAt, new Date().toISOString()),
+        query: { artist: artistName, album: albumTitle },
+        album: {
+          title: albumTitle,
+          artist: artistName,
+          artworkUrl,
+          lastfmUrl: albumLastFmUrl,
+          artistLastFmUrl,
+          summary: "",
+          summaryHasMore: false,
+          listeners: 0,
+          playcount: 0,
+          userPlaycount: parseLastFmSnapshotCount(chartAlbum?.countLabel),
+          releasedAt: "",
+          runtimeMs: 0,
+          runtimeLabel: "",
+          trackCount: trackItems.length,
+          topTags: []
+        },
+        spotify: {
+          matchStatus: "unavailable",
+          embedUrl: "",
+          openUrl: "",
+          searchUrl: `https://open.spotify.com/search/${encodeURIComponent(`${albumTitle} ${artistName}`)}`,
+          title: "",
+          artist: "",
+          album: "",
+          artworkUrl: "",
+          previewUrl: ""
+        },
+        tracks: { items: trackItems },
+        relatedTracks: {
+          artist: artistName,
+          items: relatedTracks
+        }
+      };
+    }
+    function buildLastFmPanelSnapshotLoadState(panelType, definition, normalizedQuery) {
+      if (!definition || shouldUseMobileLastFmPanels()) return null;
+      const safePanelType = String(panelType || "").trim().toLowerCase();
+      const payload = safePanelType === "artist"
+        ? buildLastFmArtistPanelSnapshotPayload(normalizedQuery)
+        : safePanelType === "album"
+          ? buildLastFmAlbumPanelSnapshotPayload(normalizedQuery)
+          : null;
+      if (!payload) return null;
+      return {
+        cacheKey: definition.buildCacheKey(normalizedQuery),
+        normalizedQuery,
+        payload: definition.normalizePayload(payload, normalizedQuery),
+        snapshot: true
+      };
     }
     function buildSpotifyTrackUriFromUrl(rawUrl) {
       const safeUrl = sanitizeUrl(rawUrl);
@@ -9428,11 +9674,14 @@
       lastFmTrackPanelActiveKey = cacheKey;
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
-      const skeletonMarkup = definition.renderSkeleton(normalizedQuery);
-      setLastFmTrackPanelSceneMarkup(skeletonMarkup, {
+      const snapshotLoadState = buildLastFmPanelSnapshotLoadState(panelType, definition, normalizedQuery);
+      const initialMarkup = snapshotLoadState
+        ? definition.renderContent(snapshotLoadState.payload)
+        : definition.renderSkeleton(normalizedQuery);
+      setLastFmTrackPanelSceneMarkup(initialMarkup, {
         animate: false,
         panelType: definition.panelType,
-        loading: true
+        loading: !snapshotLoadState
       });
       stageLastFmTrackPanelOverlay(panel);
       scheduleLastFmTrackPanelFit();
@@ -9499,7 +9748,11 @@
           return true;
         }
         revealPanelAfterArtwork();
-        renderLastFmPanelErrorIntoCurrentScene(definition, normalizedQuery);
+        if (!snapshotLoadState) {
+          renderLastFmPanelErrorIntoCurrentScene(definition, normalizedQuery);
+        } else {
+          settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+        }
       }
       if (lastFmTrackPanelActiveKey !== cacheKey) {
         return true;
@@ -11005,7 +11258,7 @@
     }
     function prefetchLastFmPanelDetailsFromRoot(rootNode, limit = MOBILE_LASTFM_PANEL_PREFETCH_LIMIT) {
       if (!(rootNode instanceof Element)) return;
-      const triggers = rootNode.querySelectorAll(".lastfm-recent-button[data-lastfm-track-title], .lastfm-media-button[data-lastfm-album-title]");
+      const triggers = rootNode.querySelectorAll(".lastfm-recent-button[data-lastfm-track-title], .lastfm-media-button[data-lastfm-artist-name], .lastfm-media-button[data-lastfm-album-title]");
       const seenKeys = new Set();
       let count = 0;
       for (const trigger of triggers) {
@@ -11051,22 +11304,28 @@
       lastFmTrackPanelActiveKey = cacheKey;
       void destroySpotifyEmbedController({ resumeShuffle: true });
       void stopTrackPreview({ resumeShuffle: true, resetSource: true });
-      const skeletonMarkup = definition.renderSkeleton(normalizedQuery);
+      const snapshotLoadState = !shouldUseMorphSwap && !panel.classList.contains("is-open")
+        ? buildLastFmPanelSnapshotLoadState(panelType, definition, normalizedQuery)
+        : null;
+      const initialMarkup = snapshotLoadState
+        ? definition.renderContent(snapshotLoadState.payload)
+        : definition.renderSkeleton(normalizedQuery);
+      const loadPromise = loadLastFmPanelDetails(panelType, normalizedQuery);
       let morphScene = null;
       let morphNonce = 0;
       if (shouldUseMorphSwap) {
         morphScene = getLastFmTrackPanelCurrentScene();
         if (morphScene instanceof HTMLElement) {
-          morphNonce = prepareLastFmTrackPanelSceneMorph(morphScene, skeletonMarkup, {
+          morphNonce = prepareLastFmTrackPanelSceneMorph(morphScene, initialMarkup, {
             panelType: definition.panelType
           });
         }
       }
       if (!morphNonce) {
-        setLastFmTrackPanelSceneMarkup(skeletonMarkup, {
+        setLastFmTrackPanelSceneMarkup(initialMarkup, {
           animate: false,
           panelType: definition.panelType,
-          loading: true
+          loading: !snapshotLoadState
         });
       }
       if (!panel.classList.contains("is-open")) {
@@ -11081,7 +11340,7 @@
         initialFocusTarget.focus({ preventScroll: true });
       }
       try {
-        const loadState = await loadLastFmPanelDetails(panelType, normalizedQuery);
+        const loadState = await loadPromise;
         if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
         const contentMarkup = definition.renderContent(loadState.payload);
         if (morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce)) {
@@ -11115,6 +11374,10 @@
         }
       } catch {
         if (lastFmTrackPanelActiveKey !== cacheKey) return;
+        if (snapshotLoadState && !(morphScene instanceof HTMLElement && isLastFmTrackPanelSceneMorphActive(morphScene, morphNonce))) {
+          settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
+          return;
+        }
         void destroySpotifyEmbedController({ resumeShuffle: true });
         void stopTrackPreview({ resumeShuffle: true, resetSource: true });
         const errorMarkup = definition.renderError(normalizedQuery);
@@ -11301,6 +11564,8 @@
       const desktopToggleLastFmPanels = compactMobile && !mobileLastFmPanels;
       applySiteLayoutModeAttributes();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
+      const lastFmSiteForSnapshot = sites.find((site) => site.id === "lastfm");
+      latestLastFmPayload = lastFmSiteForSnapshot ? ensurePayload(lastFmSiteForSnapshot, payloadById.get("lastfm")) : null;
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
       root2?.classList.toggle("social-hub--compact-mobile", compactMobile);
       if (!compactMobile) {
