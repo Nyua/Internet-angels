@@ -453,6 +453,36 @@ body[data-theme-resolved="night"] .site-pointer-hand-outline {
   --site-cursor-cross-shadow-rgb: 255 255 255;
 }
 
+.site-pointer[data-cursor-contrast="artwork"] {
+  --site-cursor-cross-rgb: 255 255 255;
+  --site-cursor-cross-shadow-rgb: 0 0 0;
+}
+
+.site-pointer[data-cursor-contrast="artwork"] .site-pointer-core {
+  background:
+    radial-gradient(circle at 36% 34%, rgba(255, 255, 255, 0.98) 0 22%, rgba(244, 246, 251, 0.94) 48%, rgba(235, 238, 246, 0.72) 76%, rgba(255, 255, 255, 0.42) 100%);
+  box-shadow:
+    0 0 0 1.4px rgba(0, 0, 0, 0.86),
+    0 0 12px rgba(255, 255, 255, 0.34);
+}
+
+.site-pointer[data-cursor-contrast="artwork"] .site-pointer-ring {
+  background: radial-gradient(circle at center,
+      rgba(0, 0, 0, 0) 0 24%,
+      rgba(0, 0, 0, 0.76) 38%,
+      rgba(255, 255, 255, 0.9) 52%,
+      rgba(0, 0, 0, 0.68) 68%,
+      rgba(255, 255, 255, 0) 100%);
+  filter:
+    drop-shadow(0 0 2px rgba(0, 0, 0, 0.62))
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.2));
+}
+
+.site-pointer[data-cursor-contrast="artwork"] .site-pointer-pool {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.3) 0 18%, rgba(255, 255, 255, 0.16) 42%, rgba(0, 0, 0, 0) 78%);
+}
+
 body[data-theme-resolved="night"] .site-pointer-arrow::before {
   background: rgba(255, 255, 255, 0.84);
 }
@@ -480,6 +510,18 @@ body[data-theme-resolved="night"] .site-pointer-trail-canvas {
 .site-pointer.is-interactive .site-pointer-pool {
   opacity: 0.7;
   transform: rotate(calc(var(--site-cursor-rotate) * 0.35)) scale(calc(1.12 * var(--site-cursor-pool-scale-x)), calc(1.12 * var(--site-cursor-pool-scale-y)));
+}
+
+.site-pointer.is-interactive[data-cursor-contrast="artwork"] .site-pointer-core {
+  box-shadow:
+    0 0 0 1.4px rgba(0, 0, 0, 0.86),
+    0 0 12px rgba(255, 255, 255, 0.34);
+}
+
+.site-pointer.is-interactive[data-cursor-contrast="artwork"] .site-pointer-ring {
+  filter:
+    drop-shadow(0 0 2px rgba(0, 0, 0, 0.62))
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.2));
 }
 
 .site-pointer.is-interactive .site-pointer-hand {
@@ -1918,15 +1960,15 @@ body.lastfm-track-panel-open {
   border: 0;
   border-radius: 18px;
   background:
-    radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.22), transparent 36%),
-    radial-gradient(circle at 88% 18%, rgba(var(--accent-rgb), 0.12), transparent 34%),
-    linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
-    rgba(190, 190, 190, 0.10);
+    radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.28), transparent 38%),
+    radial-gradient(circle at 88% 18%, rgba(var(--accent-rgb), 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(190, 190, 190, 0.055), rgba(22, 22, 27, 0.3) 52%, rgba(0, 0, 0, 0.58)),
+    rgba(190, 190, 190, 0.045);
   box-shadow:
     0 30px 74px rgba(0, 0, 0, 0.48),
     inset 0 1px 0 rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
-  -webkit-backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
+  backdrop-filter: blur(20px) saturate(132%) brightness(0.98);
+  -webkit-backdrop-filter: blur(20px) saturate(132%) brightness(0.98);
   font-family: var(--lastfm-font);
   isolation: isolate;
   contain: paint;
@@ -1974,7 +2016,7 @@ body.lastfm-track-panel-open {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(34px) saturate(1.78) brightness(1.08);
+  filter: blur(36px) saturate(1.9) brightness(0.96);
   mix-blend-mode: screen;
   transform: scale(1.04);
   border-radius: inherit;
@@ -1987,18 +2029,18 @@ body.lastfm-track-panel-open {
   inset: 0;
   opacity: 0;
   background:
-    radial-gradient(circle at 16% 12%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.24), transparent 38%),
-    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.16), transparent 32%),
-    linear-gradient(180deg, rgba(12, 12, 16, 0.16), rgba(7, 7, 10, 0.48) 58%, rgba(0, 0, 0, 0.74) 100%);
+    radial-gradient(circle at 16% 12%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.3), transparent 40%),
+    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(12, 12, 16, 0.08), rgba(7, 7, 10, 0.36) 58%, rgba(0, 0, 0, 0.62) 100%);
   transition: opacity 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::before {
-  opacity: 0.56;
+  opacity: 0.44;
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::after {
-  opacity: 1;
+  opacity: 0.82;
 }
 
 .lastfm-track-panel-close {
@@ -2128,24 +2170,12 @@ body.lastfm-track-panel-open {
 
 .lastfm-track-panel-art::before {
   inset: 0;
+  display: none;
   z-index: 3;
   border-radius: inherit;
-  background:
-    radial-gradient(
-      circle at var(--lastfm-panel-art-shine-x) var(--lastfm-panel-art-shine-y),
-      rgba(255, 255, 255, 0.34),
-      rgba(255, 255, 255, 0.1) 18%,
-      rgba(0, 0, 0, 0) 46%
-    ),
-    linear-gradient(
-      138deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.05) 24%,
-      rgba(var(--accent-rgb), 0.14) 58%,
-      rgba(0, 0, 0, 0) 82%
-    );
-  mix-blend-mode: screen;
-  transform: translate3d(-8%, 8%, 0) scale(1.02);
+  background: none;
+  mix-blend-mode: normal;
+  transform: none;
 }
 
 .lastfm-track-panel-art::after {
@@ -2174,15 +2204,15 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):focus-within::before,
 .lastfm-track-panel-art--flip:not(.is-flipped):hover::before,
 .lastfm-track-panel-art--flip:not(.is-flipped):focus-within::before {
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 0;
+  transform: none;
 }
 
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):hover::after,
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):focus-within::after,
 .lastfm-track-panel-art--flip:not(.is-flipped):hover::after,
 .lastfm-track-panel-art--flip:not(.is-flipped):focus-within::after {
-  opacity: 0.88;
+  opacity: 0.42;
   transform: scale(1);
 }
 
@@ -3402,10 +3432,13 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover::before,
-.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within::before,
+.lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within::before {
+  opacity: 0 !important;
+}
+
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover::after,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within::after {
-  opacity: 1 !important;
+  opacity: 0.42 !important;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art-image,
@@ -9993,6 +10026,22 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
     justify-content: flex-start;
   }
 
+  body[data-site-layout-mode="mobile"][data-site-layout-device="desktop"] .social-hub-scale-frame {
+    min-height: 100dvh;
+    margin-block: 0;
+    padding-block: clamp(18px, 4dvh, 34px);
+    align-items: center;
+  }
+
+  body[data-site-layout-mode="mobile"][data-site-layout-device="desktop"] .social-hub {
+    min-height: auto;
+  }
+
+  body[data-site-layout-mode="mobile"][data-site-layout-device="desktop"] .social-hub-left-rail {
+    min-height: calc(100dvh - clamp(36px, 8dvh, 68px));
+    justify-content: center;
+  }
+
   body[data-site-layout-mode="mobile"] .social-hub-sidebar {
     display: flex;
     flex-direction: column;
@@ -12273,15 +12322,15 @@ a.steam-sidebar-currently-playing-artist[href]:focus-visible {
 
 .social-hub-showcases > .steam-showcase {
   border: 2px solid rgba(190, 190, 190, 0.06);
-  background: rgba(190, 190, 190, 0.10) !important;
+  background: rgba(190, 190, 190, 0.055) !important;
   box-shadow: none !important;
-  backdrop-filter: blur(14px) saturate(126%) brightness(1.02) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(126%) brightness(1.02) !important;
+  backdrop-filter: blur(16px) saturate(132%) brightness(0.98) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(132%) brightness(0.98) !important;
 }
 
 body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
   border-color: rgba(190, 190, 190, 0.06) !important;
-  background: rgba(190, 190, 190, 0.10) !important;
+  background: rgba(190, 190, 190, 0.055) !important;
   box-shadow: none !important;
   clip-path: inset(0 round 2px) !important;
 }
@@ -12291,9 +12340,10 @@ body.shuffle-video-background-active .social-hub-showcases > .steam-showcase {
   border-color: rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 68% 0%, rgba(255, 255, 255, 0.055), transparent 33%),
-    linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
-    rgba(190, 190, 190, 0.10);
+    radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.28), transparent 40%),
+    radial-gradient(circle at 68% 0%, rgba(255, 255, 255, 0.03), transparent 33%),
+    linear-gradient(180deg, rgba(190, 190, 190, 0.055), rgba(22, 22, 27, 0.3) 52%, rgba(0, 0, 0, 0.58)),
+    rgba(190, 190, 190, 0.045);
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="artist"] {
@@ -12528,10 +12578,10 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
     width: min(980px, calc(100vw - 32px));
     border-color: transparent;
     background:
-      radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.24), transparent 38%),
-      radial-gradient(circle at 73% 3%, rgba(255, 255, 255, 0.055), transparent 30%),
-      linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
-      rgba(190, 190, 190, 0.10);
+      radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.3), transparent 40%),
+      radial-gradient(circle at 73% 3%, rgba(255, 255, 255, 0.03), transparent 30%),
+      linear-gradient(180deg, rgba(190, 190, 190, 0.055), rgba(22, 22, 27, 0.3) 52%, rgba(0, 0, 0, 0.58)),
+      rgba(190, 190, 190, 0.045);
   }
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type="track"] {

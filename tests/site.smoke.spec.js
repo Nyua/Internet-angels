@@ -5202,7 +5202,9 @@ test("josie opens a track details panel for Last.fm rows", async ({ page }) => {
   expect(panelBox.bodyHeight).toBeGreaterThan(0);
   expect(panelBox.artWidth).toBeGreaterThanOrEqual(220);
   expect(panelBox.artHeight).toBeGreaterThanOrEqual(220);
-  expect(panelBox.backgroundColor).toBe("rgba(190, 190, 190, 0.1)");
+  const panelBackgroundAlpha = Number.parseFloat(panelBox.backgroundColor.match(/rgba?\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)/)?.[1] || "1");
+  expect(panelBackgroundAlpha).toBeGreaterThanOrEqual(0.035);
+  expect(panelBackgroundAlpha).toBeLessThan(0.08);
   expect(panelBox.backdropFilter).toContain("blur");
   expect(panelBox.compactDebugBadgeCount).toBeLessThanOrEqual(1);
   await expect(page.locator(".lastfm-track-panel-badge", { hasText: "Cloudflare" })).toHaveCount(0);

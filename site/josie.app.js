@@ -7414,6 +7414,7 @@
     let lastFmTrackPanelFitRaf = 0;
     let lastFmTrackPanelSceneTimer = 0;
     const lastFmTrackPanelArtworkParallaxCleanup = /* @__PURE__ */ new WeakMap();
+    const lastFmTrackPanelArtworkParallaxState = /* @__PURE__ */ new WeakMap();
     let lastFmTrackPanelArtworkLaunchCleanup = null;
     let lastFmTrackPanelArtworkLaunchElement = null;
     let lastFmTrackPanelArtworkSourceElement = null;
@@ -10914,20 +10915,85 @@
         }
       }
     }
-    function resetLastFmPanelArtworkParallax(artShell) {
+    function getLastFmPanelArtworkParallaxState(artShell) {
+      let state = lastFmTrackPanelArtworkParallaxState.get(artShell);
+      if (state) return state;
+      const base = { rotateX: 0, rotateY: 0, shineX: 50, shineY: 18, scale: 1 };
+      state = {
+        frame: 0,
+        active: false,
+        current: { ...base },
+        target: { ...base }
+      };
+      lastFmTrackPanelArtworkParallaxState.set(artShell, state);
+      return state;
+    }
+    function applyLastFmPanelArtworkParallaxStyle(artShell, values) {
       if (!(artShell instanceof HTMLElement)) return;
-      artShell.style.setProperty("--lastfm-panel-art-rotate-x", "0deg");
-      artShell.style.setProperty("--lastfm-panel-art-rotate-y", "0deg");
-      artShell.style.setProperty("--lastfm-panel-art-shine-x", "50%");
-      artShell.style.setProperty("--lastfm-panel-art-shine-y", "18%");
-      artShell.style.setProperty("--lastfm-panel-art-scale", "1");
+      artShell.style.setProperty("--lastfm-panel-art-rotate-x", `${values.rotateX.toFixed(2)}deg`);
+      artShell.style.setProperty("--lastfm-panel-art-rotate-y", `${values.rotateY.toFixed(2)}deg`);
+      artShell.style.setProperty("--lastfm-panel-art-shine-x", `${values.shineX.toFixed(1)}%`);
+      artShell.style.setProperty("--lastfm-panel-art-shine-y", `${values.shineY.toFixed(1)}%`);
+      artShell.style.setProperty("--lastfm-panel-art-scale", values.scale.toFixed(3));
+    }
+    function renderLastFmPanelArtworkParallaxFrame(artShell, state) {
+      if (!(artShell instanceof HTMLElement) || !artShell.isConnected) {
+        state.frame = 0;
+        return;
+      }
+      const lerp = state.active ? 0.24 : 0.16;
+      const current = state.current;
+      const target = state.target;
+      current.rotateX += (target.rotateX - current.rotateX) * lerp;
+      current.rotateY += (target.rotateY - current.rotateY) * lerp;
+      current.shineX += (target.shineX - current.shineX) * lerp;
+      current.shineY += (target.shineY - current.shineY) * lerp;
+      current.scale += (target.scale - current.scale) * lerp;
+      applyLastFmPanelArtworkParallaxStyle(artShell, current);
+      const settled = Math.abs(current.rotateX - target.rotateX) < 0.015
+        && Math.abs(current.rotateY - target.rotateY) < 0.015
+        && Math.abs(current.shineX - target.shineX) < 0.08
+        && Math.abs(current.shineY - target.shineY) < 0.08
+        && Math.abs(current.scale - target.scale) < 0.0015;
+      artShell.dataset.artworkParallaxActive = state.active || !settled ? "true" : "false";
+      if (state.active || !settled) {
+        state.frame = window.requestAnimationFrame(() => renderLastFmPanelArtworkParallaxFrame(artShell, state));
+      } else {
+        state.frame = 0;
+      }
+    }
+    function scheduleLastFmPanelArtworkParallaxFrame(artShell, state) {
+      if (state.frame) return;
+      state.frame = window.requestAnimationFrame(() => renderLastFmPanelArtworkParallaxFrame(artShell, state));
+    }
+    function setLastFmPanelArtworkParallaxTarget(artShell, values, active) {
+      if (!(artShell instanceof HTMLElement)) return;
+      const state = getLastFmPanelArtworkParallaxState(artShell);
+      state.active = Boolean(active);
+      Object.assign(state.target, values);
+      scheduleLastFmPanelArtworkParallaxFrame(artShell, state);
+    }
+    function resetLastFmPanelArtworkParallax(artShell, options = {}) {
+      if (!(artShell instanceof HTMLElement)) return;
+      const state = getLastFmPanelArtworkParallaxState(artShell);
+      state.active = false;
+      Object.assign(state.target, { rotateX: 0, rotateY: 0, shineX: 50, shineY: 18, scale: 1 });
+      if (options?.smooth) {
+        scheduleLastFmPanelArtworkParallaxFrame(artShell, state);
+        return;
+      }
+      if (state.frame) {
+        window.cancelAnimationFrame(state.frame);
+        state.frame = 0;
+      }
+      Object.assign(state.current, state.target);
+      applyLastFmPanelArtworkParallaxStyle(artShell, state.current);
       artShell.dataset.artworkParallaxActive = "false";
     }
     function bindLastFmPanelArtworkParallax(scene) {
       if (!(scene instanceof HTMLElement)) return;
       const canUseParallax = !shouldUseMobileLastFmPanels()
-        && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
-        && window.matchMedia?.("(pointer: fine)")?.matches !== false;
+        && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
       Array.from(scene.querySelectorAll(".lastfm-track-panel-art")).forEach((artShell) => {
         if (!(artShell instanceof HTMLElement) || lastFmTrackPanelArtworkParallaxCleanup.has(artShell)) return;
         if (!canUseParallax) {
@@ -10935,7 +11001,8 @@
           return;
         }
         const onPointerMove = (event) => {
-          if (!(event instanceof PointerEvent) || event.pointerType === "touch") return;
+          if (event instanceof PointerEvent && event.pointerType === "touch") return;
+          if (!(event instanceof MouseEvent || event instanceof PointerEvent)) return;
           if (!artShell.isConnected || artShell.classList.contains("is-flipped")) return;
           const rect = artShell.getBoundingClientRect();
           if (!(rect.width > 0 && rect.height > 0)) return;
@@ -10943,22 +11010,28 @@
           const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
           const tiltX = (0.5 - y) * 8;
           const tiltY = (x - 0.5) * 8;
-          artShell.style.setProperty("--lastfm-panel-art-rotate-x", `${tiltX.toFixed(2)}deg`);
-          artShell.style.setProperty("--lastfm-panel-art-rotate-y", `${tiltY.toFixed(2)}deg`);
-          artShell.style.setProperty("--lastfm-panel-art-shine-x", `${(x * 100).toFixed(1)}%`);
-          artShell.style.setProperty("--lastfm-panel-art-shine-y", `${(y * 100).toFixed(1)}%`);
-          artShell.style.setProperty("--lastfm-panel-art-scale", "1.018");
-          artShell.dataset.artworkParallaxActive = "true";
+          setLastFmPanelArtworkParallaxTarget(artShell, {
+            rotateX: tiltX,
+            rotateY: tiltY,
+            shineX: x * 100,
+            shineY: y * 100,
+            scale: 1.018
+          }, true);
         };
-        const onPointerLeave = () => resetLastFmPanelArtworkParallax(artShell);
+        const onPointerLeave = () => resetLastFmPanelArtworkParallax(artShell, { smooth: true });
         artShell.addEventListener("pointermove", onPointerMove, { passive: true });
+        artShell.addEventListener("mousemove", onPointerMove, { passive: true });
         artShell.addEventListener("pointerleave", onPointerLeave, { passive: true });
+        artShell.addEventListener("mouseleave", onPointerLeave, { passive: true });
         artShell.addEventListener("blur", onPointerLeave, true);
         lastFmTrackPanelArtworkParallaxCleanup.set(artShell, () => {
           artShell.removeEventListener("pointermove", onPointerMove);
+          artShell.removeEventListener("mousemove", onPointerMove);
           artShell.removeEventListener("pointerleave", onPointerLeave);
+          artShell.removeEventListener("mouseleave", onPointerLeave);
           artShell.removeEventListener("blur", onPointerLeave, true);
           resetLastFmPanelArtworkParallax(artShell);
+          lastFmTrackPanelArtworkParallaxState.delete(artShell);
         });
         resetLastFmPanelArtworkParallax(artShell);
       });
@@ -14687,9 +14760,32 @@
         a: 1
       };
     }
+    function isCursorOverArtwork(target, x, y) {
+      const artworkSelector = [
+        ".lastfm-track-panel-art",
+        ".lastfm-track-panel-art-image",
+        ".lastfm-track-panel-art-fallback",
+        ".lastfm-recent-art",
+        ".lastfm-recent-image",
+        ".lastfm-media-image-wrap",
+        ".lastfm-media-image"
+      ].join(", ");
+      const candidates = [];
+      if (Number.isFinite(x) && Number.isFinite(y) && typeof document.elementsFromPoint === "function") {
+        candidates.push(...document.elementsFromPoint(x, y));
+      }
+      if (target instanceof Element && !candidates.includes(target)) {
+        candidates.unshift(target);
+      }
+      return candidates.some((candidate) => {
+        if (!(candidate instanceof Element)) return false;
+        return Boolean(candidate.closest(artworkSelector));
+      });
+    }
     function syncCursorContrast(target, x = lastX, y = lastY) {
-      const backdropColor = resolveCursorBackdropColor(target, x, y);
-      const nextMode = resolveColorLuminance(backdropColor) >= 0.58 ? "dark" : "light";
+      const nextMode = isCursorOverArtwork(target, x, y)
+        ? "artwork"
+        : resolveColorLuminance(resolveCursorBackdropColor(target, x, y)) >= 0.58 ? "dark" : "light";
       if (nextMode === currentContrastMode) return;
       currentContrastMode = nextMode;
       cursorEl.dataset.cursorContrast = nextMode;
