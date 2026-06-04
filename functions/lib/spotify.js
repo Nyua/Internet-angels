@@ -12,9 +12,9 @@ import { fetchWithTimeout, throwIfAborted } from "./response.js";
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
 const SPOTIFY_OEMBED_URL = "https://open.spotify.com/oembed";
-const CREDENTIALLESS_SEARCH_URL = "https://r.jina.ai/http://r.jina.ai/http://au.search.yahoo.com/search";
+const CREDENTIALLESS_SEARCH_URL = "https://r.jina.ai/http://au.search.yahoo.com/search";
 const SPOTIFY_INTERNAL_CACHE_BASE = "https://internet-angel.internal/__spotify";
-const SPOTIFY_CREDENTIALLESS_CACHE_VERSION = "v2";
+const SPOTIFY_CREDENTIALLESS_CACHE_VERSION = "v3";
 
 function buildInternalCacheRequest(parts) {
   const safeParts = (Array.isArray(parts) ? parts : [parts]).map((part) => encodeURIComponent(String(part || "").trim().toLowerCase()));

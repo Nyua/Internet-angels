@@ -77,7 +77,7 @@ test("findSpotifyTrackMatch resolves a spotify embed without client credentials"
     globalThis.fetch = async (resource) => {
       const resourceUrl = String(resource);
       const requestUrl = new URL(resourceUrl);
-      if (requestUrl.origin === "https://r.jina.ai" && requestUrl.pathname === "/http://r.jina.ai/http://au.search.yahoo.com/search") {
+      if (requestUrl.origin === "https://r.jina.ai" && requestUrl.pathname === "/http://au.search.yahoo.com/search") {
         assert.match(requestUrl.searchParams.get("p") || "", /site:open\.spotify\.com\/track/);
         return new Response(`
           <html>
@@ -125,7 +125,7 @@ test("findSpotifyTrackMatch stops credentialless spotify lookup when validation 
   try {
     globalThis.fetch = async (resource, init = {}) => {
       const requestUrl = new URL(String(resource));
-      if (requestUrl.origin === "https://r.jina.ai" && requestUrl.pathname === "/http://r.jina.ai/http://au.search.yahoo.com/search") {
+      if (requestUrl.origin === "https://r.jina.ai" && requestUrl.pathname === "/http://au.search.yahoo.com/search") {
         return new Response(`
           <a href="https://open.spotify.com/track/slowcredentiallessid">One Time - song by beabadoobee | Spotify</a>
         `, {

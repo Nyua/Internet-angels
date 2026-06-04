@@ -190,10 +190,11 @@
   var LASTFM_PROXY_REFRESH_INTERVAL_MS = 60 * 60 * 1e3;
   var STEAM_PROXY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1e3;
   var DISCORD_REFRESH_INTERVAL_MS = 30 * 60 * 1e3;
-  var STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260530-steam-profile-avatar";
+  var STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260604-steam-profile-avatar-full";
   var SOCIAL_HUB_BOOT_RETRY_DELAYS_MS = [2e3, 4e3, 8e3, 15e3, 3e4, 45e3, 6e4];
   var COMPACT_MOBILE_LAYOUT_MAX_WIDTH_PX = 820;
   var SITE_LAYOUT_MODE_STORAGE_KEY = "internetAngelSiteLayoutMode";
+  var DISCORD_OFFLINE_SINCE_STORAGE_KEY = "internetAngelDiscordOfflineSince";
   var STEAM_PROFILE_URL = "https://steamcommunity.com/id/HalfTwo/";
   var STEAM_PROFILE_HANDLE = "steamcommunity.com/id/HalfTwo";
   var STEAM_RECENT_ACTIVITY_SNAPSHOT = null;
@@ -361,7 +362,7 @@
         name: pickSteamSnapshotValue(profile.name, "Josie"),
         handle: pickSteamSnapshotValue(profile.handle, STEAM_PROFILE_HANDLE),
         url: pickSteamSnapshotValue(profile.url, snapshot.profileUrl, STEAM_PROFILE_URL),
-        avatarUrl: pickSteamSnapshotValue(profile.avatarUrl),
+        avatarUrl: normalizeSteamAvatarRenderUrl(pickSteamSnapshotValue(profile.avatarUrl)),
         borderImageUrl: pickSteamSnapshotValue(profile.borderImageUrl),
         borderVideoUrl: pickSteamSnapshotValue(profile.borderVideoUrl),
         statusText: pickSteamSnapshotValue(profile.statusText, "Cached"),
@@ -1402,11 +1403,58 @@
     const hours = Math.floor(safeMs % dayMs / hourMs);
     return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
   }
+  function formatElapsedHumanAgo(ms) {
+    const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+    const minuteMs = 6e4;
+    const hourMs = 36e5;
+    const dayMs = 864e5;
+    if (safeMs < minuteMs) return "less than a minute ago";
+    if (safeMs < hourMs) {
+      const minutes = Math.floor(safeMs / minuteMs);
+      return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+    }
+    if (safeMs < dayMs) {
+      const hours = Math.floor(safeMs / hourMs);
+      const minutes = Math.floor(safeMs % hourMs / minuteMs);
+      if (minutes > 0) {
+        return `${hours} ${hours === 1 ? "hour" : "hours"} ${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+      }
+      return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+    }
+    const days = Math.floor(safeMs / dayMs);
+    const hours = Math.floor(safeMs % dayMs / hourMs);
+    if (hours > 0) {
+      return `${days} ${days === 1 ? "day" : "days"} ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+    }
+    return `${days} ${days === 1 ? "day" : "days"} ago`;
+  }
   function buildDiscordStatusDisplay(statusKey, offlineSinceMs, nowMs = Date.now()) {
     const baseLabel = formatDiscordStatus(statusKey);
     if (statusKey !== "offline") return baseLabel;
     if (!Number.isFinite(offlineSinceMs) || offlineSinceMs <= 0) return baseLabel;
-    return `Offline for ${formatElapsedCompact(Math.max(0, nowMs - offlineSinceMs))}`;
+    return `Last seen ${formatElapsedHumanAgo(Math.max(0, nowMs - offlineSinceMs))}`;
+  }
+  function readDiscordOfflineSince() {
+    try {
+      const value = Number(window.localStorage?.getItem(DISCORD_OFFLINE_SINCE_STORAGE_KEY));
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+  function writeDiscordOfflineSince(value) {
+    const safeValue = Number(value);
+    if (!Number.isFinite(safeValue) || safeValue <= 0) return;
+    try {
+      window.localStorage?.setItem(DISCORD_OFFLINE_SINCE_STORAGE_KEY, String(Math.floor(safeValue)));
+    } catch {
+    }
+  }
+  function clearDiscordOfflineSince() {
+    try {
+      window.localStorage?.removeItem(DISCORD_OFFLINE_SINCE_STORAGE_KEY);
+    } catch {
+    }
   }
   function normalizeDiscordStatusKey(status) {
     const normalized = String(status || "").toLowerCase();
@@ -1531,8 +1579,13 @@
       if (!proxyPayload || typeof proxyPayload !== "object") {
         return previous || null;
       }
+      const proxyProfile = proxyPayload.profile && typeof proxyPayload.profile === "object" ? proxyPayload.profile : {};
+      const normalizedProfile = {
+        ...proxyProfile,
+        avatarUrl: normalizeSteamAvatarRenderUrl(proxyProfile.avatarUrl)
+      };
       return mergePayload(previous, now, {
-        profile: proxyPayload.profile && typeof proxyPayload.profile === "object" ? proxyPayload.profile : {},
+        profile: normalizedProfile,
         stats: Array.isArray(proxyPayload.stats) ? proxyPayload.stats : previous.stats,
         items: Array.isArray(proxyPayload.items) ? proxyPayload.items : previous.items
       }, String(proxyPayload.sourceStatus || "").trim() || (proxyPayload.stale ? "PARTIAL" : "OK"));
@@ -1553,7 +1606,13 @@
       const statusKey = normalizeDiscordStatusKey(discordPayload?.data?.discord_status);
       const previousOfflineSince = Number.isFinite(previous?.profile?.offlineSince) ? previous.profile.offlineSince : 0;
       const wasOffline = normalizeDiscordStatusKey(previous?.profile?.statusKey) === "offline";
-      const offlineSince = statusKey === "offline" ? wasOffline && previousOfflineSince > 0 ? previousOfflineSince : now : 0;
+      const persistedOfflineSince = readDiscordOfflineSince();
+      const offlineSince = statusKey === "offline" ? wasOffline && previousOfflineSince > 0 ? previousOfflineSince : persistedOfflineSince || now : 0;
+      if (statusKey === "offline") {
+        writeDiscordOfflineSince(offlineSince);
+      } else {
+        clearDiscordOfflineSince();
+      }
       const statusText = buildDiscordStatusDisplay(statusKey, offlineSince, now);
       const sourceStatus = String(discordPayload?.sourceStatus || "").trim() || (discordPayload?.stale ? "PARTIAL" : "OK");
       const presenceSource = resolveProxyFreshnessLabel(discordPayload?.stale);
@@ -1964,6 +2023,20 @@
       }
     }
     return "";
+  }
+  function normalizeSteamAvatarRenderUrl(raw) {
+    const safeUrl = sanitizeUrl(raw);
+    if (!safeUrl) return "";
+    try {
+      const parsed = new URL(safeUrl);
+      if (!/^avatars\.(?:akamai|fastly)\.steamstatic\.com$/i.test(parsed.hostname)) {
+        return safeUrl;
+      }
+      parsed.pathname = parsed.pathname.replace(/(?:_medium|_full)?(\.(?:jpe?g|png|gif|webp))$/i, "_full$1");
+      return parsed.toString();
+    } catch {
+      return safeUrl;
+    }
   }
   function isLocalShuffleVideoPath(value) {
     return Boolean(normalizeLocalShuffleMediaPath(value));
@@ -5551,7 +5624,7 @@
   function renderHero(payloadById, sites, options = {}) {
     const compact = Boolean(options?.compact);
     const hero = pickHeroPayload(payloadById, sites);
-    const steamProfileAvatarUrl = sanitizeUrl(payloadById.get("steam")?.profile?.avatarUrl || "");
+    const steamProfileAvatarUrl = normalizeSteamAvatarRenderUrl(payloadById.get("steam")?.profile?.avatarUrl || "");
     const heroProfileAvatarUrl = sanitizeUrl(hero?.profile?.avatarUrl || "");
     const localFallbackAvatarUrl = sanitizeUrl(HERO_AVATAR_LOCKED_URL);
     const avatarSource = steamProfileAvatarUrl ? "steam" : heroProfileAvatarUrl ? "profile" : localFallbackAvatarUrl ? "fallback" : "empty";
@@ -5578,7 +5651,7 @@
     ].filter(Boolean).join(" ");
     const avatarMarkup = compact ? "" : `
         <div class="${escapeHtml(avatarWrapClass)}" data-hero-avatar-source="${escapeHtml(avatarSource)}" data-fallback-profile-active="${avatarSource === "fallback" ? "true" : "false"}">
-          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" data-hero-avatar-source="${escapeHtml(avatarSource)}" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback" data-hero-avatar-source="empty">A</div>'}
+          ${avatarUrl ? `<img class="steam-hero-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" data-hero-avatar-source="${escapeHtml(avatarSource)}" data-avatar-upscale="${avatarSource === "steam" ? "steam-full" : "standard"}" />` : '<div class="steam-hero-avatar steam-hero-avatar--fallback" data-hero-avatar-source="empty">A</div>'}
           ${decorationUrl ? `<img class="steam-hero-avatar-decoration" src="${escapeHtml(decorationUrl)}" alt="" loading="eager" fetchpriority="high" decoding="sync" aria-hidden="true" />` : ""}
         </div>
     `;
@@ -5659,7 +5732,8 @@
       `data-lastfm-track-title="${escapeHtml(row.title || "")}"`,
       `data-lastfm-track-artist="${escapeHtml(row.subtitle || row.meta || "")}"`,
       row.album ? `data-lastfm-track-album="${escapeHtml(row.album)}"` : "",
-      itemUrl ? `data-lastfm-track-url="${escapeHtml(itemUrl)}"` : ""
+      itemUrl ? `data-lastfm-track-url="${escapeHtml(itemUrl)}"` : "",
+      imageUrl ? `data-lastfm-track-artwork="${escapeHtml(imageUrl)}"` : ""
     ].filter(Boolean).join(" ");
     const itemClass = isNowPlaying ? "lastfm-recent-item lastfm-recent-item--now-playing" : "lastfm-recent-item";
     const ageLabel = firstNonEmpty(row.countLabel, "--");
@@ -6023,10 +6097,48 @@
       </div>
     `;
   }
+  function deriveArtworkTintRgb(seed) {
+    let hash = 0;
+    const source = String(seed || "");
+    for (let index = 0; index < source.length; index += 1) {
+      hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+    }
+    const hue = hash % 360;
+    const saturation = 58 + hash % 18;
+    const lightness = 46 + hash % 10;
+    const chroma = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100;
+    const huePrime = hue / 60;
+    const x = chroma * (1 - Math.abs(huePrime % 2 - 1));
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (huePrime < 1) {
+      r = chroma;
+      g = x;
+    } else if (huePrime < 2) {
+      r = x;
+      g = chroma;
+    } else if (huePrime < 3) {
+      g = chroma;
+      b = x;
+    } else if (huePrime < 4) {
+      g = x;
+      b = chroma;
+    } else if (huePrime < 5) {
+      r = x;
+      b = chroma;
+    } else {
+      r = chroma;
+      b = x;
+    }
+    const m = lightness / 100 - chroma / 2;
+    return [r, g, b].map((channel) => Math.round((channel + m) * 255));
+  }
   function renderLastFmPanelAmbientAttributes(imageUrl) {
     const safeImageUrl = sanitizeUrl(imageUrl);
     if (!safeImageUrl) return "";
-    return ` data-has-ambient-light="true" style="--lastfm-track-panel-ambient-image: url('${escapeHtml(safeImageUrl)}');"`;
+    const tintRgb = deriveArtworkTintRgb(safeImageUrl).join(", ");
+    return ` data-has-ambient-light="true" style="--lastfm-track-panel-ambient-image: url('${escapeHtml(safeImageUrl)}'); --lastfm-track-panel-artwork-color-rgb: ${escapeHtml(tintRgb)};"`;
   }
   function renderLastFmSummarySection(title, summary, sourceUrl, hasMore) {
     const safeSummary = firstNonEmpty(summary, "");
@@ -6277,7 +6389,7 @@
     const spotify = detail?.spotify || {};
     const scrobbles = detail?.scrobbles || {};
     const compactMobile = shouldUseMobileLastFmPanels();
-    const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl);
+    const artworkUrl = sanitizeUrl(track.artworkUrl || spotify.artworkUrl || detail?.query?.artworkUrl);
     const spotifyButtonLabel = spotify.matchStatus === "matched" ? "Open in Spotify" : "Open Spotify Search";
     const spotifyButtonUrl = sanitizeUrl(spotify.matchStatus === "matched" ? spotify.openUrl : spotify.searchUrl);
     const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
@@ -7301,6 +7413,7 @@
     let lastFmTrackPreviewSuppressAutoResume = false;
     let lastFmTrackPanelFitRaf = 0;
     let lastFmTrackPanelSceneTimer = 0;
+    const lastFmTrackPanelArtworkParallaxCleanup = /* @__PURE__ */ new WeakMap();
     let lastFmTrackPanelArtworkLaunchCleanup = null;
     let lastFmTrackPanelArtworkLaunchElement = null;
     let lastFmTrackPanelArtworkSourceElement = null;
@@ -7316,6 +7429,7 @@
     let sidebarCurrentlyPlayingControlsCleanup = null;
     let sidebarCurrentlyPlayingScrubState = null;
     let sidebarCurrentlyPlayingElements = null;
+    let discordStatusMinuteTimer = 0;
     let mobileDiscordRevealPlayed = false;
     let mobileDiscordRevealTimer = 0;
     let mobileLinksRevealPlayed = false;
@@ -8677,7 +8791,8 @@
         artist: String(query?.artist || "").replace(/\s+/g, " ").trim(),
         track: String(query?.track || "").replace(/\s+/g, " ").trim(),
         album: String(query?.album || "").replace(/\s+/g, " ").trim(),
-        url: sanitizeUrl(query?.url)
+        url: sanitizeUrl(query?.url),
+        artworkUrl: sanitizeUrl(query?.artworkUrl)
       };
     }
     function normalizeArtistDetailsQuery(query) {
@@ -10355,6 +10470,7 @@
     }
     function teardownLastFmTrackPanelScene(scene) {
       if (!(scene instanceof HTMLElement)) return;
+      teardownLastFmPanelArtworkParallax(scene);
       clearLastFmTrackPanelSceneEscalationTimers(scene);
       stopLastFmTrackPanelSceneExplosion(scene, { resetImage: true });
       lastFmTrackPanelSceneRuntime.delete(scene);
@@ -10798,6 +10914,66 @@
         }
       }
     }
+    function resetLastFmPanelArtworkParallax(artShell) {
+      if (!(artShell instanceof HTMLElement)) return;
+      artShell.style.setProperty("--lastfm-panel-art-rotate-x", "0deg");
+      artShell.style.setProperty("--lastfm-panel-art-rotate-y", "0deg");
+      artShell.style.setProperty("--lastfm-panel-art-shine-x", "50%");
+      artShell.style.setProperty("--lastfm-panel-art-shine-y", "18%");
+      artShell.style.setProperty("--lastfm-panel-art-scale", "1");
+      artShell.dataset.artworkParallaxActive = "false";
+    }
+    function bindLastFmPanelArtworkParallax(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      const canUseParallax = !shouldUseMobileLastFmPanels()
+        && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+        && window.matchMedia?.("(pointer: fine)")?.matches !== false;
+      Array.from(scene.querySelectorAll(".lastfm-track-panel-art")).forEach((artShell) => {
+        if (!(artShell instanceof HTMLElement) || lastFmTrackPanelArtworkParallaxCleanup.has(artShell)) return;
+        if (!canUseParallax) {
+          resetLastFmPanelArtworkParallax(artShell);
+          return;
+        }
+        const onPointerMove = (event) => {
+          if (!(event instanceof PointerEvent) || event.pointerType === "touch") return;
+          if (!artShell.isConnected || artShell.classList.contains("is-flipped")) return;
+          const rect = artShell.getBoundingClientRect();
+          if (!(rect.width > 0 && rect.height > 0)) return;
+          const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+          const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+          const tiltX = (0.5 - y) * 8;
+          const tiltY = (x - 0.5) * 8;
+          artShell.style.setProperty("--lastfm-panel-art-rotate-x", `${tiltX.toFixed(2)}deg`);
+          artShell.style.setProperty("--lastfm-panel-art-rotate-y", `${tiltY.toFixed(2)}deg`);
+          artShell.style.setProperty("--lastfm-panel-art-shine-x", `${(x * 100).toFixed(1)}%`);
+          artShell.style.setProperty("--lastfm-panel-art-shine-y", `${(y * 100).toFixed(1)}%`);
+          artShell.style.setProperty("--lastfm-panel-art-scale", "1.018");
+          artShell.dataset.artworkParallaxActive = "true";
+        };
+        const onPointerLeave = () => resetLastFmPanelArtworkParallax(artShell);
+        artShell.addEventListener("pointermove", onPointerMove, { passive: true });
+        artShell.addEventListener("pointerleave", onPointerLeave, { passive: true });
+        artShell.addEventListener("blur", onPointerLeave, true);
+        lastFmTrackPanelArtworkParallaxCleanup.set(artShell, () => {
+          artShell.removeEventListener("pointermove", onPointerMove);
+          artShell.removeEventListener("pointerleave", onPointerLeave);
+          artShell.removeEventListener("blur", onPointerLeave, true);
+          resetLastFmPanelArtworkParallax(artShell);
+        });
+        resetLastFmPanelArtworkParallax(artShell);
+      });
+    }
+    function teardownLastFmPanelArtworkParallax(scene) {
+      if (!(scene instanceof HTMLElement)) return;
+      Array.from(scene.querySelectorAll(".lastfm-track-panel-art")).forEach((artShell) => {
+        if (!(artShell instanceof HTMLElement)) return;
+        const cleanup = lastFmTrackPanelArtworkParallaxCleanup.get(artShell);
+        if (typeof cleanup === "function") {
+          cleanup();
+          lastFmTrackPanelArtworkParallaxCleanup.delete(artShell);
+        }
+      });
+    }
     function hydrateLastFmTrackPanelScene(scene) {
       if (!(scene instanceof HTMLElement)) return;
       Array.from(scene.querySelectorAll("img")).forEach((image) => {
@@ -10805,6 +10981,7 @@
         image.addEventListener("load", scheduleLastFmTrackPanelFit, { once: true });
         image.addEventListener("error", scheduleLastFmTrackPanelFit, { once: true });
       });
+      bindLastFmPanelArtworkParallax(scene);
       scheduleLastFmTrackPanelFit();
     }
     function setLastFmTrackPanelScrollTop() {
@@ -10914,6 +11091,9 @@
       const face = nextFace === "back" ? "back" : "front";
       if ((artShell.dataset.panelFace || "front") === face) return;
       const isBack = face === "back";
+      if (isBack) {
+        resetLastFmPanelArtworkParallax(artShell);
+      }
       playInteractionSfx("flip_soft", isBack ? "lastfmPanelArtFlipBack" : "lastfmPanelArtFlipFront");
       artShell.classList.toggle("is-flipped", isBack);
       artShell.dataset.panelFace = face;
@@ -11457,7 +11637,8 @@
             artist: lastFmTrackButton.getAttribute("data-lastfm-track-artist") || "",
             track: lastFmTrackButton.getAttribute("data-lastfm-track-title") || "",
             album: lastFmTrackButton.getAttribute("data-lastfm-track-album") || "",
-            url: lastFmTrackButton.getAttribute("data-lastfm-track-url") || lastFmTrackButton.getAttribute("data-item-url") || ""
+            url: lastFmTrackButton.getAttribute("data-lastfm-track-url") || lastFmTrackButton.getAttribute("data-item-url") || "",
+            artworkUrl: lastFmTrackButton.getAttribute("data-lastfm-track-artwork") || ""
           },
           trigger: lastFmTrackButton
         };
@@ -11500,7 +11681,8 @@
           artist: lastFmTrackButton.getAttribute("data-lastfm-track-artist") || "",
           track: lastFmTrackButton.getAttribute("data-lastfm-track-title") || "",
           album: lastFmTrackButton.getAttribute("data-lastfm-track-album") || "",
-          url: lastFmTrackButton.getAttribute("data-lastfm-track-url") || lastFmTrackButton.getAttribute("data-item-url") || ""
+          url: lastFmTrackButton.getAttribute("data-lastfm-track-url") || lastFmTrackButton.getAttribute("data-item-url") || "",
+          artworkUrl: lastFmTrackButton.getAttribute("data-lastfm-track-artwork") || ""
         }, lastFmTrackButton);
         return;
       }
@@ -11563,6 +11745,58 @@
       playInteractionSfx("activate_soft", "refreshButton");
       onRefreshRequested();
     }
+    function clearDiscordStatusMinuteTimer() {
+      if (!discordStatusMinuteTimer) return;
+      window.clearTimeout(discordStatusMinuteTimer);
+      discordStatusMinuteTimer = 0;
+    }
+    function refreshDiscordOfflineDisplayPayload(payload, nowMs = Date.now()) {
+      if (!payload || typeof payload !== "object") return payload;
+      const profile = payload.profile && typeof payload.profile === "object" ? payload.profile : {};
+      const statusKey = normalizeDiscordStatusKey(profile.statusKey);
+      const offlineSince = Number(profile.offlineSince);
+      if (statusKey !== "offline" || !Number.isFinite(offlineSince) || offlineSince <= 0) {
+        return payload;
+      }
+      const statusText = buildDiscordStatusDisplay(statusKey, offlineSince, nowMs);
+      const stats = Array.isArray(payload.stats)
+        ? payload.stats.map((stat) => {
+          if (String(stat?.label || "").trim().toLowerCase() !== "status") return stat;
+          return { ...stat, value: statusText };
+        })
+        : payload.stats;
+      return {
+        ...payload,
+        profile: {
+          ...profile,
+          statusText
+        },
+        stats,
+        presence: payload.presence && typeof payload.presence === "object"
+          ? {
+            ...payload.presence,
+            statusLabel: statusText
+          }
+          : payload.presence
+      };
+    }
+    function scheduleDiscordStatusMinuteTick(snapshot, payloadById) {
+      clearDiscordStatusMinuteTimer();
+      const discordPayload = payloadById instanceof Map ? payloadById.get("discord") : null;
+      const profile = discordPayload?.profile && typeof discordPayload.profile === "object" ? discordPayload.profile : {};
+      const offlineSince = Number(profile.offlineSince);
+      if (normalizeDiscordStatusKey(profile.statusKey) !== "offline" || !Number.isFinite(offlineSince) || offlineSince <= 0) {
+        return;
+      }
+      const elapsedMs = Math.max(0, Date.now() - offlineSince);
+      const nextMinuteMs = 6e4 - elapsedMs % 6e4 + 120;
+      discordStatusMinuteTimer = window.setTimeout(() => {
+        discordStatusMinuteTimer = 0;
+        if (!disposed) {
+          render(snapshot);
+        }
+      }, Math.max(1e3, nextMinuteMs));
+    }
     function render(snapshot) {
       if (disposed) return;
       if (!(showcases instanceof HTMLElement)) return;
@@ -11578,6 +11812,9 @@
       const desktopToggleLastFmPanels = compactMobile && !mobileLastFmPanels;
       applySiteLayoutModeAttributes();
       const payloadById = new Map((snapshot?.payloads || []).map((payloadEntry) => [payloadEntry.siteId, payloadEntry]));
+      if (payloadById.has("discord")) {
+        payloadById.set("discord", refreshDiscordOfflineDisplayPayload(payloadById.get("discord")));
+      }
       const lastFmSiteForSnapshot = sites.find((site) => site.id === "lastfm");
       latestLastFmPayload = lastFmSiteForSnapshot ? ensurePayload(lastFmSiteForSnapshot, payloadById.get("lastfm")) : null;
       const showcaseSites = sites.filter((site) => !NON_SHOWCASE_SITE_IDS.has(site.id));
@@ -11668,6 +11905,7 @@
         refreshButton.disabled = Boolean(snapshot?.refreshAllInProgress);
         refreshButton.textContent = snapshot?.refreshAllInProgress ? "Refreshing..." : "Refresh All";
       }
+      scheduleDiscordStatusMinuteTick(snapshot, payloadById);
     }
     if (root2 instanceof HTMLElement) {
       root2.setAttribute("data-social-hub-ready", "true");
@@ -11739,6 +11977,7 @@
       externalPromptUrlEl = null;
       externalPromptCancelButton = null;
       externalPromptAcceptButton = null;
+      clearDiscordStatusMinuteTimer();
       clearMobileDiscordRevealTimer();
       clearMobileLinksRevealTimer();
       clearMobileLastFmRevealTimer();

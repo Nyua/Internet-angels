@@ -1491,7 +1491,7 @@ test("josie cache-busts the Steam profile avatar refresh endpoint", async ({ req
   const response = await request.get("/josie.client.js");
   expect(response.ok()).toBe(true);
   const clientSource = await response.text();
-  expect(clientSource).toContain('STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260530-steam-profile-avatar"');
+  expect(clientSource).toContain('STEAM_PROFILE_AVATAR_ENDPOINT_VERSION = "20260604-steam-profile-avatar-full"');
   expect(clientSource).toContain('steamProxyEndpoint.searchParams.set("v", STEAM_PROFILE_AVATAR_ENDPOINT_VERSION)');
   expect(clientSource).toContain('fetchJsonWithTimeout(steamProxyEndpoint.toString(), 12e3, signal, { cacheMode: "no-store" })');
 });
@@ -3168,8 +3168,8 @@ test("josie renders and dynamic endpoints respond", async ({ page, request }) =>
   expect(lastFmVisualStyles.lastFmShowcaseShellBorderTopWidth).toBe("0px");
   expect(lastFmVisualStyles.secondLastFmSectionBorder?.topWidth).toBe("0px");
   expect(lastFmVisualStyles.thirdLastFmSectionBorder?.topWidth).toBe("0px");
-  expect(Number.parseFloat(lastFmVisualStyles.recentListBorder?.topWidth || "0")).toBeGreaterThan(1.5);
-  expect(Number.parseFloat(lastFmVisualStyles.mediaImageWrapBorder?.bottomWidth || "0")).toBeGreaterThan(1.5);
+  expect(lastFmVisualStyles.recentListBorder?.topWidth).toBe("0px");
+  expect(lastFmVisualStyles.mediaImageWrapBorder?.bottomWidth).toBe("0px");
   expect(lastFmVisualStyles.nowPlayingBadgeBorderWidth).toBe("0px");
   expect(lastFmVisualStyles.nowPlayingBadgeBackground).toBe("rgba(0, 0, 0, 0)");
   expect(lastFmVisualStyles.steamActivityBackground).toBe("rgba(0, 0, 0, 0)");
@@ -3486,9 +3486,8 @@ test("josie stays in night mode and keeps the Discord presence under the hero ta
   });
   expect(discordCardStyles.cardRadius).toBe("25px");
   expect(discordCardStyles.cardBackground).toBe("rgba(190, 190, 190, 0.1)");
-  expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeGreaterThan(1.5);
-  expect(Number.parseFloat(discordCardStyles.cardBorderWidth)).toBeLessThanOrEqual(2.1);
-  expect(discordCardStyles.cardBorderColor).toBe("rgba(190, 190, 190, 0.06)");
+  expect(discordCardStyles.cardBorderWidth).toBe("0px");
+  expect(discordCardStyles.cardBorderColor).toBe("rgba(0, 0, 0, 0)");
   expect(discordCardStyles.cardOverflow).toBe("visible");
   expect(Number.parseFloat(discordCardStyles.avatarRect?.width || "0")).toBeGreaterThan(69);
   expect(Number.parseFloat(discordCardStyles.avatarRect?.height || "0")).toBeGreaterThan(69);

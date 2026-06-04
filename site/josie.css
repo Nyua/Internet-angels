@@ -1907,6 +1907,7 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window {
+  --lastfm-track-panel-artwork-color-rgb: var(--accent-rgb);
   position: relative;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1914,12 +1915,16 @@ body.lastfm-track-panel-open {
   flex-direction: column;
   max-height: calc(100vh - 16px);
   scrollbar-width: none;
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  border: 0;
   border-radius: 18px;
-  background: rgba(190, 190, 190, 0.10);
+  background:
+    radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.22), transparent 36%),
+    radial-gradient(circle at 88% 18%, rgba(var(--accent-rgb), 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
+    rgba(190, 190, 190, 0.10);
   box-shadow:
     0 30px 74px rgba(0, 0, 0, 0.48),
-    0 0 0 1px rgba(255, 255, 255, 0.018) inset;
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
   backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
   -webkit-backdrop-filter: blur(18px) saturate(128%) brightness(1.02);
   font-family: var(--lastfm-font);
@@ -1963,15 +1968,15 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-window::before {
-  inset: 0;
+  inset: -18%;
   opacity: 0;
   background-image: var(--lastfm-track-panel-ambient-image);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(38px) saturate(1.4) brightness(1.02);
+  filter: blur(34px) saturate(1.78) brightness(1.08);
   mix-blend-mode: screen;
-  transform: none;
+  transform: scale(1.04);
   border-radius: inherit;
   transition:
     opacity 460ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1982,14 +1987,14 @@ body.lastfm-track-panel-open {
   inset: 0;
   opacity: 0;
   background:
-    radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.07), transparent 34%),
-    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.11), transparent 32%),
-    linear-gradient(180deg, rgba(12, 12, 16, 0.22), rgba(7, 7, 10, 0.54) 58%, rgba(0, 0, 0, 0.78) 100%);
+    radial-gradient(circle at 16% 12%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.24), transparent 38%),
+    radial-gradient(circle at 84% 14%, rgba(var(--accent-rgb), 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(12, 12, 16, 0.16), rgba(7, 7, 10, 0.48) 58%, rgba(0, 0, 0, 0.74) 100%);
   transition: opacity 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::before {
-  opacity: 0.34;
+  opacity: 0.56;
 }
 
 .lastfm-track-panel-window[data-has-ambient-light="true"]::after {
@@ -2080,6 +2085,13 @@ body.lastfm-track-panel-open {
 }
 
 .lastfm-track-panel-art {
+  --lastfm-panel-art-lift: 0px;
+  --lastfm-panel-art-rotate-x: 0deg;
+  --lastfm-panel-art-rotate-y: 0deg;
+  --lastfm-panel-art-shine-x: 50%;
+  --lastfm-panel-art-shine-y: 18%;
+  --lastfm-panel-art-scale: 1;
+  --lastfm-panel-art-image-scale: 1;
   position: relative;
   width: 100%;
   min-width: 220px;
@@ -2087,12 +2099,18 @@ body.lastfm-track-panel-open {
   border-radius: 14px;
   overflow: hidden;
   background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.035);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  border: 0;
+  box-shadow: none;
   isolation: isolate;
-  transform: translateY(0);
+  transform:
+    perspective(1050px)
+    translateY(var(--lastfm-panel-art-lift))
+    rotateX(var(--lastfm-panel-art-rotate-x))
+    rotateY(var(--lastfm-panel-art-rotate-y))
+    scale(var(--lastfm-panel-art-scale));
+  transform-style: preserve-3d;
   transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 240ms ease;
   will-change: transform;
 }
@@ -2113,6 +2131,12 @@ body.lastfm-track-panel-open {
   z-index: 3;
   border-radius: inherit;
   background:
+    radial-gradient(
+      circle at var(--lastfm-panel-art-shine-x) var(--lastfm-panel-art-shine-y),
+      rgba(255, 255, 255, 0.34),
+      rgba(255, 255, 255, 0.1) 18%,
+      rgba(0, 0, 0, 0) 46%
+    ),
     linear-gradient(
       138deg,
       rgba(255, 255, 255, 0.18) 0%,
@@ -2143,7 +2167,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):focus-within,
 .lastfm-track-panel-art--flip:not(.is-flipped):hover,
 .lastfm-track-panel-art--flip:not(.is-flipped):focus-within {
-  transform: translateY(-6px);
+  --lastfm-panel-art-lift: -6px;
 }
 
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):hover::before,
@@ -2172,7 +2196,8 @@ body.lastfm-track-panel-open {
   height: 100%;
   border-radius: inherit;
   transform-style: preserve-3d;
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: rotateY(0deg);
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
@@ -2277,6 +2302,7 @@ body.lastfm-track-panel-open {
     filter 240ms ease,
     box-shadow 240ms ease;
   transform-origin: center;
+  transform: scale(var(--lastfm-panel-art-image-scale));
 }
 
 .lastfm-track-panel-art-fallback {
@@ -2291,6 +2317,7 @@ body.lastfm-track-panel-open {
     transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 240ms ease,
     box-shadow 240ms ease;
+  transform: scale(var(--lastfm-panel-art-image-scale));
 }
 
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):hover .lastfm-track-panel-art-image,
@@ -2301,7 +2328,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-art:not(.lastfm-track-panel-art--flip):focus-within .lastfm-track-panel-art-fallback,
 .lastfm-track-panel-art--flip:not(.is-flipped):hover .lastfm-track-panel-art-fallback,
 .lastfm-track-panel-art--flip:not(.is-flipped):focus-within .lastfm-track-panel-art-fallback {
-  transform: scale(1.035);
+  --lastfm-panel-art-image-scale: 1.045;
   filter: brightness(1.06) saturate(1.02);
 }
 
@@ -3361,36 +3388,39 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art {
   min-width: 0;
   width: 100%;
-  transform: none !important;
+  transform:
+    perspective(1050px)
+    translateY(var(--lastfm-panel-art-lift))
+    rotateX(var(--lastfm-panel-art-rotate-x))
+    rotateY(var(--lastfm-panel-art-rotate-y))
+    scale(var(--lastfm-panel-art-scale)) !important;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within {
-  transform: none !important;
+  --lastfm-panel-art-lift: -6px;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover::before,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within::before,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover::after,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within::after {
-  opacity: 0 !important;
-  transform: translate3d(0, 8px, 0) scale(0.96) !important;
+  opacity: 1 !important;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art-image,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art-fallback {
-  transform: none !important;
-  transition: none;
+  transform: scale(var(--lastfm-panel-art-image-scale)) !important;
   animation: none;
-  will-change: auto;
+  will-change: transform;
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover .lastfm-track-panel-art-image,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within .lastfm-track-panel-art-image,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:hover .lastfm-track-panel-art-fallback,
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-art:focus-within .lastfm-track-panel-art-fallback {
-  transform: none !important;
-  filter: none;
+  --lastfm-panel-art-image-scale: 1.045;
+  filter: brightness(1.06) saturate(1.02);
 }
 
 .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu .lastfm-track-panel-media-control {
@@ -4359,7 +4389,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
-  border: 1px solid var(--surface-border);
+  border: 0;
   background: var(--surface-bg-strong);
   object-fit: cover;
   box-shadow: 0 12px 24px var(--surface-shadow);
@@ -4377,6 +4407,11 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   filter: saturate(1.01) contrast(1.01);
 }
 
+.steam-hero-avatar[data-avatar-upscale="steam-full"] {
+  image-rendering: -webkit-optimize-contrast;
+  filter: saturate(1.08) contrast(1.08) brightness(1.02);
+}
+
 .steam-hero-avatar--fallback {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -4386,7 +4421,7 @@ body.site-load-active:not(.site-load-playing) .steam-hero-content {
   color: var(--text-primary);
   font-size: 32px;
   font-weight: 700;
-  border: 1px solid var(--surface-border);
+  border: 0;
   background: var(--surface-bg-strong);
 }
 
@@ -12491,8 +12526,9 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
 
   .lastfm-track-panel-window.lastfm-track-panel-window--focus-menu[data-panel-type] {
     width: min(980px, calc(100vw - 32px));
-    border-color: rgba(255, 255, 255, 0.055);
+    border-color: transparent;
     background:
+      radial-gradient(circle at 18% 8%, rgba(var(--lastfm-track-panel-artwork-color-rgb), 0.24), transparent 38%),
       radial-gradient(circle at 73% 3%, rgba(255, 255, 255, 0.055), transparent 30%),
       linear-gradient(180deg, rgba(190, 190, 190, 0.12), rgba(22, 22, 27, 0.42) 52%, rgba(0, 0, 0, 0.66)),
       rgba(190, 190, 190, 0.10);
@@ -12848,4 +12884,119 @@ body:not(.shuffle-video-background-active) .social-hub-showcases .steam-showcase
     background: rgba(255, 255, 255, 0.06);
     box-shadow: none;
   }
+}
+
+#social-hub-root :is(
+  .steam-sidebar-panel,
+  .steam-sidebar-row,
+  .steam-sidebar-stat,
+  .steam-showcase,
+  .steam-showcase-head,
+  .steam-showcase-summary,
+  .steam-showcase-content,
+  .steam-stat,
+  .steam-activity-header,
+  .steam-activity-row-button,
+  .steam-activity-capsule,
+  .lastfm-section,
+  .lastfm-profile-total,
+  .lastfm-recent-list,
+  .lastfm-recent-item,
+  .lastfm-recent-art,
+  .lastfm-media-button,
+  .lastfm-media-image-wrap,
+  .lastfm-monthly-rank-badge,
+  .discord-presence-card--foundlifeless,
+  .discord-presence-avatar,
+  .discord-presence-avatar--fallback
+),
+.lastfm-track-panel-window :is(
+  .lastfm-track-panel-art,
+  .lastfm-track-panel-art-back,
+  .lastfm-track-panel-stat,
+  .lastfm-track-panel-summary,
+  .lastfm-track-panel-tags,
+  .lastfm-track-panel-actions,
+  .lastfm-track-panel-preview,
+  .lastfm-track-panel-history,
+  .lastfm-track-panel-related,
+  .lastfm-track-panel-spotify-slot,
+  .lastfm-track-panel-first-play,
+  .lastfm-track-panel-related-button,
+  .lastfm-track-panel-history-item,
+  .lastfm-track-panel-track-item,
+  .lastfm-track-panel-tracklist-head,
+  .lastfm-track-tag,
+  .lastfm-track-panel-cta,
+  .lastfm-track-panel-inline-link
+),
+.lastfm-track-panel-window {
+  border: 0 !important;
+  border-color: transparent !important;
+}
+
+#social-hub-root .steam-sidebar-row::after {
+  display: none !important;
+}
+
+#social-hub-root :is(
+  .social-hub-profile-tagline,
+  .discord-presence-panel,
+  .discord-presence-shell,
+  .discord-presence-reveal,
+  .discord-presence-card-stack,
+  .discord-presence-card--foundlifeless,
+  .social-hub-showcases,
+  .social-hub-showcases > .steam-showcase,
+  .steam-showcase--lastfm-minimal,
+  .steam-showcase-body--lastfm-minimal,
+  .steam-showcase-content--lastfm-minimal,
+  .lastfm-sections,
+  .lastfm-section,
+  .lastfm-recent-reveal,
+  .lastfm-recent-list,
+  .lastfm-recent-item,
+  .lastfm-recent-button
+) {
+  overflow: visible !important;
+  clip-path: none !important;
+  contain: none !important;
+}
+
+#social-hub-root :is(.social-hub-showcases > .steam-showcase, .lastfm-section) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
+
+body[data-site-layout-mode="mobile"] :is(
+  #social-hub-profile-tagline,
+  .discord-presence-panel,
+  .discord-presence-shell,
+  .discord-presence-reveal,
+  .discord-presence-card-stack,
+  .discord-presence-card--foundlifeless
+) {
+  overflow: visible !important;
+  clip-path: none !important;
+  contain: none !important;
+}
+
+.lastfm-track-panel-history-scroll {
+  padding: 8px 10px 12px;
+  margin: -8px -10px -12px;
+}
+
+.lastfm-track-panel-history-list {
+  padding: 4px 6px 10px;
+  margin: -4px -6px -10px;
+}
+
+.lastfm-track-panel-history-item {
+  position: relative;
+  z-index: 0;
+}
+
+.lastfm-track-panel-history-item:hover,
+.lastfm-track-panel-history-item:focus-within {
+  z-index: 2;
 }

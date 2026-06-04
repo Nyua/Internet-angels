@@ -8,7 +8,7 @@ import {
   runWithTimeout
 } from "./response.js";
 
-const LASTFM_DETAILS_CACHE_VERSION = "spotify-credentialless-v3";
+const LASTFM_DETAILS_CACHE_VERSION = "spotify-credentialless-v4";
 const pendingLastFmDetailsPayloads = new Map();
 
 export function normalizeLastFmDetailsQueryValue(value) {

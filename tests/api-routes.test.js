@@ -1258,7 +1258,7 @@ test("lastfm track details route returns retained stale payload when upstream fa
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v4", { method: "GET" });
   const cachedPayload = {
     sourceStatus: "OK",
     stale: false,
@@ -1305,7 +1305,7 @@ test("lastfm track details route serves retained details immediately while refre
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v4", { method: "GET" });
   const waitUntilPromises = [];
   let fetchCalls = 0;
   const cachedPayload = {
@@ -1361,7 +1361,7 @@ test("lastfm track details route returns retained stale payload when upstream ha
   const originalCaches = globalThis.caches;
   const cache = new MockCache();
   const request = createSameOriginRequest("/api/lastfm-track-details?artist=beabadoobee&track=One%20Time");
-  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v3", { method: "GET" });
+  const cacheRequest = new Request("https://internet-angel.net/api/lastfm-track-details?artist=beabadoobee&track=one+time&__v=spotify-credentialless-v4", { method: "GET" });
   const cachedPayload = {
     sourceStatus: "OK",
     stale: false,
