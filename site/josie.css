@@ -3899,6 +3899,12 @@ body.lastfm-track-panel-open {
   -webkit-overflow-scrolling: touch;
 }
 
+.lastfm-track-panel-window--mobile::before {
+  inset: 0;
+  filter: blur(24px) saturate(1.85) brightness(0.96);
+  transform: none;
+}
+
 .lastfm-track-panel-window--mobile .lastfm-track-panel-close {
   top: 10px;
   right: 10px;
@@ -3966,6 +3972,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-window--mobile .lastfm-track-panel-spotify-slot {
   width: 100%;
   max-width: none;
+  min-width: 0;
 }
 
 .lastfm-track-panel-window--mobile .lastfm-track-panel-spotify-slot {
@@ -4069,6 +4076,7 @@ body.lastfm-track-panel-open {
 .lastfm-track-panel-window--mobile.lastfm-track-panel-window--focus-menu .lastfm-track-panel-media-control .lastfm-track-panel-preview {
   width: 100%;
   max-width: none;
+  min-width: 0;
 }
 
 .lastfm-track-panel-window--mobile.lastfm-track-panel-window--focus-menu .lastfm-track-panel-stat--scrobble-focus {

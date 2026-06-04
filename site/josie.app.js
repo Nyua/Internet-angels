@@ -233,7 +233,7 @@
     return isViewportCompactMobileLayout() && hasCompactMobileInput();
   }
   function shouldUseMobileLastFmPanels() {
-    return isActualMobileLayoutDevice();
+    return isCompactMobileLayout();
   }
   function getEffectiveSiteLayoutMode() {
     if (isActualMobileLayoutDevice()) return "mobile";
@@ -7415,6 +7415,8 @@
     let lastFmTrackPanelSceneTimer = 0;
     const lastFmTrackPanelArtworkParallaxCleanup = /* @__PURE__ */ new WeakMap();
     const lastFmTrackPanelArtworkParallaxState = /* @__PURE__ */ new WeakMap();
+    let lastFmPanelOrientationParallaxPermissionPromise = null;
+    let lastFmPanelOrientationParallaxPermissionState = "";
     let lastFmTrackPanelArtworkLaunchCleanup = null;
     let lastFmTrackPanelArtworkLaunchElement = null;
     let lastFmTrackPanelArtworkSourceElement = null;
@@ -10915,6 +10917,53 @@
         }
       }
     }
+    function shouldUseLastFmPanelOrientationParallax() {
+      return shouldUseMobileLastFmPanels()
+        && hasCompactMobileInput()
+        && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+        && typeof window.DeviceOrientationEvent === "function";
+    }
+    function requestLastFmPanelOrientationParallaxPermission() {
+      if (!shouldUseLastFmPanelOrientationParallax()) {
+        return Promise.resolve(false);
+      }
+      const orientationEvent = window.DeviceOrientationEvent;
+      if (typeof orientationEvent?.requestPermission !== "function") {
+        lastFmPanelOrientationParallaxPermissionState = "granted";
+        return Promise.resolve(true);
+      }
+      if (lastFmPanelOrientationParallaxPermissionState === "granted") {
+        return Promise.resolve(true);
+      }
+      if (lastFmPanelOrientationParallaxPermissionState === "denied") {
+        return Promise.resolve(false);
+      }
+      if (!lastFmPanelOrientationParallaxPermissionPromise) {
+        let permissionRequest;
+        try {
+          permissionRequest = orientationEvent.requestPermission();
+        } catch {
+          lastFmPanelOrientationParallaxPermissionState = "denied";
+          return Promise.resolve(false);
+        }
+        lastFmPanelOrientationParallaxPermissionPromise = Promise.resolve(permissionRequest)
+          .then((result) => {
+            lastFmPanelOrientationParallaxPermissionState = result === "granted" ? "granted" : "denied";
+            return lastFmPanelOrientationParallaxPermissionState === "granted";
+          })
+          .catch(() => {
+            lastFmPanelOrientationParallaxPermissionState = "denied";
+            return false;
+          })
+          .finally(() => {
+            lastFmPanelOrientationParallaxPermissionPromise = null;
+          });
+      }
+      return lastFmPanelOrientationParallaxPermissionPromise;
+    }
+    function warmLastFmPanelOrientationParallaxPermission() {
+      void requestLastFmPanelOrientationParallaxPermission();
+    }
     function getLastFmPanelArtworkParallaxState(artShell) {
       let state = lastFmTrackPanelArtworkParallaxState.get(artShell);
       if (state) return state;
@@ -10992,14 +11041,19 @@
     }
     function bindLastFmPanelArtworkParallax(scene) {
       if (!(scene instanceof HTMLElement)) return;
-      const canUseParallax = !shouldUseMobileLastFmPanels()
-        && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      const reducedMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+      const canUsePointerParallax = !hasCompactMobileInput() && !reducedMotion;
+      const canUseOrientationParallax = shouldUseLastFmPanelOrientationParallax();
       Array.from(scene.querySelectorAll(".lastfm-track-panel-art")).forEach((artShell) => {
         if (!(artShell instanceof HTMLElement) || lastFmTrackPanelArtworkParallaxCleanup.has(artShell)) return;
-        if (!canUseParallax) {
+        if (!canUsePointerParallax && !canUseOrientationParallax) {
           resetLastFmPanelArtworkParallax(artShell);
           return;
         }
+        let disposedParallax = false;
+        let orientationAttached = false;
+        let baselineBeta = null;
+        let baselineGamma = null;
         const onPointerMove = (event) => {
           if (event instanceof PointerEvent && event.pointerType === "touch") return;
           if (!(event instanceof MouseEvent || event instanceof PointerEvent)) return;
@@ -11017,20 +11071,67 @@
             shineY: y * 100,
             scale: 1.018
           }, true);
+          artShell.dataset.artworkParallaxInput = "pointer";
         };
         const onPointerLeave = () => resetLastFmPanelArtworkParallax(artShell, { smooth: true });
-        artShell.addEventListener("pointermove", onPointerMove, { passive: true });
-        artShell.addEventListener("mousemove", onPointerMove, { passive: true });
-        artShell.addEventListener("pointerleave", onPointerLeave, { passive: true });
-        artShell.addEventListener("mouseleave", onPointerLeave, { passive: true });
+        const resetOrientationBaseline = () => {
+          baselineBeta = null;
+          baselineGamma = null;
+          resetLastFmPanelArtworkParallax(artShell, { smooth: true });
+        };
+        const onDeviceOrientation = (event) => {
+          if (!(event instanceof DeviceOrientationEvent)) return;
+          if (!artShell.isConnected || artShell.classList.contains("is-flipped")) return;
+          const beta = Number(event.beta);
+          const gamma = Number(event.gamma);
+          if (!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
+          if (baselineBeta === null || baselineGamma === null) {
+            baselineBeta = beta;
+            baselineGamma = gamma;
+          }
+          const pitchDelta = clamp((beta - baselineBeta) / 18, -1, 1);
+          const yawDelta = clamp((gamma - baselineGamma) / 18, -1, 1);
+          setLastFmPanelArtworkParallaxTarget(artShell, {
+            rotateX: pitchDelta * -7,
+            rotateY: yawDelta * 7,
+            shineX: 50 + yawDelta * 24,
+            shineY: 28 + pitchDelta * 18,
+            scale: 1.014
+          }, true);
+          artShell.dataset.artworkParallaxInput = "orientation";
+        };
+        const attachOrientationParallax = () => {
+          if (disposedParallax || orientationAttached || !artShell.isConnected) return;
+          orientationAttached = true;
+          window.addEventListener("deviceorientation", onDeviceOrientation, { passive: true });
+          window.addEventListener("orientationchange", resetOrientationBaseline, { passive: true });
+          document.addEventListener("visibilitychange", resetOrientationBaseline);
+        };
+        if (canUsePointerParallax) {
+          artShell.addEventListener("pointermove", onPointerMove, { passive: true });
+          artShell.addEventListener("mousemove", onPointerMove, { passive: true });
+          artShell.addEventListener("pointerleave", onPointerLeave, { passive: true });
+          artShell.addEventListener("mouseleave", onPointerLeave, { passive: true });
+        }
+        if (canUseOrientationParallax) {
+          requestLastFmPanelOrientationParallaxPermission().then((granted) => {
+            if (!granted) return;
+            attachOrientationParallax();
+          });
+        }
         artShell.addEventListener("blur", onPointerLeave, true);
         lastFmTrackPanelArtworkParallaxCleanup.set(artShell, () => {
+          disposedParallax = true;
           artShell.removeEventListener("pointermove", onPointerMove);
           artShell.removeEventListener("mousemove", onPointerMove);
           artShell.removeEventListener("pointerleave", onPointerLeave);
           artShell.removeEventListener("mouseleave", onPointerLeave);
+          window.removeEventListener("deviceorientation", onDeviceOrientation);
+          window.removeEventListener("orientationchange", resetOrientationBaseline);
+          document.removeEventListener("visibilitychange", resetOrientationBaseline);
           artShell.removeEventListener("blur", onPointerLeave, true);
           resetLastFmPanelArtworkParallax(artShell);
+          delete artShell.dataset.artworkParallaxInput;
           lastFmTrackPanelArtworkParallaxState.delete(artShell);
         });
         resetLastFmPanelArtworkParallax(artShell);
@@ -11553,6 +11654,9 @@
       }, 80);
     }
     async function showLastFmPanel(panelType, query, trigger = null) {
+      if (shouldUseMobileLastFmPanels()) {
+        warmLastFmPanelOrientationParallaxPermission();
+      }
       const definition = getLastFmPanelDefinition(panelType);
       if (!definition) return;
       if (lastFmTrackPanelIsClosing) return;

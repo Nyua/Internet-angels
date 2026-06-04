@@ -6952,7 +6952,7 @@ test("josie blocks real mobile Last.fm dropdown taps from shuffle links behind i
   expect(shield.openedWindows).toBe(0);
 });
 
-test("josie keeps desktop Last.fm panels when desktop users switch to mobile layout", async ({ page }) => {
+test("josie shows mobile Last.fm elements when desktop users switch to mobile layout", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await stubWindowOpen(page);
   await mockCompactLastFmSocialApis(page);
@@ -7005,53 +7005,25 @@ test("josie keeps desktop Last.fm panels when desktop users switch to mobile lay
   await page.locator("[data-site-layout-toggle]").click();
   await expect(page.locator("body")).toHaveAttribute("data-site-layout-mode", "mobile");
   await expect(page.locator("body")).toHaveAttribute("data-site-layout-device", "desktop");
-  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--desktop-lastfm-toggle/);
-  await expect(page.locator("#social-hub-showcases")).not.toHaveClass(/social-hub-showcases--mobile-lastfm/);
-  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(0);
-  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveCount(0);
-  await expect(page.locator("#social-hub-showcases .lastfm-section-title").first()).toHaveText("Recent Tracks");
-  const topArtistsTitle = page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" });
-  const topAlbumsTitle = page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" });
-  await expect(topArtistsTitle).toHaveCount(1);
-  await expect(topAlbumsTitle).toHaveCount(1);
-  const desktopLastFmSectionState = await page.evaluate(() => {
-    const readTitle = (label) => {
-      const title = Array.from(document.querySelectorAll("#social-hub-showcases .lastfm-section-title"))
-        .find((node) => node.textContent?.includes(label));
-      if (!(title instanceof HTMLElement)) return null;
-      const rect = title.getBoundingClientRect();
-      const styles = window.getComputedStyle(title);
-      return {
-        display: styles.display,
-        visibility: styles.visibility,
-        width: rect.width,
-        height: rect.height
-      };
-    };
-    return {
-      topArtists: readTitle("Top Artists"),
-      topAlbums: readTitle("Top Albums")
-    };
-  });
-  expect(desktopLastFmSectionState.topArtists).toMatchObject({
-    display: "block",
-    visibility: "visible"
-  });
-  expect(desktopLastFmSectionState.topAlbums).toMatchObject({
-    display: "block",
-    visibility: "visible"
-  });
-  expect(desktopLastFmSectionState.topArtists?.width).toBeGreaterThan(0);
-  expect(desktopLastFmSectionState.topArtists?.height).toBeGreaterThan(0);
-  expect(desktopLastFmSectionState.topAlbums?.width).toBeGreaterThan(0);
-  expect(desktopLastFmSectionState.topAlbums?.height).toBeGreaterThan(0);
-
+  await expect(page.locator("#social-hub-showcases")).toHaveClass(/social-hub-showcases--mobile-lastfm/);
+  await expect(page.locator("#social-hub-showcases")).not.toHaveClass(/social-hub-showcases--desktop-lastfm-toggle/);
+  await expect(page.locator("#social-hub-showcases .steam-showcase--lastfm-mobile")).toHaveCount(1);
+  await expect(page.locator("#social-hub-showcases [data-mobile-lastfm-dropdown]")).toHaveCount(2);
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="top-artists"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "false");
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toBeVisible();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="top-artists"]')).toBeVisible();
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Recent Tracks" })).toHaveCount(1);
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Artists" })).toHaveCount(1);
+  await expect(page.locator("#social-hub-showcases .lastfm-section-title", { hasText: "Top Albums" })).toHaveCount(0);
+  await page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown-summary][data-mobile-lastfm-dropdown-key="recent-tracks"]').click();
+  await expect(page.locator('#social-hub-showcases [data-mobile-lastfm-dropdown][data-mobile-lastfm-dropdown-key="recent-tracks"]')).toHaveAttribute("data-mobile-lastfm-dropdown-open", "true");
   await page.locator("#social-hub-showcases .lastfm-recent-button").first().click();
   await expect(page.locator(".lastfm-track-panel.is-open")).toHaveCount(1);
   await expect(page.locator(".lastfm-track-panel-title")).toHaveText("Shield Song", { timeout: 10_000 });
-  await expect(page.locator(".lastfm-track-panel-window--mobile")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-layout--mobile")).toHaveCount(0);
-  await expect(page.locator(".lastfm-track-panel-spotify-slot")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-window--mobile")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-layout--mobile")).toHaveCount(1);
+  await expect(page.locator(".lastfm-track-panel-spotify-slot--mobile")).toHaveCount(1);
 });
 
 test("josie settles mobile top artist details without stale loading UI", async ({ page }) => {
@@ -7253,6 +7225,21 @@ test("josie stacks the compact mobile track panel cleanly and plays the Spotify 
       }
       return originalMatchMedia(query);
     };
+
+    class CodexDeviceOrientationEvent extends Event {
+      constructor(type, init = {}) {
+        super(type, init);
+        this.alpha = init.alpha ?? null;
+        this.beta = init.beta ?? null;
+        this.gamma = init.gamma ?? null;
+        this.absolute = Boolean(init.absolute);
+      }
+    }
+    Object.defineProperty(window, "DeviceOrientationEvent", {
+      configurable: true,
+      writable: true,
+      value: CodexDeviceOrientationEvent
+    });
 
     const NativeAudio = window.Audio;
     window.Audio = function(...args) {
@@ -7474,6 +7461,31 @@ test("josie stacks the compact mobile track panel cleanly and plays the Spotify 
   expect(mobilePanelMetrics.headerBelowArt).toBe(true);
   expect(mobilePanelMetrics.titleSize).toBeLessThan(50);
   expect(mobilePanelMetrics.previewWidth).toBeGreaterThan(240);
+  const orientationParallaxState = await page.evaluate(async () => {
+    const art = document.querySelector(".lastfm-track-panel-art");
+    if (!(art instanceof HTMLElement)) {
+      return null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 12, gamma: 6 }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 24, gamma: 18 }));
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    const styles = window.getComputedStyle(art);
+    return {
+      input: art.dataset.artworkParallaxInput || "",
+      active: art.dataset.artworkParallaxActive || "",
+      rotateX: art.style.getPropertyValue("--lastfm-panel-art-rotate-x"),
+      rotateY: art.style.getPropertyValue("--lastfm-panel-art-rotate-y"),
+      transform: styles.transform
+    };
+  });
+  expect(orientationParallaxState).not.toBeNull();
+  expect(orientationParallaxState.input).toBe("orientation");
+  expect(orientationParallaxState.active).toBe("true");
+  expect(orientationParallaxState.rotateX).not.toBe("0.00deg");
+  expect(orientationParallaxState.rotateY).not.toBe("0.00deg");
+  expect(orientationParallaxState.transform).toMatch(/^matrix/);
 
   const previewPlayer = page.locator("[data-track-preview-player]");
   await previewPlayer.locator("[data-track-preview-toggle]").click();
