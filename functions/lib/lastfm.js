@@ -80,17 +80,47 @@ export function pickSettledSection(result, key, fallback) {
   return fallback;
 }
 
-export function pickLastFmImageUrl(images) {
-  if (!Array.isArray(images)) {
+export function upscaleLastFmImageUrl(url) {
+  const source = String(url || "").trim();
+  if (!source) {
     return "";
   }
-  for (let index = images.length - 1; index >= 0; index -= 1) {
-    const candidate = String(images[index]?.["#text"] || "").trim();
-    if (candidate) {
-      return candidate;
-    }
+  try {
+    const parsed = new URL(source);
+    parsed.pathname = parsed.pathname.replace(/\/i\/u\/avatar\d+s\//i, "/i/u/avatar300s/");
+    parsed.pathname = parsed.pathname.replace(/\/i\/u\/\d+s\//i, "/i/u/770x0/");
+    parsed.pathname = parsed.pathname.replace(/\/i\/u\/\d+x\d+\//i, "/i/u/770x0/");
+    parsed.pathname = parsed.pathname.replace(/\/i\/u\/\d+x0\//i, "/i/u/770x0/");
+    return parsed.toString();
+  } catch {
+    return source;
   }
-  return "";
+}
+
+export function collectLastFmImageUrls(images, fallback = "") {
+  const list = Array.isArray(images) ? images : [];
+  const candidates = [];
+  const seen = new Set();
+  const register = (value) => {
+    const candidate = upscaleLastFmImageUrl(String(value || "").trim());
+    if (!candidate || seen.has(candidate)) return;
+    seen.add(candidate);
+    candidates.push(candidate);
+  };
+  const sizePriority = ["mega", "extralarge", "large", "medium", "small"];
+  for (const size of sizePriority) {
+    const match = list.find((entry) => String(entry?.size || "").trim().toLowerCase() === size);
+    register(match?.["#text"] || match?.url);
+  }
+  for (const entry of list) {
+    register(entry?.["#text"] || entry?.url);
+  }
+  register(fallback);
+  return candidates;
+}
+
+export function pickLastFmImageUrl(images) {
+  return collectLastFmImageUrls(images)[0] || "";
 }
 
 export function isLastFmGenericImageUrl(url) {
@@ -131,9 +161,9 @@ export async function findArtistPhotoUrlViaDeezer(artistName, options = {}) {
   }) || null;
   const match = closeMatch || candidates[0] || null;
   return String(
+    match?.picture_xl ||
     match?.picture_big ||
     match?.picture_medium ||
-    match?.picture_xl ||
     match?.picture ||
     ""
   ).trim();

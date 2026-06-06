@@ -24,6 +24,7 @@ import {
 import { readCachedPayload, writeCachedPayload } from "./cache.js";
 import {
   fetchLastFmJson,
+  collectLastFmImageUrls,
   findArtistPhotoUrlViaDeezer,
   getTrackArtistName,
   getTrackTitle,
@@ -41,6 +42,25 @@ function getSecondaryFetchOptions(options = {}) {
     signal: options?.signal,
     timeoutMs: options?.secondaryTimeoutMs ?? LASTFM_SECONDARY_TIMEOUT_MS
   };
+}
+
+function collectArtworkImages(...sources) {
+  const seen = new Set();
+  const images = [];
+  const register = (value) => {
+    const url = String(value || "").trim();
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    images.push(url);
+  };
+  for (const source of sources) {
+    if (Array.isArray(source)) {
+      source.forEach(register);
+    } else {
+      register(source);
+    }
+  }
+  return images;
 }
 
 function buildInternalCacheRequest(parts) {
@@ -618,7 +638,12 @@ function buildTrackSummary(trackInfo, fallbackArtworkUrl, topTags, scrobbleTotal
     summaryHasMore: wikiExcerpt.hasMore,
     publishedAt: String(trackInfo?.wiki?.published || "").trim() || null,
     topTags,
-    similarTracks: Array.isArray(similarTracks) ? similarTracks.slice(0, 3) : []
+    similarTracks: Array.isArray(similarTracks) ? similarTracks.slice(0, 3) : [],
+    artworkImages: collectArtworkImages(
+      collectLastFmImageUrls(trackInfo?.album?.image),
+      spotifyMatch?.artworkUrl,
+      fallbackArtworkUrl
+    )
   };
 }
 
@@ -649,7 +674,12 @@ function buildArtistSummary(artistInfo, artworkUrl, topTracks = []) {
     playcount: parseInteger(artistInfo?.stats?.playcount),
     userPlaycount: parseInteger(artistInfo?.stats?.userplaycount) || parseInteger(artistInfo?.userplaycount),
     topTags: normalizeTagList(artistInfo?.tags?.tag, 4),
-    topTrackCount: Array.isArray(topTracks) ? topTracks.length : 0
+    topTrackCount: Array.isArray(topTracks) ? topTracks.length : 0,
+    artworkImages: collectArtworkImages(
+      artworkUrl,
+      collectLastFmImageUrls(artistInfo?.image),
+      Array.isArray(topTracks) ? topTracks.map((entry) => entry?.artworkUrl) : []
+    )
   };
 }
 
@@ -706,7 +736,8 @@ function buildAlbumSummary(albumInfo, artistInfo, trackItems) {
     runtimeMs,
     runtimeLabel: formatDurationLabel(runtimeMs),
     trackCount: trackItems.length,
-    topTags: normalizeTagList(albumInfo?.tags?.tag, 4)
+    topTags: normalizeTagList(albumInfo?.tags?.tag, 4),
+    artworkImages: collectArtworkImages(collectLastFmImageUrls(albumInfo?.image))
   };
 }
 
@@ -1062,7 +1093,8 @@ export async function fetchLastFmAlbumDetails({
       album: canonicalAlbum,
       env,
       nowMs,
-      signal
+      signal,
+      credentiallessBudgetMs: SPOTIFY_CREDENTIALLESS_TRACK_DETAILS_BUDGET_MS
     }).catch(() => buildEmptySpotifyTrackMatch())
     : buildEmptySpotifyTrackMatch();
   const albumTrackKeys = new Set(trackItems.map((entry) => normalizeTrackKey(entry.artist, entry.title)));

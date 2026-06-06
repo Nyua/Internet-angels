@@ -20,7 +20,8 @@
     "[data-lastfm-artist-name]",
     "[data-lastfm-album-title]",
     "[data-lastfm-track-title]",
-    "[data-lastfm-panel-art-toggle]",
+    "[data-lastfm-panel-art-fullscreen]",
+    "[data-lastfm-artwork-fullscreen-plane]",
     ".steam-activity-row-button",
     ".lastfm-recent-button",
     ".lastfm-media-button",
@@ -66,9 +67,8 @@
     if (explicitSource) return explicitSource;
     if (target.id) return target.id;
     if (target.matches("[data-mobile-speaker-toggle]")) return "mobileSpeakerToggle";
-    if (target.matches("[data-lastfm-panel-art-toggle]")) return "lastfmPanelArtToggle";
-    if (target.matches("[data-lastfm-panel-art-back]")) return "lastfmPanelArtBack";
-    if (target.matches(".lastfm-track-panel-close")) return "lastfmTrackPanelClose";
+    if (target.matches("[data-lastfm-panel-art-fullscreen]")) return "lastfmArtworkFullscreen";
+    if (target.matches("[data-lastfm-artwork-fullscreen-plane]")) return "lastfmArtworkFullscreenPlane";
     if (target.matches(".external-link-confirm-button--accept")) return "externalConfirmAccept";
     if (target.matches(".external-link-confirm-button--new-tab")) return "externalConfirmNewTab";
     if (target.matches(".external-link-confirm-button--cancel")) return "externalConfirmCancel";

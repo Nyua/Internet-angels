@@ -1855,6 +1855,89 @@ test("lastfm album details route assembles album detail data and track popularit
   }
 });
 
+test("lastfm album details route serves a cold partial while warming the durable cache", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/lastfm-album-details?artist=beabadoobee&album=Beatopia");
+  const waitUntilPromises = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async (resource) => {
+      const requestUrl = new URL(String(resource));
+      const method = requestUrl.searchParams.get("method");
+      if (method === "album.getinfo") {
+        return Response.json({
+          album: {
+            name: "Beatopia",
+            artist: "beabadoobee",
+            url: "https://www.last.fm/music/beabadoobee/Beatopia",
+            image: [
+              { "#text": "https://lastfm.freetls.fastly.net/i/u/300x300/beatopia.jpg", size: "extralarge" },
+              { "#text": "https://lastfm.freetls.fastly.net/i/u/770x0/beatopia.jpg", size: "mega" }
+            ],
+            tracks: {
+              track: [{ name: "Talk", duration: "144", "@attr": { rank: "1" } }]
+            }
+          }
+        });
+      }
+      if (method === "artist.getinfo") {
+        return Response.json({ artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" } });
+      }
+      if (method === "track.getInfo") {
+        return Response.json({
+          track: {
+            name: "Talk",
+            artist: { name: "beabadoobee", url: "https://www.last.fm/music/beabadoobee" },
+            url: "https://www.last.fm/music/beabadoobee/_/Talk",
+            userplaycount: "4"
+          }
+        });
+      }
+      if (method === "artist.gettoptracks") {
+        return Response.json({ toptracks: { track: [] } });
+      }
+      if (String(resource).startsWith("https://r.jina.ai/")) {
+        return new Response("", { status: 200 });
+      }
+      throw new Error(`Unexpected request: ${resource}`);
+    };
+
+    const response = await onLastFmAlbumDetailsRequest({
+      request,
+      env: { LASTFM_API_KEY: "test-key" },
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.refreshing, true);
+    assert.equal(payload.album, null);
+    assert.equal(waitUntilPromises.length, 1);
+
+    await Promise.all(waitUntilPromises);
+
+    const cacheRequest = buildLastFmDetailsCacheRequest(request, {
+      artist: "beabadoobee",
+      album: "Beatopia"
+    }, ["artist", "album"]);
+    const cachedResponse = await cache.match(cacheRequest);
+    assert.ok(cachedResponse);
+    const cachedPayload = await cachedResponse.json();
+    assert.equal(cachedPayload.album.title, "Beatopia");
+    assert.equal(cachedPayload.tracks.items[0].title, "Talk");
+    assert.equal(cachedPayload.album.artworkUrl, "https://lastfm.freetls.fastly.net/i/u/770x0/beatopia.jpg");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test("lastfm album details route falls back to partial query data when album info is missing", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
@@ -1988,6 +2071,43 @@ test("steam route returns retained stale payload when upstream fails", async () 
     assert.equal(payload.stale, true);
     assert.equal(payload.sourceStatus, "PARTIAL");
     assert.equal(payload.profile.name, "Josie");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
+test("steam route serves the bundled snapshot immediately on a cold Pages request", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  const cache = new MockCache();
+  const request = createSameOriginRequest("/api/steam-recent-activity");
+  const waitUntilPromises = [];
+
+  try {
+    globalThis.caches = { default: cache };
+    globalThis.fetch = async () => {
+      throw new Error("live Steam is intentionally unavailable");
+    };
+
+    const response = await onSteamRequest({
+      request,
+      env: { STEAM_PROFILE_URL: "https://steamcommunity.com/id/HalfTwo/" },
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      }
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.cachedSnapshot, true);
+    assert.equal(payload.refreshing, true);
+    assert.equal(payload.sourceStatus, "PARTIAL");
+    assert.equal(payload.profile.name, "Josie");
+    assert.ok(Array.isArray(payload.items));
+    assert.ok(payload.items.length > 0);
+    assert.equal(waitUntilPromises.length, 1);
+    await Promise.all(waitUntilPromises);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;

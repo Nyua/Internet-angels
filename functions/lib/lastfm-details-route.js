@@ -131,6 +131,20 @@ export function createLastFmDetailsRouteHandler(options) {
       });
     }
 
+    if (typeof context.waitUntil === "function" && typeof config.buildColdPayload === "function") {
+      context.waitUntil(fetchAndCachePayload({
+        apiKey,
+        env,
+        query,
+        nowMs,
+        cacheRequest
+      }).catch(() => {}));
+      return jsonResponse(config.buildColdPayload(nowMs, query), {
+        status: 200,
+        cacheControl: browserCacheControl(60)
+      });
+    }
+
     try {
       const payload = await fetchAndCachePayload({
         apiKey,

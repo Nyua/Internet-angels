@@ -1,0 +1,76 @@
+export const STEAM_RECENT_ACTIVITY_SNAPSHOT = {
+  profileUrl: "https://steamcommunity.com/id/HalfTwo/",
+  stale: true,
+  fetchedAt: "2026-06-03T12:33:25.021Z",
+  sourceStatus: "PARTIAL",
+  cachedSnapshot: true,
+  refreshing: true,
+  profile: {
+    name: "Josie",
+    handle: "steamcommunity.com/id/HalfTwo",
+    bio: "Australia",
+    avatarUrl: "https://avatars.akamai.steamstatic.com/5d89528e75be8db86f35c3964a6d9cc62aee8c69_full.jpg",
+    borderImageUrl: "",
+    statusText: "Offline",
+    levelBadgeLabel: "Level 50",
+    url: "https://steamcommunity.com/id/HalfTwo/"
+  },
+  stats: [
+    { label: "Level", value: "50" },
+    { label: "Status", value: "Offline" },
+    { label: "2W Hours", value: "51.4h" },
+    { label: "Recent Games", value: "3" }
+  ],
+  items: [
+    {
+      id: "steam-mirror-2357570",
+      title: "Overwatch",
+      meta: "838 hrs on record | last played on Jun 2",
+      url: "https://steamcommunity.com/app/2357570",
+      appId: "2357570",
+      imageUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2357570/4dd87b23d0fb4b6295f8e77178f3a080a03ebf3a/capsule_184x69.jpg?t=1778610036",
+      artworkUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2357570/4dd87b23d0fb4b6295f8e77178f3a080a03ebf3a/capsule_184x69.jpg?t=1778610036",
+      hoursOnRecord: "838",
+      lastPlayed: "last played on Jun 2"
+    },
+    {
+      id: "steam-mirror-3124540",
+      title: "Far Far West",
+      meta: "15.4 hrs on record | last played on May 31",
+      url: "https://steamcommunity.com/app/3124540",
+      appId: "3124540",
+      imageUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3124540/396b26f278210ddfbb9e944d8b20da2e8bd17ded/capsule_184x69.jpg?t=1779807563",
+      artworkUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3124540/396b26f278210ddfbb9e944d8b20da2e8bd17ded/capsule_184x69.jpg?t=1779807563",
+      hoursOnRecord: "15.4",
+      lastPlayed: "last played on May 31"
+    },
+    {
+      id: "steam-mirror-1091500",
+      title: "Cyberpunk 2077",
+      meta: "65 hrs on record | last played on May 31",
+      url: "https://steamcommunity.com/app/1091500",
+      appId: "1091500",
+      imageUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1091500/590e0988a2fb79f44d3e31e41fd4949eb76abc41/capsule_184x69.jpg?t=1769690377",
+      artworkUrl: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1091500/590e0988a2fb79f44d3e31e41fd4949eb76abc41/capsule_184x69.jpg?t=1769690377",
+      hoursOnRecord: "65",
+      lastPlayed: "last played on May 31"
+    }
+  ]
+};
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+export function buildSteamRecentActivitySnapshotPayload(nowMs = Date.now(), profileUrl = "") {
+  const payload = clone(STEAM_RECENT_ACTIVITY_SNAPSHOT);
+  const safeProfileUrl = String(profileUrl || payload.profileUrl || "").trim();
+  if (safeProfileUrl) {
+    payload.profileUrl = safeProfileUrl;
+    if (payload.profile && typeof payload.profile === "object") {
+      payload.profile.url = safeProfileUrl;
+    }
+  }
+  payload.returnedAt = new Date(nowMs).toISOString();
+  return payload;
+}

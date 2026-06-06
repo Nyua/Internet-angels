@@ -13,6 +13,9 @@ import {
   runWithTimeout
 } from "../lib/response.js";
 import { fetchSteamRecentActivityPayload, normalizeSteamProfileUrl } from "../lib/steam.js";
+import { buildSteamRecentActivitySnapshotPayload } from "../lib/steam-snapshot.js";
+
+const pendingSteamRecentActivityPayloads = new Map();
 
 function getSteamRouteProfileUrl(env) {
   return normalizeSteamProfileUrl(env?.STEAM_PROFILE_URL || "");
@@ -42,6 +45,41 @@ function hasUsableSteamProfileCache(payload, profileUrl) {
   return Boolean(cachedProfileUrl && cachedProfileUrl === expectedProfileUrl);
 }
 
+async function fetchAndCacheSteamPayload({ env, nowMs, profileUrl, cacheRequest }) {
+  const pendingKey = cacheRequest?.url || "";
+  if (pendingKey && pendingSteamRecentActivityPayloads.has(pendingKey)) {
+    return await pendingSteamRecentActivityPayloads.get(pendingKey);
+  }
+  const payloadPromise = (async () => {
+    const routeTimeoutMs = resolveTimeoutMs(env?.STEAM_ROUTE_TIMEOUT_MS, STEAM_ROUTE_TIMEOUT_MS, {
+      min: 500,
+      max: STEAM_ROUTE_TIMEOUT_MS
+    });
+    const payload = await runWithTimeout(
+      (signal) => fetchSteamRecentActivityPayload(nowMs, { signal, profileUrl }),
+      routeTimeoutMs,
+      "Steam route timed out"
+    );
+    await writeCachedPayload({
+      cache: caches.default,
+      request: cacheRequest,
+      payload,
+      retainTtlSec: STEAM_RETAIN_TTL_SEC
+    });
+    return payload;
+  })();
+  if (pendingKey) {
+    pendingSteamRecentActivityPayloads.set(pendingKey, payloadPromise);
+  }
+  try {
+    return await payloadPromise;
+  } finally {
+    if (pendingKey && pendingSteamRecentActivityPayloads.get(pendingKey) === payloadPromise) {
+      pendingSteamRecentActivityPayloads.delete(pendingKey);
+    }
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   if (request.method !== "GET") {
@@ -69,21 +107,31 @@ export async function onRequest(context) {
     });
   }
 
-  try {
-    const routeTimeoutMs = resolveTimeoutMs(env?.STEAM_ROUTE_TIMEOUT_MS, STEAM_ROUTE_TIMEOUT_MS, {
-      min: 500,
-      max: STEAM_ROUTE_TIMEOUT_MS
+  if (typeof context.waitUntil === "function") {
+    context.waitUntil(fetchAndCacheSteamPayload({
+      env,
+      nowMs,
+      profileUrl,
+      cacheRequest
+    }).catch(() => {}));
+    if (cacheState.payload && cacheState.status === "retained") {
+      return jsonResponse(toStalePayload(cacheState.payload, "PARTIAL"), {
+        status: 200,
+        cacheControl: browserCacheControl(30 * 60)
+      });
+    }
+    return jsonResponse(buildSteamRecentActivitySnapshotPayload(nowMs, profileUrl), {
+      status: 200,
+      cacheControl: browserCacheControl(60)
     });
-    const payload = await runWithTimeout(
-      (signal) => fetchSteamRecentActivityPayload(nowMs, { signal, profileUrl }),
-      routeTimeoutMs,
-      "Steam route timed out"
-    );
-    await writeCachedPayload({
-      cache: caches.default,
-      request: cacheRequest,
-      payload,
-      retainTtlSec: STEAM_RETAIN_TTL_SEC
+  }
+
+  try {
+    const payload = await fetchAndCacheSteamPayload({
+      env,
+      nowMs,
+      profileUrl,
+      cacheRequest
     });
     return jsonResponse(payload, {
       status: 200,

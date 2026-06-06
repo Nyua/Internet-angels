@@ -356,6 +356,7 @@
       .filter(Boolean);
     if (!items.length) return null;
     const profile = snapshot.profile && typeof snapshot.profile === "object" ? snapshot.profile : {};
+    const snapshotUpdatedAt = Date.parse(String(snapshot.fetchedAt || ""));
     return {
       siteId: "steam",
       profile: {
@@ -375,10 +376,11 @@
       ],
       items,
       embeds: {},
-      updatedAt: BASE_SEED_AT,
+      updatedAt: Number.isFinite(snapshotUpdatedAt) ? snapshotUpdatedAt : BASE_SEED_AT + 1,
       freshnessStatus: "CACHED",
-      sourceStatus: "PARTIAL",
-      cachedSnapshot: true
+      sourceStatus: firstNonEmpty(snapshot.sourceStatus, "OK"),
+      cachedSnapshot: true,
+      needsBackgroundRefresh: true
     };
   }
   function buildTwitterSeed() {
@@ -768,7 +770,7 @@
   }
   function pickLastFmImageUrl(images, fallback = "") {
     const list = Array.isArray(images) ? images : [];
-    const sizePriority = ["extralarge", "large", "medium", "small"];
+    const sizePriority = ["mega", "extralarge", "large", "medium", "small"];
     for (const size of sizePriority) {
       const match = list.find((entry) => String(entry?.size || "").toLowerCase() === size);
       const candidate = firstNonEmpty(match?.["#text"], match?.url);
@@ -781,6 +783,24 @@
       if (resolved) return resolved;
     }
     return resolveLastFmImageUrl(fallback, "https://www.last.fm");
+  }
+  function collectArtworkImages(...sources) {
+    const images = [];
+    const seen = /* @__PURE__ */ new Set();
+    const register = (value) => {
+      const url = resolveLastFmImageUrl(value, "https://www.last.fm") || sanitizeUrl(value);
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      images.push(url);
+    };
+    for (const source of sources) {
+      if (Array.isArray(source)) {
+        source.forEach(register);
+      } else {
+        register(source);
+      }
+    }
+    return images;
   }
   function isLastFmGenericImageUrl(url) {
     const normalized = String(url || "").trim().toLowerCase();
@@ -934,6 +954,7 @@
     return {
       sourceStatus: firstNonEmpty(safePayload.sourceStatus, "PARTIAL"),
       stale: Boolean(safePayload.stale),
+      refreshing: Boolean(safePayload.refreshing),
       fetchedAt: firstNonEmpty(safePayload.fetchedAt, ""),
       query: {
         artist: firstNonEmpty(safeQuery.artist, fallbackQuery.artist, ""),
@@ -956,6 +977,12 @@
         summary: firstNonEmpty(safeTrack.summary, ""),
         summaryHasMore: Boolean(safeTrack.summaryHasMore),
         publishedAt: firstNonEmpty(safeTrack.publishedAt, ""),
+        artworkImages: collectArtworkImages(
+          safeTrack.artworkImages,
+          safeTrack.artworkUrl,
+          safeSpotify.artworkUrl,
+          fallbackQuery.artworkUrl
+        ),
         topTags: Array.isArray(safeTrack.topTags) ? safeTrack.topTags.map((entry) => ({
           name: firstNonEmpty(entry?.name, ""),
           url: sanitizeUrl(entry?.url)
@@ -1019,6 +1046,7 @@
     return {
       sourceStatus: firstNonEmpty(safePayload.sourceStatus, "PARTIAL"),
       stale: Boolean(safePayload.stale),
+      refreshing: Boolean(safePayload.refreshing),
       fetchedAt: firstNonEmpty(safePayload.fetchedAt, ""),
       query: {
         artist: firstNonEmpty(safeQuery.artist, fallbackQuery.artist, "")
@@ -1033,6 +1061,7 @@
         playcount: Number.isFinite(Number(safeArtist.playcount)) ? Number(safeArtist.playcount) : 0,
         userPlaycount: Number.isFinite(Number(safeArtist.userPlaycount)) ? Number(safeArtist.userPlaycount) : 0,
         topTrackCount: Number.isFinite(Number(safeArtist.topTrackCount)) ? Number(safeArtist.topTrackCount) : 0,
+        artworkImages: collectArtworkImages(safeArtist.artworkImages, safeArtist.artworkUrl),
         topTags: Array.isArray(safeArtist.topTags) ? safeArtist.topTags.map((entry) => ({
           name: firstNonEmpty(entry?.name, ""),
           url: sanitizeUrl(entry?.url)
@@ -1085,6 +1114,7 @@
     return {
       sourceStatus: firstNonEmpty(safePayload.sourceStatus, "PARTIAL"),
       stale: Boolean(safePayload.stale),
+      refreshing: Boolean(safePayload.refreshing),
       fetchedAt: firstNonEmpty(safePayload.fetchedAt, ""),
       query: {
         artist: firstNonEmpty(safeQuery.artist, fallbackQuery.artist, ""),
@@ -1105,6 +1135,7 @@
         runtimeMs: Number.isFinite(Number(safeAlbum.runtimeMs)) ? Number(safeAlbum.runtimeMs) : 0,
         runtimeLabel: firstNonEmpty(safeAlbum.runtimeLabel, ""),
         trackCount: Number.isFinite(Number(safeAlbum.trackCount)) ? Number(safeAlbum.trackCount) : 0,
+        artworkImages: collectArtworkImages(safeAlbum.artworkImages, safeAlbum.artworkUrl, safeSpotify.artworkUrl),
         topTags: Array.isArray(safeAlbum.topTags) ? safeAlbum.topTags.map((entry) => ({
           name: firstNonEmpty(entry?.name, ""),
           url: sanitizeUrl(entry?.url)
@@ -1431,8 +1462,7 @@
   function buildDiscordStatusDisplay(statusKey, offlineSinceMs, nowMs = Date.now()) {
     const baseLabel = formatDiscordStatus(statusKey);
     if (statusKey !== "offline") return baseLabel;
-    if (!Number.isFinite(offlineSinceMs) || offlineSinceMs <= 0) return baseLabel;
-    return `Last seen ${formatElapsedHumanAgo(Math.max(0, nowMs - offlineSinceMs))}`;
+    return "Last Seen a while ago x_x";
   }
   function readDiscordOfflineSince() {
     try {
@@ -5638,11 +5668,9 @@
     const decorationUrl = sanitizeUrl(
       payloadById.get("discord")?.profile?.decorationUrl || hero?.profile?.decorationUrl || ""
     );
-    const heroName = escapeHtml("Josie");
     const heroOrnament = renderHeroOrnamentMarkup();
     const heroDescription = compact ? "" : renderHeroDescriptionMarkup();
-    const heroNameMarkup = compact ? "" : `<h2 class="steam-hero-name${compact ? " steam-hero-name--compact-mobile" : ""}">${heroName}</h2>`;
-    const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
+    const heroOrnamentMarkup = compact ? "" : `<div class="steam-hero-ornament steam-hero-ornament--name-slot${compact ? " steam-hero-ornament--compact-mobile" : ""}" aria-hidden="true">${heroOrnament}</div>`;
     const avatarWrapClass = [
       "steam-hero-avatar-wrap",
       decorationUrl ? "steam-hero-avatar-wrap--decorated" : "",
@@ -5661,7 +5689,6 @@
         ${avatarMarkup}
         <div class="steam-hero-copy${compact ? " steam-hero-copy--compact-mobile" : ""}">
           ${heroDescription ? `<p class="steam-hero-description">${heroDescription}</p>` : ""}
-          ${heroNameMarkup}
           ${heroOrnamentMarkup}
         </div>
       </div>
@@ -6097,48 +6124,10 @@
       </div>
     `;
   }
-  function deriveArtworkTintRgb(seed) {
-    let hash = 0;
-    const source = String(seed || "");
-    for (let index = 0; index < source.length; index += 1) {
-      hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
-    }
-    const hue = hash % 360;
-    const saturation = 58 + hash % 18;
-    const lightness = 46 + hash % 10;
-    const chroma = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100;
-    const huePrime = hue / 60;
-    const x = chroma * (1 - Math.abs(huePrime % 2 - 1));
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    if (huePrime < 1) {
-      r = chroma;
-      g = x;
-    } else if (huePrime < 2) {
-      r = x;
-      g = chroma;
-    } else if (huePrime < 3) {
-      g = chroma;
-      b = x;
-    } else if (huePrime < 4) {
-      g = x;
-      b = chroma;
-    } else if (huePrime < 5) {
-      r = x;
-      b = chroma;
-    } else {
-      r = chroma;
-      b = x;
-    }
-    const m = lightness / 100 - chroma / 2;
-    return [r, g, b].map((channel) => Math.round((channel + m) * 255));
-  }
   function renderLastFmPanelAmbientAttributes(imageUrl) {
     const safeImageUrl = sanitizeUrl(imageUrl);
     if (!safeImageUrl) return "";
-    const tintRgb = deriveArtworkTintRgb(safeImageUrl).join(", ");
-    return ` data-has-ambient-light="true" style="--lastfm-track-panel-ambient-image: url('${escapeHtml(safeImageUrl)}'); --lastfm-track-panel-artwork-color-rgb: ${escapeHtml(tintRgb)};"`;
+    return ` data-has-ambient-light="true" style="--lastfm-track-panel-ambient-image: url('${escapeHtml(safeImageUrl)}');"`;
   }
   function renderLastFmSummarySection(title, summary, sourceUrl, hasMore) {
     const safeSummary = firstNonEmpty(summary, "");
@@ -6265,30 +6254,23 @@
   }
   function renderLastFmPanelArtFlip(options = {}) {
     const artworkUrl = sanitizeUrl(options.artworkUrl);
+    const artworkImages = collectArtworkImages(options.artworkImages, artworkUrl);
     const fallbackGlyph = firstNonEmpty(options.fallbackGlyph, "♫");
-    const toggleLabel = firstNonEmpty(options.toggleLabel, "Show panel actions");
-    const backLabel = firstNonEmpty(options.backLabel, "Panel actions");
-    const actions = Array.isArray(options.actions) ? options.actions.filter(Boolean) : [];
+    const toggleLabel = firstNonEmpty(options.toggleLabel, "Open artwork fullscreen");
+    const artworkImagesAttr = escapeHtml(JSON.stringify(artworkImages));
     return `
-      <div class="lastfm-track-panel-art lastfm-track-panel-art--flip" data-lastfm-panel-art-anchor data-panel-face="front">
+      <div class="lastfm-track-panel-art lastfm-track-panel-art--fullscreen" data-lastfm-panel-art-anchor data-panel-face="front" data-lastfm-panel-art-images="${artworkImagesAttr}">
         <div class="lastfm-track-panel-art-flipper">
           <div class="lastfm-track-panel-art-face lastfm-track-panel-art-face--front">
             <button
               class="lastfm-track-panel-art-toggle"
               type="button"
-              data-lastfm-panel-art-toggle
+              data-lastfm-panel-art-fullscreen
               aria-label="${escapeHtml(toggleLabel)}"
-              aria-pressed="false"
+              data-lastfm-panel-art-image="${escapeHtml(artworkUrl)}"
             >
               ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : `<span class="lastfm-track-panel-art-fallback" aria-hidden="true">${escapeHtml(fallbackGlyph)}</span>`}
             </button>
-          </div>
-          <div class="lastfm-track-panel-art-face lastfm-track-panel-art-face--back">
-            <div class="lastfm-track-panel-art-back" data-lastfm-panel-art-back aria-hidden="true" aria-label="${escapeHtml(backLabel)}">
-              <div class="lastfm-track-panel-art-action-stack">
-                ${actions.join("")}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -6307,7 +6289,6 @@
     if (safeViewModel.state === "error") {
       return `
       <div class="lastfm-track-panel-window${mobileClassName} lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}">
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-error">
           <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(titleText)}</h3>
           <p class="lastfm-track-panel-empty">${escapeHtml(firstNonEmpty(safeViewModel.errorMessage, "This panel could not be loaded right now. Try again in a moment."))}</p>
@@ -6329,7 +6310,6 @@
     const loadingClassName = safeViewModel.state === "loading" ? " is-loading" : "";
     return `
       <div class="lastfm-track-panel-window lastfm-track-panel-window--focus-menu${loadingClassName}${mobileClassName}" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title" data-panel-type="${escapeHtml(panelType)}" data-panel-layout="${escapeHtml(panelLayoutKey)}"${ambientAttrs}>
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-body">
           <div class="${escapeHtml(layoutClassName)} lastfm-track-panel-layout--focus-menu">
             <div class="lastfm-track-panel-primary">
@@ -6414,8 +6394,9 @@
     const focusMediaMarkup = previewPlayerMarkup ? "" : spotifySlotMarkup;
     const artMarkup = renderLastFmPanelArtFlip({
       artworkUrl,
+      artworkImages: track.artworkImages,
       fallbackGlyph: "♫",
-      toggleLabel: "Show track actions",
+      toggleLabel: "Open track artwork fullscreen",
       backLabel: "Track actions",
       actions: [
         track.lastfmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : "",
@@ -6423,6 +6404,12 @@
         spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
       ]
     });
+    const trackActionButtonsMarkup = [
+      track.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(track.lastfmUrl)}">Open Track on Last.fm</button>` : "",
+      track.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(track.artistLastFmUrl)}">Open Artist on Last.fm</button>` : "",
+      spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
+    ].filter(Boolean).join("");
+    const actionsMarkup = trackActionButtonsMarkup ? `<div class="lastfm-track-panel-actions">${trackActionButtonsMarkup}</div>` : "";
     const summaryMarkup = renderLastFmSummarySection("Yap About this Track", track.summary, track.lastfmUrl, track.summaryHasMore);
     const scrobbleTotalLabel = formatCountNumber(scrobbles.total || track.userPlaycount, "0");
     const historyMarkup = `
@@ -6494,6 +6481,7 @@
       primaryMarkup: artMarkup,
       mediaControlMarkup: previewPlayerMarkup,
       focusMarkup,
+      actionsMarkup,
       stackMarkup: `${summaryMarkup}`
     });
   }
@@ -6635,7 +6623,6 @@
     `;
     return `
       <div class="lastfm-track-panel-window" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title"${ambientPanelAttrs}>
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-body">
           <div class="lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary">
             <div class="lastfm-track-panel-primary">
@@ -6672,7 +6659,6 @@
   function renderLastFmAlbumPanelSkeleton(query = {}) {
     return `
       <div class="lastfm-track-panel-window is-loading" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-layout lastfm-track-panel-layout--compact-primary">
           <div class="lastfm-track-panel-primary">
             <div class="lastfm-track-panel-art lastfm-track-panel-skeleton" aria-hidden="true"></div>
@@ -6697,7 +6683,6 @@
   function renderLastFmAlbumPanelError(query = {}) {
     return `
       <div class="lastfm-track-panel-window lastfm-track-panel-window--error" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title">
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-error">
           <p class="lastfm-track-panel-kicker">Album details unavailable</p>
           <h3 class="lastfm-track-panel-title" id="lastfm-track-panel-title">${escapeHtml(firstNonEmpty(query.album, "Album details"))}</h3>
@@ -6724,8 +6709,9 @@
     const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
     const artMarkup = renderLastFmPanelArtFlip({
       artworkUrl,
+      artworkImages: album.artworkImages,
       fallbackGlyph: "♫",
-      toggleLabel: "Show album actions",
+      toggleLabel: "Open album artwork fullscreen",
       backLabel: "Album actions",
       actions: [
         album.lastfmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(album.lastfmUrl)}">Open Album on Last.fm</button>` : "",
@@ -6819,7 +6805,6 @@
     `;
     return `
       <div class="lastfm-track-panel-window" role="dialog" aria-modal="true" aria-labelledby="lastfm-track-panel-title"${ambientPanelAttrs}>
-        <button class="lastfm-track-panel-close" type="button" aria-label="Close this dialog" data-track-panel-close>&times;</button>
         <div class="lastfm-track-panel-body">
           <div class="lastfm-track-panel-layout lastfm-track-panel-layout--top-heavy lastfm-track-panel-layout--compact-primary">
             <div class="lastfm-track-panel-primary">
@@ -6861,6 +6846,12 @@
     const inlineTagsMarkup = renderLastFmInlineDetailTagMarkup(artist.topTags, "Artist genres");
     const summaryMarkup = renderLastFmSummarySection("Yap About this Artist", artist.summary, artist.lastfmUrl, artist.summaryHasMore);
     const artistPlaycountLabel = formatCountNumber(artist.userPlaycount, "0");
+    const artMarkup = renderLastFmPanelArtFlip({
+      artworkUrl,
+      artworkImages: artist.artworkImages,
+      fallbackGlyph: "*",
+      toggleLabel: "Open artist artwork fullscreen"
+    });
     const artistActionMarkup = artist.lastfmUrl ? `
       <div class="lastfm-track-panel-actions lastfm-track-panel-actions--under-art">
         <button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(artist.lastfmUrl)}">Open Artist on Last.fm</button>
@@ -6925,11 +6916,7 @@
         <span>Last fm artist profile</span>
         ${inlineTagsMarkup}
       `,
-      primaryMarkup: `
-        <div class="lastfm-track-panel-art" data-lastfm-panel-art-anchor>
-          ${artworkUrl ? `<img class="lastfm-track-panel-art-image" src="${escapeHtml(artworkUrl)}" alt="" loading="eager" decoding="async" />` : '<span class="lastfm-track-panel-art-fallback" aria-hidden="true">&#9733;</span>'}
-        </div>
-      `,
+      primaryMarkup: artMarkup,
       focusMarkup,
       actionsMarkup: artistActionMarkup,
       stackMarkup: `${summaryMarkup}${albumCatalogMarkup}`
@@ -6989,8 +6976,9 @@
     const spotifyButtonAppUrl = spotify.matchStatus === "matched" ? resolveSpotifyTrackAppUrl(spotify) : "";
     const artMarkup = renderLastFmPanelArtFlip({
       artworkUrl,
+      artworkImages: album.artworkImages,
       fallbackGlyph: "♫",
-      toggleLabel: "Show album actions",
+      toggleLabel: "Open album artwork fullscreen",
       backLabel: "Album actions",
       actions: [
         album.lastfmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(album.lastfmUrl)}">Open Album on Last.fm</button>` : "",
@@ -6998,6 +6986,12 @@
         spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost lastfm-track-panel-cta--stacked" type="button" tabindex="-1" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
       ]
     });
+    const albumActionButtonsMarkup = [
+      album.lastfmUrl ? `<button class="lastfm-track-panel-cta" type="button" data-open-url="${escapeHtml(album.lastfmUrl)}">Open Album on Last.fm</button>` : "",
+      album.artistLastFmUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(album.artistLastFmUrl)}">Open Artist on Last.fm</button>` : "",
+      spotifyButtonUrl ? `<button class="lastfm-track-panel-cta lastfm-track-panel-cta--ghost" type="button" data-open-url="${escapeHtml(spotifyButtonUrl)}"${spotifyButtonAppUrl ? ` data-open-app-url="${escapeHtml(spotifyButtonAppUrl)}"` : ""}>${escapeHtml(spotifyButtonLabel)}</button>` : ""
+    ].filter(Boolean).join("");
+    const actionsMarkup = albumActionButtonsMarkup ? `<div class="lastfm-track-panel-actions">${albumActionButtonsMarkup}</div>` : "";
     const summaryMarkup = renderLastFmSummarySection("Yap About this Album", album.summary, album.lastfmUrl, album.summaryHasMore);
     const trackListMarkup = `
       <section class="lastfm-track-panel-history lastfm-track-panel-history--album">
@@ -7067,6 +7061,7 @@
       `,
       primaryMarkup: artMarkup,
       focusMarkup,
+      actionsMarkup,
       stackMarkup: `${summaryMarkup}${trackListMarkup}`
     });
   }
@@ -7415,6 +7410,10 @@
     let lastFmTrackPanelSceneTimer = 0;
     const lastFmTrackPanelArtworkParallaxCleanup = /* @__PURE__ */ new WeakMap();
     const lastFmTrackPanelArtworkParallaxState = /* @__PURE__ */ new WeakMap();
+    let lastFmArtworkFullscreenRoot = null;
+    let lastFmArtworkFullscreenImages = [];
+    let lastFmArtworkFullscreenIndex = 0;
+    let lastFmArtworkFullscreenSpin = 0;
     let lastFmPanelOrientationParallaxPermissionPromise = null;
     let lastFmPanelOrientationParallaxPermissionState = "";
     let lastFmTrackPanelArtworkLaunchCleanup = null;
@@ -9072,7 +9071,7 @@
       };
     }
     function buildLastFmPanelSnapshotLoadState(panelType, definition, normalizedQuery) {
-      if (!definition || shouldUseMobileLastFmPanels()) return null;
+      if (!definition) return null;
       const safePanelType = String(panelType || "").trim().toLowerCase();
       const payload = safePanelType === "artist"
         ? buildLastFmArtistPanelSnapshotPayload(normalizedQuery)
@@ -9080,10 +9079,14 @@
           ? buildLastFmAlbumPanelSnapshotPayload(normalizedQuery)
           : null;
       if (!payload) return null;
+      const cacheKey = definition.buildCacheKey(normalizedQuery);
+      const normalizedPayload = definition.normalizePayload(payload, normalizedQuery);
+      normalizedPayload.clientSnapshot = true;
+      rememberLastFmPanelDetails(cacheKey, normalizedPayload);
       return {
-        cacheKey: definition.buildCacheKey(normalizedQuery),
+        cacheKey,
         normalizedQuery,
-        payload: definition.normalizePayload(payload, normalizedQuery),
+        payload: normalizedPayload,
         snapshot: true
       };
     }
@@ -9410,10 +9413,6 @@
     function getLastFmTrackPanelBuildTargets(windowElement) {
       if (!(windowElement instanceof HTMLElement)) return [];
       const targets = [];
-      const closeButton = windowElement.querySelector(".lastfm-track-panel-close");
-      if (closeButton instanceof HTMLElement) {
-        targets.push(closeButton);
-      }
       const secondary = windowElement.querySelector(".lastfm-track-panel-secondary");
       if (secondary instanceof HTMLElement) {
         targets.push(...Array.from(secondary.children).filter((child) => child instanceof HTMLElement));
@@ -9532,8 +9531,7 @@
         ".lastfm-track-panel-art-face--front .lastfm-track-panel-art-fallback",
         ".lastfm-track-panel-art-image",
         ".lastfm-track-panel-art-fallback",
-        ".lastfm-track-panel-art-toggle",
-        ".lastfm-track-panel-art-back"
+        ".lastfm-track-panel-art-toggle"
       ];
       for (const selector of selectors) {
         const candidate = anchor.querySelector(selector);
@@ -9743,9 +9741,9 @@
       if (!target) return null;
       const shell = target.surface instanceof HTMLElement ? target.surface : target.anchor;
       if (!(shell instanceof HTMLElement)) return null;
-      const media = shell.matches(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle, .lastfm-track-panel-art-back")
+      const media = shell.matches(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle")
         ? shell
-        : shell.querySelector(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle, .lastfm-track-panel-art-back");
+        : shell.querySelector(".lastfm-track-panel-art-image, .lastfm-track-panel-art-fallback, .lastfm-track-panel-art-toggle");
       return {
         shell,
         media: media instanceof Element ? media : shell,
@@ -9827,7 +9825,7 @@
         if (panelRevealed) return;
         panelRevealed = true;
         revealLastFmTrackPanelOverlay(panel, definition.openSoundSource, { preserveArtworkState: Boolean(stagedTargetAnchor) });
-        const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+        const focusTarget = getLastFmTrackPanelFocusTarget();
         if (focusTarget instanceof HTMLElement) {
           focusTarget.focus({ preventScroll: true });
         }
@@ -9870,7 +9868,7 @@
         }
         revealPanelAfterArtwork();
         await releaseLastFmTrackPanelArtworkLaunch();
-        const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+        const focusTarget = getLastFmTrackPanelFocusTarget();
         if (focusTarget instanceof HTMLElement) {
           focusTarget.focus({ preventScroll: true });
         }
@@ -9890,7 +9888,7 @@
         return true;
       }
       await releaseLastFmTrackPanelArtworkLaunch();
-      const focusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+      const focusTarget = getLastFmTrackPanelFocusTarget();
       if (focusTarget instanceof HTMLElement) {
         focusTarget.focus({ preventScroll: true });
       }
@@ -10108,7 +10106,6 @@
           title="Spotify preview for ${escapeHtml(trackTitle || "track")}"
           loading="lazy"
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          allowfullscreen
           scrolling="no"
         ></iframe>
       `;
@@ -10134,7 +10131,6 @@
       }
       iframe.classList.add("lastfm-track-panel-spotify-embed");
       iframe.setAttribute("allow", "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture");
-      iframe.setAttribute("allowfullscreen", "");
       iframe.setAttribute("scrolling", "no");
       iframe.style.overflow = "hidden";
       iframe.style.scrollbarWidth = "none";
@@ -10164,7 +10160,9 @@
       await destroySpotifyEmbedController({ resumeShuffle: true });
       const loadToken = ++lastFmSpotifyEmbedLoadToken;
       const embedSlot = embedTarget.closest(".lastfm-track-panel-spotify-slot");
-      const embedHeight = embedSlot instanceof HTMLElement && embedSlot.classList.contains("lastfm-track-panel-spotify-slot--mobile") ? 152 : 80;
+      const embedHeight = embedSlot instanceof HTMLElement
+        ? Math.max(86, Math.round(embedSlot.getBoundingClientRect().height || (embedSlot.classList.contains("lastfm-track-panel-spotify-slot--mobile") ? 152 : 148)))
+        : 148;
       try {
         const iframeApi = await ensureSpotifyIframeApi();
         if (disposed || lastFmTrackPanelActiveKey !== cacheKey || !(embedTarget instanceof HTMLElement) || !embedTarget.isConnected) {
@@ -11054,22 +11052,28 @@
         let orientationAttached = false;
         let baselineBeta = null;
         let baselineGamma = null;
+        const pointerTarget = artShell.closest(".lastfm-track-panel-primary") || artShell;
         const onPointerMove = (event) => {
           if (event instanceof PointerEvent && event.pointerType === "touch") return;
           if (!(event instanceof MouseEvent || event instanceof PointerEvent)) return;
-          if (!artShell.isConnected || artShell.classList.contains("is-flipped")) return;
+          if (!artShell.isConnected) return;
           const rect = artShell.getBoundingClientRect();
           if (!(rect.width > 0 && rect.height > 0)) return;
-          const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-          const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-          const tiltX = (0.5 - y) * 8;
-          const tiltY = (x - 0.5) * 8;
+          const hitboxPx = 5;
+          const hitLeft = rect.left - hitboxPx;
+          const hitTop = rect.top - hitboxPx;
+          const hitWidth = rect.width + hitboxPx * 2;
+          const hitHeight = rect.height + hitboxPx * 2;
+          const x = clamp((event.clientX - hitLeft) / hitWidth, 0, 1);
+          const y = clamp((event.clientY - hitTop) / hitHeight, 0, 1);
+          const tiltX = (0.5 - y) * 20;
+          const tiltY = (x - 0.5) * 20;
           setLastFmPanelArtworkParallaxTarget(artShell, {
             rotateX: tiltX,
             rotateY: tiltY,
             shineX: x * 100,
             shineY: y * 100,
-            scale: 1.018
+            scale: 1
           }, true);
           artShell.dataset.artworkParallaxInput = "pointer";
         };
@@ -11081,7 +11085,7 @@
         };
         const onDeviceOrientation = (event) => {
           if (!(event instanceof DeviceOrientationEvent)) return;
-          if (!artShell.isConnected || artShell.classList.contains("is-flipped")) return;
+          if (!artShell.isConnected) return;
           const beta = Number(event.beta);
           const gamma = Number(event.gamma);
           if (!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
@@ -11093,10 +11097,10 @@
           const yawDelta = clamp((gamma - baselineGamma) / 18, -1, 1);
           setLastFmPanelArtworkParallaxTarget(artShell, {
             rotateX: pitchDelta * -7,
-            rotateY: yawDelta * 7,
+            rotateY: yawDelta * 12,
             shineX: 50 + yawDelta * 24,
             shineY: 28 + pitchDelta * 18,
-            scale: 1.014
+            scale: 1
           }, true);
           artShell.dataset.artworkParallaxInput = "orientation";
         };
@@ -11108,10 +11112,11 @@
           document.addEventListener("visibilitychange", resetOrientationBaseline);
         };
         if (canUsePointerParallax) {
-          artShell.addEventListener("pointermove", onPointerMove, { passive: true });
-          artShell.addEventListener("mousemove", onPointerMove, { passive: true });
-          artShell.addEventListener("pointerleave", onPointerLeave, { passive: true });
-          artShell.addEventListener("mouseleave", onPointerLeave, { passive: true });
+          pointerTarget.addEventListener("pointermove", onPointerMove, { passive: true });
+          pointerTarget.addEventListener("mousemove", onPointerMove, { passive: true });
+          pointerTarget.addEventListener("pointerleave", onPointerLeave, { passive: true });
+          pointerTarget.addEventListener("mouseleave", onPointerLeave, { passive: true });
+          artShell.dataset.artworkParallaxHitbox = "5";
         }
         if (canUseOrientationParallax) {
           requestLastFmPanelOrientationParallaxPermission().then((granted) => {
@@ -11122,20 +11127,37 @@
         artShell.addEventListener("blur", onPointerLeave, true);
         lastFmTrackPanelArtworkParallaxCleanup.set(artShell, () => {
           disposedParallax = true;
-          artShell.removeEventListener("pointermove", onPointerMove);
-          artShell.removeEventListener("mousemove", onPointerMove);
-          artShell.removeEventListener("pointerleave", onPointerLeave);
-          artShell.removeEventListener("mouseleave", onPointerLeave);
+          pointerTarget.removeEventListener("pointermove", onPointerMove);
+          pointerTarget.removeEventListener("mousemove", onPointerMove);
+          pointerTarget.removeEventListener("pointerleave", onPointerLeave);
+          pointerTarget.removeEventListener("mouseleave", onPointerLeave);
           window.removeEventListener("deviceorientation", onDeviceOrientation);
           window.removeEventListener("orientationchange", resetOrientationBaseline);
           document.removeEventListener("visibilitychange", resetOrientationBaseline);
           artShell.removeEventListener("blur", onPointerLeave, true);
           resetLastFmPanelArtworkParallax(artShell);
           delete artShell.dataset.artworkParallaxInput;
+          delete artShell.dataset.artworkParallaxHitbox;
           lastFmTrackPanelArtworkParallaxState.delete(artShell);
         });
         resetLastFmPanelArtworkParallax(artShell);
       });
+    }
+    function getLastFmTrackPanelFocusTarget(scene = getLastFmTrackPanelCurrentScene()) {
+      if (!(scene instanceof HTMLElement)) return null;
+      const target = scene.querySelector([
+        "[data-lastfm-panel-art-fullscreen]",
+        "[data-track-preview-toggle]",
+        "[data-lastfm-history-jump]",
+        ".lastfm-track-panel-cta",
+        ".lastfm-track-panel-inline-link",
+        ".lastfm-track-panel-related-button",
+        "button:not([disabled])",
+        "a[href]",
+        "input:not([disabled])",
+        "[tabindex]:not([tabindex='-1'])"
+      ].join(", "));
+      return target instanceof HTMLElement ? target : null;
     }
     function teardownLastFmPanelArtworkParallax(scene) {
       if (!(scene instanceof HTMLElement)) return;
@@ -11260,42 +11282,121 @@
       }
       hydrateLastFmTrackPanelScene(currentScene);
     }
-    function setLastFmPanelArtFace(artShell, nextFace, options = {}) {
-      if (!(artShell instanceof HTMLElement)) return;
-      const face = nextFace === "back" ? "back" : "front";
-      if ((artShell.dataset.panelFace || "front") === face) return;
-      const isBack = face === "back";
-      if (isBack) {
-        resetLastFmPanelArtworkParallax(artShell);
+    function parseLastFmPanelArtworkImages(artShell, trigger) {
+      const parsed = [];
+      const register = (value) => {
+        const url = sanitizeUrl(value) || resolveLastFmImageUrl(value, "https://www.last.fm");
+        if (!url || parsed.includes(url)) return;
+        parsed.push(url);
+      };
+      if (artShell instanceof HTMLElement) {
+        try {
+          const rawImages = JSON.parse(String(artShell.dataset.lastfmPanelArtImages || "[]"));
+          if (Array.isArray(rawImages)) {
+            rawImages.forEach(register);
+          }
+        } catch {
+        }
       }
-      playInteractionSfx("flip_soft", isBack ? "lastfmPanelArtFlipBack" : "lastfmPanelArtFlipFront");
-      artShell.classList.toggle("is-flipped", isBack);
-      artShell.dataset.panelFace = face;
-      const toggle = artShell.querySelector("[data-lastfm-panel-art-toggle]");
-      if (toggle instanceof HTMLButtonElement) {
-        toggle.setAttribute("aria-pressed", isBack ? "true" : "false");
-        toggle.tabIndex = isBack ? -1 : 0;
+      if (trigger instanceof HTMLElement) {
+        register(trigger.dataset.lastfmPanelArtImage);
       }
-      artShell.querySelectorAll(".lastfm-track-panel-cta").forEach((button) => {
-        if (button instanceof HTMLButtonElement) {
-          button.tabIndex = isBack ? 0 : -1;
+      const image = artShell instanceof HTMLElement ? artShell.querySelector(".lastfm-track-panel-art-image") : null;
+      if (image instanceof HTMLImageElement) {
+        register(image.currentSrc || image.src);
+      }
+      return parsed;
+    }
+    function ensureLastFmArtworkFullscreenOverlay() {
+      if (lastFmArtworkFullscreenRoot instanceof HTMLElement) return lastFmArtworkFullscreenRoot;
+      const overlay = document.createElement("div");
+      overlay.className = "lastfm-artwork-fullscreen";
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.innerHTML = `
+        <div class="lastfm-artwork-fullscreen-backdrop" data-lastfm-artwork-fullscreen-close></div>
+        <div class="lastfm-artwork-fullscreen-stage">
+          <button class="lastfm-artwork-fullscreen-plane" type="button" data-lastfm-artwork-fullscreen-plane aria-label="Spin artwork">
+            <img class="lastfm-artwork-fullscreen-image" data-lastfm-artwork-fullscreen-image alt="" decoding="async" />
+          </button>
+        </div>
+      `;
+      overlay.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest("[data-lastfm-artwork-fullscreen-plane]")) {
+          event.preventDefault();
+          spinLastFmArtworkFullscreen();
+          return;
+        }
+        if (target.closest("[data-lastfm-artwork-fullscreen-close]")) {
+          event.preventDefault();
+          closeLastFmArtworkFullscreen();
         }
       });
-      const backFace = artShell.querySelector("[data-lastfm-panel-art-back]");
-      if (backFace instanceof HTMLElement) {
-        backFace.setAttribute("aria-hidden", isBack ? "false" : "true");
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || overlay.hidden) return;
+        closeLastFmArtworkFullscreen();
+      });
+      document.body.appendChild(overlay);
+      lastFmArtworkFullscreenRoot = overlay;
+      return overlay;
+    }
+    function setLastFmArtworkFullscreenImage(url) {
+      const overlay = ensureLastFmArtworkFullscreenOverlay();
+      const image = overlay.querySelector("[data-lastfm-artwork-fullscreen-image]");
+      if (image instanceof HTMLImageElement) {
+        image.src = sanitizeUrl(url);
       }
-      if (!options.focusTarget) return;
-      if (isBack) {
-        const firstCta = artShell.querySelector(".lastfm-track-panel-cta");
-        if (firstCta instanceof HTMLElement) {
-          firstCta.focus({ preventScroll: true });
-        }
-        return;
+    }
+    function openLastFmArtworkFullscreen(trigger) {
+      if (!(trigger instanceof HTMLElement)) return;
+      const artShell = trigger.closest(".lastfm-track-panel-art");
+      const images = parseLastFmPanelArtworkImages(artShell, trigger);
+      if (!images.length) return;
+      lastFmArtworkFullscreenImages = images;
+      lastFmArtworkFullscreenIndex = 0;
+      lastFmArtworkFullscreenSpin = 0;
+      const overlay = ensureLastFmArtworkFullscreenOverlay();
+      const plane = overlay.querySelector("[data-lastfm-artwork-fullscreen-plane]");
+      if (plane instanceof HTMLElement) {
+        plane.style.setProperty("--lastfm-artwork-fullscreen-spin", "0deg");
+        plane.dataset.spinCount = "0";
       }
-      if (toggle instanceof HTMLElement) {
-        toggle.focus({ preventScroll: true });
+      setLastFmArtworkFullscreenImage(images[0]);
+      overlay.hidden = false;
+      overlay.setAttribute("aria-hidden", "false");
+      overlay.classList.add("is-open");
+      document.body?.classList.add("lastfm-artwork-fullscreen-open");
+      playInteractionSfx("open_soft", "lastfmArtworkFullscreen");
+    }
+    function closeLastFmArtworkFullscreen() {
+      const overlay = lastFmArtworkFullscreenRoot instanceof HTMLElement ? lastFmArtworkFullscreenRoot : null;
+      if (!(overlay instanceof HTMLElement) || overlay.hidden) return;
+      overlay.classList.remove("is-open");
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.hidden = true;
+      document.body?.classList.remove("lastfm-artwork-fullscreen-open");
+      lastFmArtworkFullscreenImages = [];
+      lastFmArtworkFullscreenIndex = 0;
+      playInteractionSfx("close_soft", "lastfmArtworkFullscreen");
+    }
+    function spinLastFmArtworkFullscreen() {
+      const overlay = lastFmArtworkFullscreenRoot instanceof HTMLElement ? lastFmArtworkFullscreenRoot : null;
+      if (!(overlay instanceof HTMLElement) || overlay.hidden) return;
+      const plane = overlay.querySelector("[data-lastfm-artwork-fullscreen-plane]");
+      if (!(plane instanceof HTMLElement)) return;
+      const images = lastFmArtworkFullscreenImages.length ? lastFmArtworkFullscreenImages : [];
+      if (images.length) {
+        lastFmArtworkFullscreenIndex = (lastFmArtworkFullscreenIndex + 1) % images.length;
+        window.setTimeout(() => {
+          setLastFmArtworkFullscreenImage(images[lastFmArtworkFullscreenIndex]);
+        }, 120);
       }
+      lastFmArtworkFullscreenSpin += 1;
+      plane.style.setProperty("--lastfm-artwork-fullscreen-spin", `${lastFmArtworkFullscreenSpin * 180}deg`);
+      plane.dataset.spinCount = String(lastFmArtworkFullscreenSpin);
+      playInteractionSfx("flip_soft", "lastfmArtworkFullscreenSpin");
     }
     function syncLastFmHistoryJumpButton(button, nextState) {
       if (!(button instanceof HTMLElement)) return;
@@ -11339,6 +11440,7 @@
       overlay.innerHTML = `
         <div class="lastfm-track-panel-backdrop" data-track-panel-close></div>
         <div class="lastfm-track-panel-shell">
+          <div class="lastfm-track-panel-dismiss-hint" aria-hidden="true">click outside to close</div>
           <div class="lastfm-track-panel-explosion-overlay" data-lastfm-track-panel-explosion-overlay aria-hidden="true">
             <img class="lastfm-track-panel-explosion-overlay-image" data-lastfm-track-panel-explosion-overlay-image alt="" />
           </div>
@@ -11370,18 +11472,10 @@
           handleLastFmHistoryJumpButton(historyJumpButton);
           return;
         }
-        const artToggle = target.closest("[data-lastfm-panel-art-toggle]");
-        if (artToggle instanceof HTMLElement) {
-          if (shouldUseMobileLastFmPanels()) return;
+        const artFullscreen = target.closest("[data-lastfm-panel-art-fullscreen]");
+        if (artFullscreen instanceof HTMLElement) {
           event.preventDefault();
-          setLastFmPanelArtFace(artToggle.closest(".lastfm-track-panel-art--flip"), "back", { focusTarget: true });
-          return;
-        }
-        const artBack = target.closest("[data-lastfm-panel-art-back]");
-        if (artBack instanceof HTMLElement && !target.closest(".lastfm-track-panel-cta")) {
-          if (shouldUseMobileLastFmPanels()) return;
-          event.preventDefault();
-          setLastFmPanelArtFace(artBack.closest(".lastfm-track-panel-art--flip"), "front", { focusTarget: true });
+          openLastFmArtworkFullscreen(artFullscreen);
           return;
         }
         const artistButton = target.closest("[data-lastfm-artist-name]");
@@ -11496,6 +11590,7 @@
       }
       lastFmTrackPanelAbortController?.abort();
       lastFmTrackPanelAbortController = null;
+      closeLastFmArtworkFullscreen();
       clearLastFmTrackPanelSceneTimer();
       clearLastFmTrackPanelSceneSettleTimer();
       clearLastFmTrackPanelBuildReveal();
@@ -11559,7 +11654,9 @@
         const cachedPayload = lastFmTrackDetailsCache.get(cacheKey);
         lastFmTrackDetailsCache.delete(cacheKey);
         lastFmTrackDetailsCache.set(cacheKey, cachedPayload);
-        return { cacheKey, normalizedQuery, payload: cachedPayload };
+        if (!cachedPayload?.clientSnapshot) {
+          return { cacheKey, normalizedQuery, payload: cachedPayload };
+        }
       }
       if (lastFmTrackDetailsInflight.has(cacheKey)) {
         return await lastFmTrackDetailsInflight.get(cacheKey);
@@ -11585,6 +11682,10 @@
           { cacheMode: "default" }
         );
         const normalizedPayload = definition.normalizePayload(payload, normalizedQuery);
+        const retainedPayload = lastFmTrackDetailsCache.get(cacheKey);
+        if (normalizedPayload.refreshing && retainedPayload) {
+          return { cacheKey, normalizedQuery, payload: retainedPayload };
+        }
         rememberLastFmPanelDetails(cacheKey, normalizedPayload);
         return { cacheKey, normalizedQuery, payload: normalizedPayload };
       })();
@@ -11706,7 +11807,7 @@
       }
       playInteractionSfx("open_soft", definition.openSoundSource);
       setTrackPanelOpenState(true);
-      const initialFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+      const initialFocusTarget = getLastFmTrackPanelFocusTarget();
       if (initialFocusTarget instanceof HTMLElement) {
         initialFocusTarget.focus({ preventScroll: true });
       }
@@ -11739,7 +11840,7 @@
           if (lastFmTrackPanelActiveKey !== loadState.cacheKey) return;
           settleLastFmTrackPanelScene(getLastFmTrackPanelCurrentScene());
         }
-        const nextFocusTarget = getLastFmTrackPanelCurrentScene()?.querySelector(".lastfm-track-panel-close");
+        const nextFocusTarget = getLastFmTrackPanelFocusTarget();
         if (nextFocusTarget instanceof HTMLElement) {
           nextFocusTarget.focus({ preventScroll: true });
         }
@@ -11932,7 +12033,7 @@
       const profile = payload.profile && typeof payload.profile === "object" ? payload.profile : {};
       const statusKey = normalizeDiscordStatusKey(profile.statusKey);
       const offlineSince = Number(profile.offlineSince);
-      if (statusKey !== "offline" || !Number.isFinite(offlineSince) || offlineSince <= 0) {
+      if (statusKey !== "offline") {
         return payload;
       }
       const statusText = buildDiscordStatusDisplay(statusKey, offlineSince, nowMs);
@@ -11961,18 +12062,9 @@
       clearDiscordStatusMinuteTimer();
       const discordPayload = payloadById instanceof Map ? payloadById.get("discord") : null;
       const profile = discordPayload?.profile && typeof discordPayload.profile === "object" ? discordPayload.profile : {};
-      const offlineSince = Number(profile.offlineSince);
-      if (normalizeDiscordStatusKey(profile.statusKey) !== "offline" || !Number.isFinite(offlineSince) || offlineSince <= 0) {
+      if (normalizeDiscordStatusKey(profile.statusKey) !== "offline") {
         return;
       }
-      const elapsedMs = Math.max(0, Date.now() - offlineSince);
-      const nextMinuteMs = 6e4 - elapsedMs % 6e4 + 120;
-      discordStatusMinuteTimer = window.setTimeout(() => {
-        discordStatusMinuteTimer = 0;
-        if (!disposed) {
-          render(snapshot);
-        }
-      }, Math.max(1e3, nextMinuteMs));
     }
     function render(snapshot) {
       if (disposed) return;
@@ -12322,10 +12414,17 @@
     function isPayloadRealizedForBoot(siteId, payload) {
       if (!siteById.has(siteId) || !payload || typeof payload !== "object") return false;
       if (payload.needsBootRefresh === true) return false;
+      if (siteId === "steam" && payload.cachedSnapshot === true) return true;
       const sourceStatus = String(payload.sourceStatus || "").toUpperCase();
       if (sourceStatus === "OK") return true;
       const updatedAt = Number(payload.updatedAt);
       return Number.isFinite(updatedAt) && updatedAt > BASE_SEED_AT;
+    }
+    function shouldRefreshAfterBoot(siteId, payload) {
+      if (!payload || typeof payload !== "object") return false;
+      return siteId === "steam"
+        && payload.cachedSnapshot === true
+        && payload.needsBackgroundRefresh !== false;
     }
     function canRetryBootPayload(siteId) {
       if (disposed || !siteById.has(siteId)) return false;
@@ -12464,13 +12563,16 @@
       for (const site of sites) {
         const policy = resolveRefreshPolicy(site.id);
         const isVisibleEnough = !policy.visibleOnly || !document.hidden;
-        const bootPayloadReady = isPayloadRealizedForBoot(site.id, payloadBySite.get(site.id));
+        const activePayload = payloadBySite.get(site.id);
+        const bootPayloadReady = isPayloadRealizedForBoot(site.id, activePayload);
         if (policy.bootRefresh && isVisibleEnough && !bootPayloadReady) {
           if (!lastAttemptAtBySite.has(site.id)) {
             bootSiteIds.push(site.id);
           } else if (!inflightBySite.has(site.id)) {
             resumeSiteIds.push(site.id);
           }
+        } else if (policy.bootRefresh && isVisibleEnough && shouldRefreshAfterBoot(site.id, activePayload) && !lastAttemptAtBySite.has(site.id) && !inflightBySite.has(site.id)) {
+          resumeSiteIds.push(site.id);
         }
         if (!policy.autoRefresh || policy.intervalMs <= 0) continue;
         const lastAttemptAt = lastAttemptAtBySite.get(site.id) || 0;
@@ -13759,7 +13861,7 @@
       ctx.stroke();
     }
     function drawFrame(nowMs, { frozen = false } = {}) {
-      if (disposed) return;
+      if (disposed || !webglActive) return;
       if (!startTimeMs) {
         startTimeMs = nowMs;
       }
@@ -13790,6 +13892,7 @@
       }
     }
     function resize() {
+      if (!webglActive) return;
       cssWidth = Math.max(1, Math.round(window.innerWidth));
       cssHeight = Math.max(1, Math.round(window.innerHeight));
       const compactMobile = isCompactMobileLayout();
@@ -13799,7 +13902,8 @@
       drawFrame(performance.now(), { frozen: prefersReducedMotion });
     }
     function shouldAnimate() {
-      return !prefersReducedMotion
+      return webglActive
+        && !prefersReducedMotion
         && !document.hidden
         && !document.body.classList.contains("site-load-playing")
         && !document.body.classList.contains("shuffle-video-background-active")
@@ -13807,7 +13911,7 @@
     }
     function tick(nowMs) {
       rafId = 0;
-      if (disposed) return;
+      if (disposed || !webglActive) return;
       drawFrame(nowMs, { frozen: false });
       if (shouldAnimate()) {
         rafId = window.requestAnimationFrame(tick);
@@ -13824,7 +13928,7 @@
       rafId = window.requestAnimationFrame(tick);
     }
     function sync() {
-      if (disposed) return;
+      if (disposed || !webglActive) return;
       const motionState = prefersReducedMotion ? "frozen" : "running";
       setRendererState(rendererLabel, motionState);
       if (prefersReducedMotion) {
@@ -14127,6 +14231,62 @@
       baseRenderer?.dispose?.();
       frontRenderer?.dispose?.();
       return createDayWispFallbackController();
+    }
+    let webglActive = true;
+    let fallbackController = null;
+    function loseContext(gl) {
+      try {
+        gl?.getExtension?.("WEBGL_lose_context")?.loseContext?.();
+      } catch {
+      }
+    }
+    function disposeWebGlLayer() {
+      if (!webglActive) return;
+      webglActive = false;
+      stop();
+      try {
+        bodyObserver.disconnect();
+      } catch {
+      }
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("scroll", markObstaclesDirty, true);
+      osStage?.removeEventListener("scroll", markObstaclesDirty);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", resize);
+        window.visualViewport.removeEventListener("scroll", markObstaclesDirty);
+      }
+      document.removeEventListener("visibilitychange", sync);
+      baseCanvas.removeEventListener("webglcontextlost", handleWebGlContextLost);
+      frontCanvas.removeEventListener("webglcontextlost", handleWebGlContextLost);
+      try {
+        baseRenderer?.clear?.();
+      } catch {
+      }
+      try {
+        frontRenderer?.clear?.();
+      } catch {
+      }
+      clearGlowCanvas();
+      try {
+        baseRenderer?.dispose?.();
+      } catch {
+      }
+      try {
+        frontRenderer?.dispose?.();
+      } catch {
+      }
+      loseContext(baseGl);
+      loseContext(frontGl);
+      frontOverlay.remove();
+    }
+    function switchDayWispsToFallback(reason = "wisps-context-lost") {
+      if (disposed || !webglActive) return;
+      disposeWebGlLayer();
+      fallbackController = createDayWispFallbackController(reason);
+    }
+    function handleWebGlContextLost(event) {
+      event.preventDefault();
+      switchDayWispsToFallback();
     }
     function setRendererState(renderer, motion) {
       osAmbientBackdrop.setAttribute("data-ambient-variant", "day");
@@ -14677,6 +14837,8 @@
     window.addEventListener("resize", resize, { passive: true });
     window.addEventListener("scroll", markObstaclesDirty, { passive: true, capture: true });
     osStage?.addEventListener("scroll", markObstaclesDirty, { passive: true });
+    baseCanvas.addEventListener("webglcontextlost", handleWebGlContextLost, false);
+    frontCanvas.addEventListener("webglcontextlost", handleWebGlContextLost, false);
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", resize);
       window.visualViewport.addEventListener("scroll", markObstaclesDirty);
@@ -14688,22 +14850,9 @@
       dispose() {
         if (disposed) return;
         disposed = true;
-        stop();
-        bodyObserver.disconnect();
-        window.removeEventListener("resize", resize);
-        window.removeEventListener("scroll", markObstaclesDirty, true);
-        osStage?.removeEventListener("scroll", markObstaclesDirty);
-        if (window.visualViewport) {
-          window.visualViewport.removeEventListener("resize", resize);
-          window.visualViewport.removeEventListener("scroll", markObstaclesDirty);
-        }
-        document.removeEventListener("visibilitychange", sync);
-        baseRenderer.clear();
-        frontRenderer.clear();
-        clearGlowCanvas();
-        baseRenderer.dispose();
-        frontRenderer.dispose();
-        frontOverlay.remove();
+        disposeWebGlLayer();
+        fallbackController?.dispose?.();
+        fallbackController = null;
       }
     };
   }
