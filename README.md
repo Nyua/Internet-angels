@@ -26,7 +26,7 @@ Production secret to add in Cloudflare Pages:
 - `GET /assets/shuffle-manifest.json`
 These are the only dynamic browser-facing endpoints. The client only talks to these first-party routes for Last.fm, Discord, Steam, and Spotify enrichment. Shuffle tracks are generated at build time from `site/Shuffle/youtube-links.txt` and played through YouTube's iframe player.
 
-## Caching so you're users aren't hitting a services api 10,000x every time they refresh (these timings might be a little overkill)
+## Caching so your users aren't hitting a services api 10,000x every time they refresh (these timings might be a little overkill)
 - `GET /api/lastfm`: fresh for 15 minutes, retained for 24 hours
 - `GET /api/discord`: fresh for 10 minutes, retained for 6 hours
 - `GET /api/steam-recent-activity`: fresh for 12 hours, retained for 7 days
